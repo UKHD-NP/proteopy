@@ -36,10 +36,12 @@ def cluster_peptides(df,
 
     model.fit(df)
 
+    # pylint: disable=no-member
     dendogram = {
         'labels': model.feature_names_in_.tolist(),
         'height': model.distances_.tolist(),
         'merge': model.children_.tolist()
     }
+    # pylint: enable=no-member
 
     return dendogram

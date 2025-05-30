@@ -146,7 +146,7 @@ def check_dendogram_equality(dend, dend_ref, rel_tolerance=None, abs_tolerance=N
     keys = ('labels', 'merge', 'height')
 
     # Correct dict keys
-    assert all([key in keys for key in dend_ref.keys()]), f'dends_ref.keys: {dends_ref.keys()}'
+    assert all([key in keys for key in dend_ref.keys()]), f'dend_ref.keys: {dend_ref.keys()}'
     assert all([key in keys for key in dend.keys()])
 
     # Equal labels

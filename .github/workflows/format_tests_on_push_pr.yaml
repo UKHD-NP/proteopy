@@ -10,6 +10,8 @@ on:
 
   pull_request:
     branches: [ "main", "dev-*" ]
+
+  workflow_dispatch:
   
 permissions:
   contents: read
@@ -22,7 +24,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11" ]
+        python-version: ["3.9", "3.10", "3.11" ]
 
     steps:
 
@@ -56,4 +58,4 @@ jobs:
 
       - name: Test with pytest
         run: |
-          pytest tests/
+          pytest -v -s tests/

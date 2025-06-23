@@ -63,9 +63,9 @@ class BinaryClusterTree():
 
         pep_cluster_map = {p: c for c, peps in cluster_pep_map.items() for p in peps}
 
-        df = pd.DataFrame(list(pep_cluster_map.items()), columns=('sample', 'cluster_id'))
+        ds = pd.Series(pep_cluster_map)
 
-        return df
+        return ds
 
     @staticmethod
     def _cut(node, k):

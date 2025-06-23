@@ -2,6 +2,7 @@ import itertools
 import pandas as pd
 from scipy import stats
 from sklearn.cluster import AgglomerativeClustering
+from copro.utils.data_structures import BinaryClusterTree
 
 def pairwise_peptide_correlations(
         df,
@@ -71,7 +72,14 @@ def cluster_peptides(df,
     -------
     dict
         Dictionary with clustering method output.
-        - 'agglomerative-hierarchical-clustering' => {protein_id: {'labels': list, 'height': list, 'merge': list(list)}}
+        - 'agglomerative-hierarchical-clustering'
+            => {protein_id: {'labels': list, 'height': list, 'merge': list(list)}}
+            - labels: list of peptides
+            - merge: steps in which different peptides are merged.
+                     n_steps == n_samples - 1
+                     The two ids included for every step represent the index of the peptide in 'labels'.
+            - heights: The height of each merging step in 'merge'.
+                       The idx of the height corresponds to the index of the step in 'merge'.
     '''
 
     assert all(df.index == df.columns)
@@ -93,3 +101,18 @@ def cluster_peptides(df,
     # pylint: enable=no-member
 
     return dendogram
+
+
+def cut_clusters_in_n_real(dendogram, n_clusters=2, min_peptides_per_cluster=2):
+    '''
+    Cut clusters from cluster_peptides into N clusters with more than 1 peptide. 
+    '''
+    n_peptides = len(dendogram['labels'])
+    n_real_clusters = 0
+    k = n_clusters
+    cluster_tree = BinaryClusterTree(dendogram,
+                                     constructor='sklearn_agglomerative_clustering')
+
+    while n_real_clusters < n_clusters:
+        pep_clust_map = cluster_tree.cut(k)
+        

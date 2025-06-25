@@ -481,10 +481,6 @@ def test_cut_dendograms_in_n_real_vs_rcopf_(prot_dends, prot_clust_ann):
     for prot in cluster_ann.keys():
         prot_clusts = cluster_ann[prot]
         prot_clusts_ref = cluster_ann_ref[prot]
-        print('--')
-        print(prot_clusts)
-        print(prot_clusts_ref)
-        print('----')
         compare_clusters_dsVlist(prot_clusts, prot_clusts_ref)
         return
         prot_log.remove(prot)

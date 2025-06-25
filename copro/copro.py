@@ -50,10 +50,6 @@ def pairwise_peptide_correlations(
 
 
 def cluster_peptides(df,
-                     column_map: dict = {'peptide_a': 'pepA',
-                                         'peptide_b': 'pepB',
-                                         'correlation_values': 'PCC',
-                                         'protein_id': 'protein_id'},
                      method: str = 'agglomerative-hierarchical-clustering') -> dict:
     '''
     Perform peptide clustering grouped by protein annotation.
@@ -63,7 +59,6 @@ def cluster_peptides(df,
     ----------
     df : pandas.DataFrame
         Data frame with pairwise correlations annotated with the protein they belong to.]
-    column_map: dict
 
     method : str
         Which clustering method to apply.

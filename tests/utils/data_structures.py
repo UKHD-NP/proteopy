@@ -1,5 +1,21 @@
 import pytest
-from copro.utils.data_structures import BinaryClusterTree
+from copro.utils.data_structures import BinaryClusterTree, ListDict
+
+def test_ListDict():
+    ld = ListDict()
+
+    ld['a'].append(0)
+    assert ld['a'] == [0]
+
+    ld['a'].append(1)
+    assert ld['a'] == [0,1]
+
+    ld['a'].extend(['a', 'b'])
+    assert ld['a'] == [0,1,'a', 'b']
+
+    ld['exception'] = 100
+    assert isinstance(ld['exception'], int)
+    assert ld['exception'] == 100
 
 @pytest.fixture
 def example_tree():

@@ -374,12 +374,14 @@ def test_cut_dendograms_in_n_real_():
 
     model.fit(corrs)
 
+    # pylint: disable=no-member
     dendogram = {
-        'type': 'sklearn_agglomerative_clustering',
+        'type': 'sklearn_agglomerative_clustering', 
         'labels': model.feature_names_in_.tolist(),
         'heights': model.distances_.tolist(),
         'merge': model.children_.tolist()
     }
+    # pylint: enable=no-member
 
     # Same as previous dendogram as same structure
 

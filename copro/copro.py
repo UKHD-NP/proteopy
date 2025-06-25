@@ -94,6 +94,7 @@ def cluster_peptides(df,
 
     # pylint: disable=no-member
     dendogram = {
+        'type': 'sklearn_agglomerative_clustering',
         'labels': model.feature_names_in_.tolist(),
         'height': model.distances_.tolist(),
         'merge': model.children_.tolist()
@@ -103,7 +104,7 @@ def cluster_peptides(df,
     return dendogram
 
 
-def cut_clusters_in_n_real_(dendogram, n_clusters=2, min_peptides_per_cluster=2):
+def cut_dendograms_in_n_real_(dendogram, n_clusters=2, min_peptides_per_cluster=2):
     '''
     Cut clusters from cluster_peptides into N clusters with more than 1 peptide. 
     '''

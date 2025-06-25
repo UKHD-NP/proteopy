@@ -1,6 +1,25 @@
 import pandas as pd
 import numpy as np
 
+class ListDict(dict):
+
+    def __getitem__(self, key):
+
+        if key not in self:
+            self.__setitem__(key, [])
+
+        return super().__getitem__(key)
+
+
+    def setdefault(self, key, default=None):
+
+        if default is None:
+            default = []
+
+        return super().setdefault(key, default)
+
+
+
 class BinaryClusterTree():
 
     class Node():

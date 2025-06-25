@@ -143,11 +143,11 @@ def check_dendogram_equality(dend, dend_ref, rel_tolerance=None, abs_tolerance=N
         To choose the tolerances view API: pytest.approx
     '''
 
-    keys = ('labels', 'merge', 'height')
+    keys = ('labels', 'merge', 'heights')
 
     # Correct dict keys
-    assert all([key in keys for key in dend_ref.keys()]), f'dend_ref.keys: {dend_ref.keys()}'
-    assert all([key in keys for key in dend.keys()])
+    assert all([key in dend_ref.keys() for key in keys]), f'dend.keys: {list(dend.keys())}\nkeys:{keys}'
+    assert all([key in dend.keys() for key in keys]), f'dend.keys: {list(dend.keys())}\nkeys:{keys}'
 
     # Equal labels
     labels_ref = dend_ref['labels']
@@ -162,6 +162,6 @@ def check_dendogram_equality(dend, dend_ref, rel_tolerance=None, abs_tolerance=N
         assert pair_ref == pair or pair_ref == pair[::-1], f'{i}'
 
     # Equal heights
-    height_ref = dend_ref['height']
-    height = dend['height']
-    assert height == approx(height_ref, rel=rel_tolerance, abs=abs_tolerance)
+    heights_ref = dend_ref['heights']
+    heights = dend['heights']
+    assert heights == approx(heights_ref, rel=rel_tolerance, abs=abs_tolerance)

@@ -96,7 +96,7 @@ def cluster_peptides(df,
     dendogram = {
         'type': 'sklearn_agglomerative_clustering',
         'labels': model.feature_names_in_.tolist(),
-        'height': model.distances_.tolist(),
+        'heights': model.distances_.tolist(),
         'merge': model.children_.tolist()
     }
     # pylint: enable=no-member

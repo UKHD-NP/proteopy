@@ -23,11 +23,12 @@ class BinaryClusterTree():
     def __init__(self, constructor=None):
 
         self.root = None
-        self.labels = constructor['labels']
         self.size = 0
+        self.labels = None
         self.constructor = constructor
 
         if constructor:
+            self.labels = constructor['labels']
             self._init_from_constructor(constructor)
 
     def __len__(self):
@@ -50,7 +51,7 @@ class BinaryClusterTree():
     def count_leaves(self):
         return BinaryClusterTree._count_leaves(self.root)
 
-    def cut(self, k):
+    def cut(self, k, use_labels=False):
         
         if self.root is None:
             raise ValueError()
@@ -64,6 +65,10 @@ class BinaryClusterTree():
         pep_cluster_map = {p: c for c, peps in cluster_pep_map.items() for p in peps}
 
         ds = pd.Series(pep_cluster_map)
+
+        if use_labels:
+            cluster_label_map = {i: self.labels[i] for i in ds.index}
+            ds.index = ds.index.map(cluster_label_map)
 
         return ds
 

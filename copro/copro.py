@@ -103,16 +103,40 @@ def cluster_peptides(df,
     return dendogram
 
 
-def cut_clusters_in_n_real(dendogram, n_clusters=2, min_peptides_per_cluster=2):
+def cut_clusters_in_n_real_(dendogram, n_clusters=2, min_peptides_per_cluster=2):
     '''
     Cut clusters from cluster_peptides into N clusters with more than 1 peptide. 
     '''
     n_peptides = len(dendogram['labels'])
     n_real_clusters = 0
     k = n_clusters
-    cluster_tree = BinaryClusterTree(dendogram,
-                                     constructor='sklearn_agglomerative_clustering')
+    cluster_tree = BinaryClusterTree(constructor=dendogram)
+    noise = 1e6
 
     while n_real_clusters < n_clusters:
-        pep_clust_map = cluster_tree.cut(k)
-        
+        clusters = cluster_tree.cut(k, use_labels=True)
+        n_per_cluster = clusters.value_counts()
+        is_multipep = n_per_cluster >= min_peptides_per_cluster
+        n_real_clusters = is_multipep.sum()
+        k += 1
+
+        single_pep_clusters = n_per_cluster[~is_multipep].index
+        clusters[clusters.isin(single_pep_clusters)] = noise
+
+        if k >= n_peptides:
+            clusters[:] = noise
+            break
+
+    # Rename cluster_ids to systematic format
+    max_cluster = clusters.max()
+    cats = clusters.astype('category').cat.categories
+    n_clusters = len(cats)
+
+    if max_cluster != n_clusters:
+        for i in range(n_clusters):
+            clusters[clusters == cats[i]] = i
+
+    if noise in cats:
+        clusters[clusters == max(clusters)] = noise
+
+    return clusters

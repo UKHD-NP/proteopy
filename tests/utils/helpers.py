@@ -3,54 +3,31 @@ import pandas as pd
 import copy
 from pytest import approx
 
-def reconstruct_corr_df_sym(df, var_a_col='pepA', var_b_col='pepB', corr_col='correlation value'):
-    '''Reconstruct correlation dataframe in symmetrical matrix format.
+from copro.utils.helpers import reconstruct_corr_df_sym
 
-    Reconstruct a full correlation matrix from a long DataFrame containing asymmetric correlation data.
-    
-    Args:
-        df (pd.DataFrame): DataFrame with columns for peptide A, peptide B, and their correlation value
-        var_a_col (str): Name of column containing first peptide identifier
-        var_b_col (str): Name of column containing second peptide identifier
-        corr_col (str): Name of column containing correlation values
-        
-    Returns:
-        pd.DataFrame: Fully symmetric correlation matrix as a pd.DataFrame with peptide labels as columns and rows.
-    '''
+def test_reconstruct_corr_df_sym():
 
-    all_peptides = set(df[var_a_col]).union(set(df[var_b_col]))
-    all_peptides = sorted(list(all_peptides))
-    n = len(all_peptides)
-    
-    pep_to_idx = {pep: i for i, pep in enumerate(all_peptides)}
-    
-    # Init
-    corr_matrix = np.full((n, n), np.nan)
-    np.fill_diagonal(corr_matrix, 1.0)
-    
-    # Fill in the known correlation values
-    for _, row in df.iterrows():
-        i = pep_to_idx[row[var_a_col]]
-        j = pep_to_idx[row[var_b_col]]
-        corr_matrix[i, j] = row[corr_col]
-    
-    # Fill in the symmetric values where possible
-    for i in range(n):
-        for j in range(i+1, n):
+    # labels: a-c
+    #
+    # [[ x, 0.1, 0.5],        [[ 1  , 0.1, 0.5],
+    #  [ x, 1  , x  ],   ==>   [ 0.1, 1  , 0.4],
+    #  [ x  0.4, 1  ]]         [ 0.5, 0.4, 1  ]]
 
-            if np.isnan(corr_matrix[i, j]) and not np.isnan(corr_matrix[j, i]):
-                corr_matrix[i, j] = corr_matrix[j, i]
-            elif np.isnan(corr_matrix[j, i]) and not np.isnan(corr_matrix[i, j]):
-                corr_matrix[j, i] = corr_matrix[i, j]
-            elif np.isnan(corr_matrix[j, i]) and np.isnan(corr_matrix[i, j]):
-                raise ValueError('Logical bug')
-            elif not np.isnan(corr_matrix[j, i]) and not np.isnan(corr_matrix[i, j]):
-                assert corr_matrix[i,j] == corr_matrix[j,i]
-    
+    df = pd.DataFrame({
+        'colA': ['a', 'a', 'b', 'c', 'c'],
+        'colB': ['b', 'c', 'b', 'b', 'c'],
+        'value':[0.1, 0.5, 1, 0.4, 1]
+        })
 
-    corr_df = pd.DataFrame(corr_matrix, index=all_peptides, columns=all_peptides)
-    
-    return corr_df
+    df_expected = pd.DataFrame({
+        'a': [1, 0.1, 0.5],
+        'b': [0.1, 1, 0.4],
+        'c':[0.5, 0.4, 1]
+        }, index=['a', 'b', 'c'])
+
+    df_reconstructed = reconstruct_corr_df_sym(df, 'colA', 'colB', 2)
+    assert np.isclose(df_reconstructed, df_expected, atol=1e-4).all().all()
+    assert all(df_reconstructed.index == df_reconstructed.columns)
 
 
 def transform_dendogram_merge_arr_r2py(merge_arr: list):

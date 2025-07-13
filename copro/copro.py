@@ -6,7 +6,7 @@ from scipy.stats import norm
 from sklearn.cluster import AgglomerativeClustering
 from copro.utils.data_structures import BinaryClusterTree
 
-def pairwise_peptide_correlations(
+def pairwise_peptide_correlations_(
         df,
         sample_column="filename",
         peptide_column="peptide_id",
@@ -51,7 +51,7 @@ def pairwise_peptide_correlations(
     return corr_df
 
 
-def cluster_peptides(df,
+def cluster_peptides_(df,
                      method: str = 'agglomerative-hierarchical-clustering') -> dict:
     '''
     Perform peptide clustering grouped by protein annotation.

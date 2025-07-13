@@ -8,8 +8,8 @@ import copy
 from sklearn.cluster import AgglomerativeClustering
 
 
-from copro.copro import (cluster_peptides,
-                         pairwise_peptide_correlations,
+from copro.copro import (cluster_peptides_,
+                         pairwise_peptide_correlations_,
                          cut_dendograms_in_n_real_, 
                          proteoform_scores_
                          )
@@ -139,7 +139,7 @@ def test_pairwise_peptide_correlations_vs_rcopf(traces_preproc_ext, traces_corrs
     '''
 
     # Apply pairwise_peptide_correlations on the entire mouse tissue df
-    pep_corrs = lambda x: pairwise_peptide_correlations(x,
+    pep_corrs = lambda x: pairwise_peptide_correlations_(x,
                                                         sample_column='sample',
                                                         peptide_column='peptide_id',
                                                         value_column='intensity')
@@ -190,7 +190,7 @@ def test_cluster_peptides_vs_rcopf(traces_corrs, prot_dends):
 
         corr_df_sym = reconstruct_corr_df_sym(df, var_a_col='pepA', var_b_col='pepB', corr_col='PCC')
         corr_dists = 1 - corr_df_sym
-        dends[protein_id] = cluster_peptides(corr_dists)
+        dends[protein_id] = cluster_peptides_(corr_dists)
 
     dends_ref = copy.deepcopy(prot_dends)
 

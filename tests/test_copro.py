@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import pytest
 from pytest import approx
+import numpy as np
 import pandas as pd
 import copy
 from sklearn.cluster import AgglomerativeClustering
@@ -9,7 +10,8 @@ from sklearn.cluster import AgglomerativeClustering
 
 from copro.copro import (cluster_peptides,
                          pairwise_peptide_correlations,
-                         cut_dendograms_in_n_real_
+                         cut_dendograms_in_n_real_, 
+                         proteoform_scores_
                          )
 
 from copro.utils.data_structures import ListDict
@@ -24,7 +26,7 @@ from tests.utils.helpers import (
 TEST_DIR = Path(__file__).parent
 DATA_DIR = TEST_DIR / "data"
 
-noise = 1e6
+NOISE = 1e6
 
 def compare_clusters_dsVlist(ds, ref):
     '''
@@ -87,6 +89,16 @@ def traces_preproc_ext(traces_preproc, traces_preproc_anns):
     traces_ext = traces_ext.rename(columns={'value': 'intensity', 'variable': 'sample'})
 
     return traces_ext
+
+
+@pytest.fixture
+def fraction_annotation():
+    frac_ann_path = DATA_DIR / \
+        'mouse_tissue/fraction_annotation.tsv'
+    frac_ann = pd.read_csv(frac_ann_path, sep='\t', header=0)
+    frac_ann = frac_ann.copy(deep=True).set_index('filename')
+
+    return frac_ann
 
 
 @pytest.fixture
@@ -321,7 +333,7 @@ def test_cut_dendograms_in_n_real_():
                                          min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB'], ['pepC', 'pepD'], ['pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
-    assert clusters['pepE'] == noise
+    assert clusters['pepE'] == NOISE
 
     # Config 5
     clusters = cut_dendograms_in_n_real_(dendogram,
@@ -337,7 +349,7 @@ def test_cut_dendograms_in_n_real_():
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
     assert clusters.nunique() == 1
-    assert clusters.iloc[0] == noise
+    assert clusters.iloc[0] == NOISE
 
 
     
@@ -412,7 +424,7 @@ def test_cut_dendograms_in_n_real_():
                                          min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB'], ['pepC', 'pepD'], ['pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
-    assert clusters['pepE'] == noise
+    assert clusters['pepE'] == NOISE
 
     # Config 5
     clusters = cut_dendograms_in_n_real_(dendogram,
@@ -428,17 +440,16 @@ def test_cut_dendograms_in_n_real_():
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
     assert clusters.nunique() == 1
-    assert clusters.iloc[0] == noise
+    assert clusters.iloc[0] == NOISE
 
 @pytest.fixture
 def prot_clust_ann():
     '''Get protein-level peptide cluster annotations from COPF mouse tissue df.'''
 
     clusts_ann_path = DATA_DIR / (
-        'mouse_tissue/traces_cluster-assignment-annotation_rcopf.tsv'
+        'mouse_tissue/traces_annotation_cluster-assignment_rcopf.tsv'
         )
     clusts_ann = pd.read_csv(clusts_ann_path, sep='\t', header=0)
-    clusts_ann = clusts_ann[['protein_id', 'id', 'cluster']].copy(deep=True)
 
     return clusts_ann
 
@@ -458,6 +469,7 @@ def test_cut_dendograms_in_n_real_vs_rcopf_(prot_dends, prot_clust_ann):
                 dend_upd,
                 n_clusters=2,
                 min_peptides_per_cluster=2,
+                noise=NOISE
             )
         cluster_ann[prot] = clusters
     
@@ -477,12 +489,12 @@ def test_cut_dendograms_in_n_real_vs_rcopf_(prot_dends, prot_clust_ann):
         cluster_ann_ref[p] = [list(v) for v in clusters_map_inv.values()]
 
     # Compare
+    # Note: ignores cluster labels
     prot_log = set(cluster_ann_ref.keys())
     for prot in cluster_ann.keys():
         prot_clusts = cluster_ann[prot]
         prot_clusts_ref = cluster_ann_ref[prot]
         compare_clusters_dsVlist(prot_clusts, prot_clusts_ref)
-        return
         prot_log.remove(prot)
 
     assert len(prot_log) == 0
@@ -494,3 +506,84 @@ def test_cut_clusters_in_n_real_vs_rcopf():
     dataset.
     '''
     pass
+
+
+@pytest.fixture
+def trace_annotation_proteoform_scores():
+    '''Get protein-level proteoform annotations from COPF mouse tissue dataset.'''
+
+    annotation_path = DATA_DIR / (
+        'mouse_tissue/trace_annotation_proteoform-scores_rcopf.tsv'
+        )
+    clusts_ann = pd.read_csv(annotation_path, sep='\t', header=0)
+
+    return clusts_ann
+
+def test_proteoform_scores_vs_rcopf_(
+    traces_corrs,
+    prot_clust_ann,
+    fraction_annotation,
+    trace_annotation_proteoform_scores,
+    summary_func=np.mean,
+    ):
+
+    n_fractions = len(fraction_annotation)
+
+    columns = [
+        'protein_id',
+        'proteoform_score',
+        'proteoform_score_z',
+        'proteoform_score_dz',
+        'proteoform_score_pval',
+        ]
+
+    proteoform_scores_list = []
+
+    for prot, corrs in traces_corrs.groupby('protein_id'):
+
+        corrs_mat = reconstruct_corr_df_sym(
+            corrs,
+            var_a_col='pepA',
+            var_b_col='pepB',
+            corr_col='PCC')
+
+        clusters = prot_clust_ann[prot_clust_ann['protein_id'] == prot]
+        clusters = clusters.set_index('id')['cluster']
+        clusters[clusters == 100] = NOISE
+
+        scores = proteoform_scores_(
+            corrs_mat,
+            clusters,
+            n_fractions,
+            summary_func=np.mean)
+
+        scores_entry = {column:value for column, value in zip(columns[1:5], scores)}
+        scores_entry['protein_id'] = prot
+        scores_entry = pd.DataFrame([scores_entry])
+        proteoform_scores_list.append(scores_entry)
+
+    proteoform_scores = pd.concat(proteoform_scores_list, ignore_index=True)
+
+    proteoform_scores = proteoform_scores.loc[:, columns].set_index('protein_id')
+
+    # Format reference proteoforms
+    proteoform_scores_ref = trace_annotation_proteoform_scores[columns]
+    proteoform_scores_ref = proteoform_scores_ref.drop_duplicates()
+    proteoform_scores_ref = proteoform_scores_ref.set_index('protein_id')
+
+    # Compare
+    pfs_idx = set(proteoform_scores.index)
+    pfs_ref_idx = set(proteoform_scores_ref.index)
+
+    assert len(pfs_idx.symmetric_difference(pfs_ref_idx)) == 0
+    assert len(pfs_idx) == len(pfs_ref_idx)
+    assert len(set(proteoform_scores.columns).symmetric_difference(set(proteoform_scores_ref.columns))) == 0
+
+    proteoform_scores = proteoform_scores.loc[proteoform_scores_ref.index,proteoform_scores_ref.columns]
+
+    assert np.allclose(
+        proteoform_scores,
+        proteoform_scores_ref,
+        rtol=0,
+        atol=1e-12,
+        equal_nan=True)

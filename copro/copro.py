@@ -1,6 +1,7 @@
 import itertools
 import pandas as pd
 import numpy as np
+import anndata as ad
 from scipy import stats
 from scipy.stats import norm
 from sklearn.cluster import AgglomerativeClustering
@@ -28,6 +29,8 @@ def pairwise_peptide_correlations_(
         Only outputs unique (non-symmetrical) correlations (AB, not AB, B-A, AA, BB).
     '''
 
+    # TODO: modify df input to be obs x vars. Here we have redundant steps with
+    # AnnDataTrces pairwise_peptide_correlations()
     df = df[[sample_column, peptide_column, value_column]]
 
     pivot_df = df.pivot_table(index=sample_column, columns=peptide_column, values=value_column)
@@ -281,3 +284,45 @@ def proteoform_scores_(
         pval = 2 * (1 - norm.cdf(np.abs(dz)))
 
         return np.array([diff_stat, z_diff_stat, dz, pval])
+
+
+class AnnDataTraces(ad.AnnData):
+
+    def pairwise_peptide_correlations(self, protein_id='protein_id'):
+
+        if protein_id not in self.var.columns:
+            raise ValueError(f'protein_id: {protein_id} not in AnnData.var.columns')
+
+        @staticmethod
+        def compute_corrs(df):
+            corrs = pairwise_peptide_correlations_(
+                df,
+                sample_column='obs_id',
+                peptide_column='var_id',
+                value_column='intensity')
+
+            return corrs
+
+        anns = self.var[['protein_id']].reset_index()
+        traces_df = self.to_df().T.reset_index()
+        traces_df = traces_df.merge(anns, on='index')
+        traces_df = traces_df.rename(columns={'index': 'var_id'})
+
+        # TODO: remove unnecessary step of melting which gets unmelted
+        #   in protein-level function
+
+        traces_df = pd.melt(
+            traces_df,
+            id_vars=['protein_id', 'var_id'],
+            var_name='obs_id',
+            value_name='intensity')
+
+        self.uns['t'] = traces_df.copy()
+        corrs = traces_df.groupby('protein_id').apply(compute_corrs, include_groups=False)
+        corrs = corrs.droplevel(1, axis=0)
+        corrs = corrs.sort_values(['pepA', 'pepB']).sort_index()
+
+        self.uns['pairwise_peptide_correlations'] = corrs
+
+
+

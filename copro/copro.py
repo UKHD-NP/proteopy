@@ -6,6 +6,7 @@ from scipy import stats
 from scipy.stats import norm
 from sklearn.cluster import AgglomerativeClustering
 from copro.utils.data_structures import BinaryClusterTree
+from copro.utils.helpers import reconstruct_corr_df_sym
 
 def pairwise_peptide_correlations_(
         df,
@@ -54,8 +55,10 @@ def pairwise_peptide_correlations_(
     return corr_df
 
 
-def cluster_peptides_(df,
-                     method: str = 'agglomerative-hierarchical-clustering') -> dict:
+def cluster_peptides_(
+        df,
+        method: str = 'agglomerative-hierarchical-clustering'
+    ):
     '''
     Perform peptide clustering grouped by protein annotation.
 
@@ -291,7 +294,7 @@ class AnnDataTraces(ad.AnnData):
     def pairwise_peptide_correlations(self, protein_id='protein_id'):
 
         if protein_id not in self.var.columns:
-            raise ValueError(f'protein_id: {protein_id} not in AnnData.var.columns')
+            raise ValueError(f'protein_id: {protein_id} not in .var.columns')
 
         @staticmethod
         def compute_corrs(df):
@@ -317,7 +320,6 @@ class AnnDataTraces(ad.AnnData):
             var_name='obs_id',
             value_name='intensity')
 
-        self.uns['t'] = traces_df.copy()
         corrs = traces_df.groupby('protein_id').apply(compute_corrs, include_groups=False)
         corrs = corrs.droplevel(1, axis=0)
         corrs = corrs.sort_values(['pepA', 'pepB']).sort_index()
@@ -325,4 +327,28 @@ class AnnDataTraces(ad.AnnData):
         self.uns['pairwise_peptide_correlations'] = corrs
 
 
+    def cluster_peptides(self, method = 'agglomerative-hierarchical-clustering'):
 
+        if 'pairwise_peptide_correlations' not in self.uns:
+            raise ValueError(f'pairwise_peptide_correlations not in .uns')
+
+
+        corrs = self.uns['pairwise_peptide_correlations']
+
+        dends = {}
+
+        for protein_id, df in corrs.groupby('protein_id'):
+
+            corr_sym = reconstruct_corr_df_sym(
+                df,
+                var_a_col='pepA',
+                var_b_col='pepB',
+                corr_col='PCC')
+
+            corr_dists = 1 - corr_sym
+
+            dends[protein_id] = cluster_peptides_(
+                corr_dists,
+                method= 'agglomerative-hierarchical-clustering')
+
+        self.uns['dendograms'] = dends

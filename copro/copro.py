@@ -386,3 +386,64 @@ class AnnDataTraces(ad.AnnData):
         self.uns['clusters'] = clusters_ann
 
         assert not any((var['cluster_id'] == -1).tolist())
+
+
+    def proteoform_scores(self, summary_func=np.mean, noise=NOISE):
+
+        if 'pairwise_peptide_correlations' not in self.uns:
+            raise ValueError(f'pairwise_peptide_correlations not in .uns')
+
+        if 'dendograms' not in self.uns:
+            raise ValueError(f'dendograms not in .uns')
+
+        columns = [
+            'protein_id',
+            'proteoform_score',
+            'proteoform_score_z',
+            'proteoform_score_dz',
+            'proteoform_score_pval',
+            ]
+
+        corrs = self.uns['pairwise_peptide_correlations'].copy().reset_index()
+        var = self.var
+        n_fractions = self.n_obs
+
+        proteoform_scores_list = []
+
+        for prot, corrs_prot in corrs.groupby('protein_id'):
+
+            corrs_mat = reconstruct_corr_df_sym(
+                corrs_prot,
+                var_a_col='pepA',
+                var_b_col='pepB',
+                corr_col='PCC')
+
+            clusters = var.loc[var['protein_id'] == prot, 'cluster_id']
+
+            scores = proteoform_scores_(
+                corrs_mat,
+                clusters,
+                n_fractions,
+                summary_func=np.mean)
+
+            scores_entry = {column:value for column, value in zip(columns[1:5], scores)}
+            scores_entry['protein_id'] = prot
+            scores_entry = pd.DataFrame([scores_entry])
+            proteoform_scores_list.append(scores_entry)
+
+        proteoform_scores = pd.concat(proteoform_scores_list, ignore_index=True)
+        proteoform_scores = proteoform_scores[columns]
+
+        self.uns['a'] = proteoform_scores
+        var_upd = pd.merge(
+            var,
+            proteoform_scores,
+            on='protein_id',
+            how='left',
+            validate='many_to_one')
+        self.uns['b'] = var_upd
+        var_upd = var_upd.set_index('peptide_id', drop=False)
+        var_upd.index.name = None
+
+        assert (var.index == var_upd.index).all()
+        self.var = var_upd

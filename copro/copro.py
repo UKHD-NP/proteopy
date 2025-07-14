@@ -6,6 +6,7 @@ import anndata as ad
 from scipy import stats
 from scipy.stats import norm
 from sklearn.cluster import AgglomerativeClustering
+from statsmodels.stats.multitest import multipletests
 from copro.utils.data_structures import BinaryClusterTree
 from copro.utils.helpers import reconstruct_corr_df_sym
 
@@ -388,7 +389,7 @@ class AnnDataTraces(ad.AnnData):
         assert not any((var['cluster_id'] == -1).tolist())
 
 
-    def proteoform_scores(self, summary_func=np.mean, noise=NOISE):
+    def proteoform_scores(self, alpha=0.05, summary_func=np.mean, noise=NOISE):
 
         if 'pairwise_peptide_correlations' not in self.uns:
             raise ValueError(f'pairwise_peptide_correlations not in .uns')
@@ -434,14 +435,26 @@ class AnnDataTraces(ad.AnnData):
         proteoform_scores = pd.concat(proteoform_scores_list, ignore_index=True)
         proteoform_scores = proteoform_scores[columns]
 
-        self.uns['a'] = proteoform_scores
+        # Perform multiple-testing correction
+        mask_nonan = proteoform_scores['proteoform_score_pval'].notna()
+        pvals = proteoform_scores.loc[mask_nonan, 'proteoform_score_pval']
+
+        rejected, corrected_pvals, _, _ = multipletests(pvals, alpha=alpha, method='fdr_bh')
+
+        proteoform_scores['proteoform_score_pval_adj'] = np.nan
+        proteoform_scores['is_proteoform'] = np.nan
+        
+        proteoform_scores.loc[pvals.index, 'proteoform_score_pval_adj'] = corrected_pvals
+        proteoform_scores.loc[pvals.index, 'is_proteoform'] = rejected
+
+        # Add all new scores to .var
         var_upd = pd.merge(
             var,
             proteoform_scores,
             on='protein_id',
             how='left',
             validate='many_to_one')
-        self.uns['b'] = var_upd
+
         var_upd = var_upd.set_index('peptide_id', drop=False)
         var_upd.index.name = None
 

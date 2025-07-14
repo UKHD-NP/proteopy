@@ -1,4 +1,5 @@
 import itertools
+import copy
 import pandas as pd
 import numpy as np
 import anndata as ad
@@ -7,6 +8,8 @@ from scipy.stats import norm
 from sklearn.cluster import AgglomerativeClustering
 from copro.utils.data_structures import BinaryClusterTree
 from copro.utils.helpers import reconstruct_corr_df_sym
+
+NOISE = 1e6
 
 def pairwise_peptide_correlations_(
         df,
@@ -352,3 +355,34 @@ class AnnDataTraces(ad.AnnData):
                 method= 'agglomerative-hierarchical-clustering')
 
         self.uns['dendograms'] = dends
+
+
+    def cut_dendograms_in_n_real(self, n_clusters=2, min_peptides_per_cluster=2, noise=NOISE):
+
+        if 'dendograms' not in self.uns:
+            raise ValueError(f'dendograms not in .uns')
+
+        var = self.var
+        var['cluster_id'] = -1
+
+        clusters_ann = {}
+
+        dends = self.uns['dendograms']
+        for prot, dend in dends.items():
+            dend_upd = copy.deepcopy(dend)
+            dend_upd['type'] = 'sklearn_agglomerative_clustering'
+
+            clusters = cut_dendograms_in_n_real_(
+                dend_upd,
+                n_clusters=2,
+                min_peptides_per_cluster=2,
+                noise=noise)
+
+            mask = (var['protein_id'] == prot) & (var.index.isin(clusters.index))
+            var.loc[mask, 'cluster_id'] = clusters.reindex(var.index[mask])
+
+            clusters_ann[prot] = clusters
+
+        self.uns['clusters'] = clusters_ann
+
+        assert not any((var['cluster_id'] == -1).tolist())

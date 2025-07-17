@@ -468,3 +468,52 @@ class AnnDataTraces(ad.AnnData):
 
         assert (var.index == var_upd.index).all()
         self.var = var_upd
+
+
+    def plot_proteoform_scores(
+        self,
+        adj=True,
+        pval_cutoff=None,
+        proteoform_score_cutoff=None,
+        ):
+
+        var = self.var
+
+        if adj:
+            pval_col = 'proteoform_score_pval_adj'
+        else:
+            pval_col = 'proteoform_score_pval'
+
+        mask_nonan = var[pval_col].notna()
+        df = var.loc[mask_nonan,['proteoform_score', pval_col]]
+        df['neg_log10_pval'] = -np.log10(df[pval_col].replace(0, np.nan))
+
+        # Create scatter plot
+        plt.figure(figsize=(6, 5))
+        sns.scatterplot(
+            data=df,
+            x='proteoform_score',
+            y='neg_log10_pval',
+            edgecolor='black',           # outline for circles
+            facecolor='none',            # transparent fill
+            linewidth=0.5
+        )
+
+        if pval_cutoff:
+            plt.axhline(
+                y=-np.log10(pval_cutoff),
+                color='blue',
+                linestyle='--',
+                label=f'pval cutoff: {pval_cutoff}')
+
+        if proteoform_score_cutoff:
+            plt.axvline(x=proteoform_score_cutoff,
+                        color='red',
+                        linestyle='--',
+                        label=f'proteoform score cutoff: {proteoform_score_cutoff}')
+
+        plt.xlabel('Proteoform Score')
+        plt.ylabel('-log10(p-value)')
+        plt.legend()
+        plt.tight_layout()
+        plt.show()

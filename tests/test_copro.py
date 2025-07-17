@@ -500,14 +500,6 @@ def test_cut_dendograms_in_n_real_vs_rcopf_(prot_dends, prot_clust_ann):
     assert len(prot_log) == 0
 
 
-def test_cut_clusters_in_n_real_vs_rcopf():
-    '''
-    Test dataset-level cut_clusters_in_n_real_() on an rCOPF-derived reference
-    dataset.
-    '''
-    pass
-
-
 @pytest.fixture
 def trace_annotation_proteoform_scores():
     '''Get protein-level proteoform annotations from COPF mouse tissue dataset.'''

@@ -408,7 +408,9 @@ class AnnDataTraces(ad.AnnData):
             ]
 
         corrs = self.uns['pairwise_peptide_correlations'].copy().reset_index()
+        # pylint: disable=access-member-before-definition
         var = self.var
+        # pylint: enable=access-member-before-definition
         n_fractions = self.n_obs
 
         proteoform_scores_list = []
@@ -517,3 +519,5 @@ class AnnDataTraces(ad.AnnData):
         plt.legend()
         plt.tight_layout()
         plt.show()
+
+

@@ -2,6 +2,8 @@ import itertools
 import copy
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
 import anndata as ad
 from scipy import stats
 from scipy.stats import norm
@@ -389,7 +391,7 @@ class AnnDataTraces(ad.AnnData):
         assert not any((var['cluster_id'] == -1).tolist())
 
 
-    def proteoform_scores(self, alpha=0.05, summary_func=np.mean, noise=NOISE):
+    def proteoform_scores(self, alpha=None, summary_func=np.mean, noise=NOISE):
 
         if 'pairwise_peptide_correlations' not in self.uns:
             raise ValueError(f'pairwise_peptide_correlations not in .uns')
@@ -436,6 +438,10 @@ class AnnDataTraces(ad.AnnData):
         proteoform_scores = proteoform_scores[columns]
 
         # Perform multiple-testing correction
+
+        if not alpha:
+            alpha = 0.05 # Just placeholder
+
         mask_nonan = proteoform_scores['proteoform_score_pval'].notna()
         pvals = proteoform_scores.loc[mask_nonan, 'proteoform_score_pval']
 
@@ -445,7 +451,9 @@ class AnnDataTraces(ad.AnnData):
         proteoform_scores['is_proteoform'] = np.nan
         
         proteoform_scores.loc[pvals.index, 'proteoform_score_pval_adj'] = corrected_pvals
-        proteoform_scores.loc[pvals.index, 'is_proteoform'] = rejected
+
+        if alpha:
+            proteoform_scores.loc[pvals.index, 'is_proteoform'] = rejected.astype(int)
 
         # Add all new scores to .var
         var_upd = pd.merge(

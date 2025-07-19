@@ -326,7 +326,7 @@ class AnnDataTraces(ad.AnnData):
             var_name='obs_id',
             value_name='intensity')
 
-        corrs = traces_df.groupby('protein_id').apply(compute_corrs, include_groups=False)
+        corrs = traces_df.groupby('protein_id', observed=True).apply(compute_corrs, include_groups=False)
         corrs = corrs.droplevel(1, axis=0)
         corrs = corrs.sort_values(['pepA', 'pepB']).sort_index()
 
@@ -343,7 +343,7 @@ class AnnDataTraces(ad.AnnData):
 
         dends = {}
 
-        for protein_id, df in corrs.groupby('protein_id'):
+        for protein_id, df in corrs.groupby('protein_id', observed=True):
 
             corr_sym = reconstruct_corr_df_sym(
                 df,
@@ -415,7 +415,7 @@ class AnnDataTraces(ad.AnnData):
 
         proteoform_scores_list = []
 
-        for prot, corrs_prot in corrs.groupby('protein_id'):
+        for prot, corrs_prot in corrs.groupby('protein_id', observed=True):
 
             corrs_mat = reconstruct_corr_df_sym(
                 corrs_prot,

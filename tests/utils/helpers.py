@@ -3,9 +3,9 @@ import pandas as pd
 import copy
 from pytest import approx
 
-from copro.utils.helpers import reconstruct_corr_df_sym
+from copro.utils.helpers import reconstruct_corrs_df_symmetric_from_long_df
 
-def test_reconstruct_corr_df_sym():
+def test_reconstruct_corrs_df_symmetric_from_long_df():
 
     # labels: a-c
     #
@@ -25,7 +25,7 @@ def test_reconstruct_corr_df_sym():
         'c':[0.5, 0.4, 1]
         }, index=['a', 'b', 'c'])
 
-    df_reconstructed = reconstruct_corr_df_sym(df, 'colA', 'colB', 2)
+    df_reconstructed = reconstruct_corrs_df_symmetric_from_long_df(df, 'colA', 'colB', 2)
     assert np.isclose(df_reconstructed, df_expected, atol=1e-4).all().all()
     assert all(df_reconstructed.index == df_reconstructed.columns)
 

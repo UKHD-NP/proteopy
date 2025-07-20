@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 
-def reconstruct_corr_df_sym(df, var_a_col=0, var_b_col=1, corr_col=2):
+def reconstruct_corrs_df_symmetric_from_long_df(df, var_a_col=0, var_b_col=1, corr_col=2):
     '''Reconstruct correlation dataframe in symmetrical matrix format.
 
     Reconstruct a full correlation matrix from a long DataFrame containing asymmetric correlation data.

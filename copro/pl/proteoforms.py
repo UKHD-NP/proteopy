@@ -5,7 +5,7 @@ import seaborn as sns
 import anndata as ad
 
 
-def plot_proteoform_scores(
+def proteoform_scores(
     adata,
     adj=True,
     pval_threshold=None,
@@ -87,7 +87,7 @@ def plot_proteoform_scores(
         return
 
 
-def plot_proteoforms(
+def proteoforms(
     adata,
     protein_ids=None,
     groupby=None,

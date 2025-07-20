@@ -9,10 +9,10 @@ from sklearn.cluster import AgglomerativeClustering
 
 
 from copro.tl.copro import (
-    cluster_peptides_,
     pairwise_peptide_correlations_,
-    cut_dendograms_in_n_real_, 
-    proteoform_scores_
+    peptide_dendograms_by_correlation_,
+    peptide_clusters_from_dendograms_, 
+    proteoform_scores_,
     )
 
 from copro.utils.data_structures import ListDict
@@ -20,8 +20,8 @@ from copro.utils.data_structures import ListDict
 from tests.utils.helpers import (
     transform_dendogram_r2py,
     remap_dendogram_leaf_order,
-    reconstruct_corr_df_sym,
-    check_dendogram_equality
+    reconstruct_corrs_df_symmetric_from_long_df,
+    check_dendogram_equality,
     )
 
 TEST_DIR = Path(__file__).parent.parent
@@ -182,16 +182,16 @@ def prot_dends():
     return dends
 
 
-def test_cluster_peptides_vs_rcopf(traces_corrs, prot_dends):
+def test_peptide_dendograms_by_correlation_vs_rcopf(traces_corrs, prot_dends):
 
     # Construct map: {protein: dendogram}
     dends = {}
 
     for protein_id, df in traces_corrs.groupby('protein_id'):
 
-        corr_df_sym = reconstruct_corr_df_sym(df, var_a_col='pepA', var_b_col='pepB', corr_col='PCC')
+        corr_df_sym = reconstruct_corrs_df_symmetric_from_long_df(df, var_a_col='pepA', var_b_col='pepB', corr_col='PCC')
         corr_dists = 1 - corr_df_sym
-        dends[protein_id] = cluster_peptides_(corr_dists)
+        dends[protein_id] = peptide_dendograms_by_correlation_(corr_dists)
 
     dends_ref = copy.deepcopy(prot_dends)
 
@@ -212,8 +212,8 @@ def test_cluster_peptides_vs_rcopf(traces_corrs, prot_dends):
                                  abs_tolerance=abs_tolerance)
 
 
-def test_cut_dendograms_in_n_real_():
-    '''Test protein-level cut_dendograms_in_n_real_() on a single peptide group.'''
+def test_peptide_clusters_from_dendograms_():
+    '''Test protein-level peptide_clusters_from_dendograms_() on a single peptide group.'''
     # Using dendogram-based toy data
     #
     #                                     (11)
@@ -241,44 +241,50 @@ def test_cut_dendograms_in_n_real_():
         }
 
     # Config 1
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 1,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 1,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE', 'pepF']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 2
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 1,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 1,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE', 'pepF']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 3
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 2,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 2,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD'], ['pepE', 'pepF']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 4
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 2,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 2,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD'], ['pepE', 'pepF']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 5
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 3,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 3,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB'], ['pepC', 'pepD'], ['pepE', 'pepF']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 6
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 3,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 3,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB'], ['pepC', 'pepD'], ['pepE', 'pepF']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
@@ -308,45 +314,51 @@ def test_cut_dendograms_in_n_real_():
         }
 
     # Config 1
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 1,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 1,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 2
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 1,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 1,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 3
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 2,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 2,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD'], ['pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 4
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 2,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 2,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB'], ['pepC', 'pepD'], ['pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
     assert clusters['pepE'] == NOISE
 
     # Config 5
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 3,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 3,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB'], ['pepC', 'pepD'], ['pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 6
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 3,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 3,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
     assert clusters.nunique() == 1
@@ -399,45 +411,51 @@ def test_cut_dendograms_in_n_real_():
     # Same as previous dendogram as same structure
 
     # Config 1
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 1,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 1,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 2
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 1,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 1,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 3
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 2,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 2,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD'], ['pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 4
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 2,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 2,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB'], ['pepC', 'pepD'], ['pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
     assert clusters['pepE'] == NOISE
 
     # Config 5
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 3,
-                                         min_peptides_per_cluster=1)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 3,
+        min_peptides_per_cluster=1)
     expected_clusters = [['pepA', 'pepB'], ['pepC', 'pepD'], ['pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
 
     # Config 6
-    clusters = cut_dendograms_in_n_real_(dendogram,
-                                         n_clusters = 3,
-                                         min_peptides_per_cluster=2)
+    clusters = peptide_clusters_from_dendograms_(
+        dendogram,
+        n_clusters = 3,
+        min_peptides_per_cluster=2)
     expected_clusters = [['pepA', 'pepB', 'pepC', 'pepD', 'pepE']]
     compare_clusters_dsVlist(clusters, expected_clusters)
     assert clusters.nunique() == 1
@@ -454,9 +472,9 @@ def prot_clust_ann():
 
     return clusts_ann
 
-def test_cut_dendograms_in_n_real_vs_rcopf_(prot_dends, prot_clust_ann):
+def test_peptide_clusters_from_dendograms_vs_rcopf_(prot_dends, prot_clust_ann):
     '''
-    Test protein-level cut_clusters_in_n_real_()
+    Test protein-level peptide_clusters_from_dendograms_()
     on an rCOPF-derived reference dataset.
     '''
     cluster_ann_ref_df = copy.deepcopy(prot_clust_ann)
@@ -466,7 +484,7 @@ def test_cut_dendograms_in_n_real_vs_rcopf_(prot_dends, prot_clust_ann):
     for prot, dend in prot_dends.items():
         dend_upd = copy.deepcopy(dend)
         dend_upd['type'] = 'sklearn_agglomerative_clustering'
-        clusters = cut_dendograms_in_n_real_(
+        clusters = peptide_clusters_from_dendograms_(
                 dend_upd,
                 n_clusters=2,
                 min_peptides_per_cluster=2,
@@ -534,7 +552,7 @@ def test_proteoform_scores_vs_rcopf_(
 
     for prot, corrs in traces_corrs.groupby('protein_id'):
 
-        corrs_mat = reconstruct_corr_df_sym(
+        corrs_mat = reconstruct_corrs_df_symmetric_from_long_df(
             corrs,
             var_a_col='pepA',
             var_b_col='pepB',

@@ -8,7 +8,7 @@ from sklearn.cluster import AgglomerativeClustering
 from scipy.stats import norm
 from statsmodels.stats.multitest import multipletests
 
-from copro.utils.helpers import reconstruct_corr_df_sym
+from copro.utils.helpers import reconstruct_corrs_df_symmetric_from_long_df
 from copro.utils.data_structures import BinaryClusterTree
 
 NOISE = 1e6
@@ -113,7 +113,7 @@ def pairwise_peptide_correlations(
         return corrs
 
 
-def cluster_peptides_(
+def peptide_dendograms_by_correlation_(
     df,
     method: str = 'agglomerative-hierarchical-clustering',
     ):
@@ -165,7 +165,7 @@ def cluster_peptides_(
     return dendogram
 
 
-def cluster_peptides(
+def peptide_dendograms_by_correlation(
     adata,
     method='agglomerative-hierarchical-clustering',
     inplace=True,
@@ -186,7 +186,7 @@ def cluster_peptides(
 
     for protein_id, df in corrs.groupby('protein_id', observed=True):
 
-        corr_sym = reconstruct_corr_df_sym(
+        corr_sym = reconstruct_corrs_df_symmetric_from_long_df(
             df,
             var_a_col='pepA',
             var_b_col='pepB',
@@ -194,7 +194,7 @@ def cluster_peptides(
 
         corr_dists = 1 - corr_sym
 
-        dends[protein_id] = cluster_peptides_(
+        dends[protein_id] = peptide_dendograms_by_correlation_(
             corr_dists,
             method= 'agglomerative-hierarchical-clustering')
 
@@ -210,7 +210,7 @@ def cluster_peptides(
         return dends
 
 
-def cut_dendograms_in_n_real_(
+def peptide_clusters_from_dendograms_(
         dendogram,
         n_clusters=2,
         min_peptides_per_cluster=2,
@@ -253,7 +253,7 @@ def cut_dendograms_in_n_real_(
     return clusters
 
 
-def cut_dendograms_in_n_real(
+def peptide_clusters_from_dendograms(
     adata,
     n_clusters=2,
     min_peptides_per_cluster=2,
@@ -278,7 +278,7 @@ def cut_dendograms_in_n_real(
         dend_upd = copym.deepcopy(dend)
         dend_upd['type'] = 'sklearn_agglomerative_clustering'
 
-        clusters = cut_dendograms_in_n_real_(
+        clusters = peptide_clusters_from_dendograms_(
             dend_upd,
             n_clusters=2,
             min_peptides_per_cluster=2,
@@ -481,7 +481,7 @@ def proteoform_scores(
 
     for prot, corrs_prot in corrs.groupby('protein_id', observed=True):
 
-        corrs_mat = reconstruct_corr_df_sym(
+        corrs_mat = reconstruct_corrs_df_symmetric_from_long_df(
             corrs_prot,
             var_a_col='pepA',
             var_b_col='pepB',

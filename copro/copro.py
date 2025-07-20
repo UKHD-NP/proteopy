@@ -7,53 +7,9 @@ import seaborn as sns
 import anndata as ad
 from scipy.stats import norm
 from statsmodels.stats.multitest import multipletests
-from copro.utils.data_structures import BinaryClusterTree
 from copro.utils.helpers import reconstruct_corr_df_sym
 
 NOISE = 1e6
-
-
-def cut_dendograms_in_n_real_(
-        dendogram,
-        n_clusters=2,
-        min_peptides_per_cluster=2,
-        noise=1e6,
-        ):
-    '''
-    Cut clusters from cluster_peptides into N clusters with more than 1 peptide. 
-    '''
-    n_peptides = len(dendogram['labels'])
-    n_real_clusters = 0
-    k = n_clusters
-    cluster_tree = BinaryClusterTree(constructor=dendogram)
-
-    while n_real_clusters < n_clusters:
-        clusters = cluster_tree.cut(k, use_labels=True)
-        n_per_cluster = clusters.value_counts()
-        is_multipep = n_per_cluster >= min_peptides_per_cluster
-        n_real_clusters = is_multipep.sum()
-        k += 1
-
-        single_pep_clusters = n_per_cluster[~is_multipep].index
-        clusters[clusters.isin(single_pep_clusters)] = noise
-
-        if k >= n_peptides:
-            clusters[:] = noise
-            break
-
-    # Rename cluster_ids to systematic format
-    max_cluster = clusters.max()
-    cats = clusters.astype('category').cat.categories
-    n_clusters = len(cats)
-
-    if max_cluster != n_clusters:
-        for i in range(n_clusters):
-            clusters[clusters == cats[i]] = i
-
-    if noise in cats:
-        clusters[clusters == max(clusters)] = noise
-
-    return clusters
 
 
 def proteoform_scores_(
@@ -196,37 +152,6 @@ def proteoform_scores_(
 
 
 class AnnDataTraces(ad.AnnData):
-
-    def cut_dendograms_in_n_real(self, n_clusters=2, min_peptides_per_cluster=2, noise=NOISE):
-
-        if 'dendograms' not in self.uns:
-            raise ValueError(f'dendograms not in .uns')
-
-        var = self.var
-        var['cluster_id'] = -1
-
-        clusters_ann = {}
-
-        dends = self.uns['dendograms']
-        for prot, dend in dends.items():
-            dend_upd = copy.deepcopy(dend)
-            dend_upd['type'] = 'sklearn_agglomerative_clustering'
-
-            clusters = cut_dendograms_in_n_real_(
-                dend_upd,
-                n_clusters=2,
-                min_peptides_per_cluster=2,
-                noise=noise)
-
-            mask = (var['protein_id'] == prot) & (var.index.isin(clusters.index))
-            var.loc[mask, 'cluster_id'] = clusters.reindex(var.index[mask])
-
-            clusters_ann[prot] = clusters
-
-        self.uns['clusters'] = clusters_ann
-
-        assert not any((var['cluster_id'] == -1).tolist())
-
 
     def proteoform_scores(self, alpha=None, summary_func=np.mean, noise=NOISE):
 

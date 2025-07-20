@@ -1,13 +1,7 @@
-import itertools
-import copy
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-import anndata as ad
 
-def get_proteoforms_df(
-    self,
+def proteoforms_df(
+    adata,
     score_threshold=None,
     pval_threshold=None,
     pval_adj_threshold=None,
@@ -23,7 +17,7 @@ def get_proteoforms_df(
         'proteoform_score_pval_adj',
         'is_proteoform']
 
-    proteoforms = self.var[cols].copy()
+    proteoforms = adata.var[cols].copy()
 
     mask_notna = proteoforms['proteoform_score_pval'].notna()
     proteoforms = proteoforms.loc[mask_notna,]

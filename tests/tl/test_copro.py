@@ -8,22 +8,23 @@ import copy
 from sklearn.cluster import AgglomerativeClustering
 
 
-from copro.copro import (cluster_peptides_,
-                         pairwise_peptide_correlations_,
-                         cut_dendograms_in_n_real_, 
-                         proteoform_scores_
-                         )
+from copro.tl.copro import (
+    cluster_peptides_,
+    pairwise_peptide_correlations_,
+    cut_dendograms_in_n_real_, 
+    proteoform_scores_
+    )
 
 from copro.utils.data_structures import ListDict
 
 from tests.utils.helpers import (
-        transform_dendogram_r2py,
-        remap_dendogram_leaf_order,
-        reconstruct_corr_df_sym,
-        check_dendogram_equality
-        )
+    transform_dendogram_r2py,
+    remap_dendogram_leaf_order,
+    reconstruct_corr_df_sym,
+    check_dendogram_equality
+    )
 
-TEST_DIR = Path(__file__).parent
+TEST_DIR = Path(__file__).parent.parent
 DATA_DIR = TEST_DIR / "data"
 
 NOISE = 1e6

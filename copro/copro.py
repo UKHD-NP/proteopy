@@ -5,7 +5,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 import anndata as ad
-from scipy import stats
 from scipy.stats import norm
 from sklearn.cluster import AgglomerativeClustering
 from statsmodels.stats.multitest import multipletests
@@ -13,52 +12,6 @@ from copro.utils.data_structures import BinaryClusterTree
 from copro.utils.helpers import reconstruct_corr_df_sym
 
 NOISE = 1e6
-
-def pairwise_peptide_correlations_(
-        df,
-        sample_column="filename",
-        peptide_column="peptide_id",
-        value_column="intensity",
-        ):
-    '''
-    Calculate pairwise peptide correlations.
-    Only outputs unique (non-symmetrical) correlations.
-
-    Parameters:
-    - df (pandas.DataFrame): The input DataFrame containing the data.
-    - sample_column (str): The name of the column in `df` representing the samples.
-    - peptide_column (str): The name of the column in `df` representing the peptides.
-    - value_column (str): The name of the column in `df` representing the values.
-
-    Returns:
-    - result (pandas.DataFrame): A DataFrame containing the pairwise peptide
-        correlations. Columns: 'pepA', 'pepB', 'PCC' (Pearson correlation coefficient).
-        Only outputs unique (non-symmetrical) correlations (AB, not AB, B-A, AA, BB).
-    '''
-
-    # TODO: modify df input to be obs x vars. Here we have redundant steps with
-    # AnnDataTrces pairwise_peptide_correlations()
-    df = df[[sample_column, peptide_column, value_column]]
-
-    pivot_df = df.pivot_table(index=sample_column, columns=peptide_column, values=value_column)
-    columns = pivot_df.columns.tolist()
-
-    corr_dict = {}
-
-    for col_a, col_b in itertools.combinations(columns, 2):
-
-        pivot_col_a = pivot_df.loc[:, col_a]
-        pivot_col_b = pivot_df.loc[:, col_b]
-        corr_dict[col_a + '_' + col_b] = stats.pearsonr(pivot_col_a, pivot_col_b)
-
-    corr_df = pd.DataFrame.from_dict(corr_dict, orient='index')
-    corr_df.columns = ['PCC', 'p-value']
-    corr_df['peptide_pair'] = corr_df.index
-    corr_df[['pepA', 'pepB']] = corr_df['peptide_pair'].str.split('_', expand=True)
-    corr_df = corr_df[["pepA","pepB","PCC"]]
-    corr_df = corr_df.reset_index(drop=True)
-
-    return corr_df
 
 
 def cluster_peptides_(
@@ -296,42 +249,6 @@ def proteoform_scores_(
 
 
 class AnnDataTraces(ad.AnnData):
-
-    def pairwise_peptide_correlations(self, protein_id='protein_id'):
-
-        if protein_id not in self.var.columns:
-            raise ValueError(f'protein_id: {protein_id} not in .var.columns')
-
-        @staticmethod
-        def compute_corrs(df):
-            corrs = pairwise_peptide_correlations_(
-                df,
-                sample_column='obs_id',
-                peptide_column='var_id',
-                value_column='intensity')
-
-            return corrs
-
-        anns = self.var[['protein_id']].reset_index()
-        traces_df = self.to_df().T.reset_index()
-        traces_df = traces_df.merge(anns, on='index')
-        traces_df = traces_df.rename(columns={'index': 'var_id'})
-
-        # TODO: remove unnecessary step of melting which gets unmelted
-        #   in protein-level function
-
-        traces_df = pd.melt(
-            traces_df,
-            id_vars=['protein_id', 'var_id'],
-            var_name='obs_id',
-            value_name='intensity')
-
-        corrs = traces_df.groupby('protein_id', observed=True).apply(compute_corrs, include_groups=False)
-        corrs = corrs.droplevel(1, axis=0)
-        corrs = corrs.sort_values(['pepA', 'pepB']).sort_index()
-
-        self.uns['pairwise_peptide_correlations'] = corrs
-
 
     def cluster_peptides(self, method = 'agglomerative-hierarchical-clustering'):
 

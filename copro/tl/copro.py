@@ -2,6 +2,8 @@ import anndata as ad
 import pandas as pd
 import itertools
 from scipy import stats
+from sklearn.cluster import AgglomerativeClustering
+from copro.utils.helpers import reconstruct_corr_df_sym
 
 NOISE = 1e6
 
@@ -103,3 +105,100 @@ def pairwise_peptide_correlations(
 
     else:
         return corrs
+
+
+def cluster_peptides_(
+    df,
+    method: str = 'agglomerative-hierarchical-clustering',
+    ):
+    '''
+    Perform peptide clustering grouped by protein annotation.
+
+
+    Parameters:
+    ----------
+    df : pandas.DataFrame
+        Data frame with pairwise correlations annotated with the protein they belong to.]
+
+    method : str
+        Which clustering method to apply.
+
+    Returns:
+    -------
+    dict
+        Dictionary with clustering method output.
+        - 'agglomerative-hierarchical-clustering'
+            => {protein_id: {'labels': list, 'height': list, 'merge': list(list)}}
+            - labels: list of peptides
+            - merge: steps in which different peptides are merged.
+                     n_steps == n_samples - 1
+                     The two ids included for every step represent the index of the peptide in 'labels'.
+            - heights: The height of each merging step in 'merge'.
+                       The idx of the height corresponds to the index of the step in 'merge'.
+    '''
+
+    assert all(df.index == df.columns)
+
+    model = AgglomerativeClustering(n_clusters=None,
+                                    metric='precomputed',
+                                    linkage='average',
+                                    distance_threshold=0,
+                                    compute_distances=True)
+
+    model.fit(df)
+
+    # pylint: disable=no-member
+    dendogram = {
+        'type': 'sklearn_agglomerative_clustering',
+        'labels': model.feature_names_in_.tolist(),
+        'heights': model.distances_.tolist(),
+        'merge': model.children_.tolist()
+    }
+    # pylint: enable=no-member
+
+    return dendogram
+
+
+def cluster_peptides(
+    adata,
+    method='agglomerative-hierarchical-clustering',
+    inplace=True,
+    copy=False,
+    ):
+
+    if inplace and copy:
+        raise ValueError('Arguments raise and copy are mutually exclusive')
+
+
+    if 'pairwise_peptide_correlations' not in adata.uns:
+        raise ValueError(f'pairwise_peptide_correlations not in .uns')
+
+
+    corrs = adata.uns['pairwise_peptide_correlations'].copy()
+
+    dends = {}
+
+    for protein_id, df in corrs.groupby('protein_id', observed=True):
+
+        corr_sym = reconstruct_corr_df_sym(
+            df,
+            var_a_col='pepA',
+            var_b_col='pepB',
+            corr_col='PCC')
+
+        corr_dists = 1 - corr_sym
+
+        dends[protein_id] = cluster_peptides_(
+            corr_dists,
+            method= 'agglomerative-hierarchical-clustering')
+
+    if inplace:
+        adata.uns['dendograms'] = dends
+
+    elif copy:
+        adata_new = adata.copy()
+        adata_new.uns['dendograms'] = dends
+        return adata_new
+    
+    else:
+        return dends

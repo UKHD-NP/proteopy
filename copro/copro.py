@@ -475,49 +475,80 @@ class AnnDataTraces(ad.AnnData):
     def plot_proteoform_scores(
         self,
         adj=True,
-        pval_cutoff=None,
-        proteoform_score_cutoff=None,
+        pval_threshold=None,
+        score_threshold=None,
+        ax=False,
         ):
-
-        var = self.var
 
         if adj:
             pval_col = 'proteoform_score_pval_adj'
+            ylabel = '-log10(adj. p-value)'
         else:
             pval_col = 'proteoform_score_pval'
+            ylabel = '-log10(p-value)'
+
+        var = self.var[['proteoform_score', pval_col]].copy()
+        var = var.drop_duplicates() # pval and proteoform_score are repeated 
+                                 # for peptides of same protein
 
         mask_nonan = var[pval_col].notna()
         df = var.loc[mask_nonan,['proteoform_score', pval_col]]
         df['neg_log10_pval'] = -np.log10(df[pval_col].replace(0, np.nan))
 
-        # Create scatter plot
-        plt.figure(figsize=(6, 5))
-        sns.scatterplot(
+        # Mask for pval and score thresholds
+        if pval_threshold and score_threshold:
+            mask = (
+                (df['proteoform_score'] > score_threshold) &
+                (df['neg_log10_pval'] > -np.log10(pval_threshold))
+                )
+        elif score_threshold:
+            mask = df['proteoform_score'] > score_threshold
+        elif pval_threshold:
+            mask = df['neg_log10_pval'] > -np.log10(pval_threshold)
+        else:
+            mask = pd.Series(False, index=df.index)
+
+        df['is_above_threshold'] = mask
+
+        # Rel plot
+        g = sns.relplot(
             data=df,
             x='proteoform_score',
             y='neg_log10_pval',
-            edgecolor='black',           # outline for circles
-            facecolor='none',            # transparent fill
-            linewidth=0.5
+            hue='is_above_threshold',
+            palette={
+                np.True_: '#008A1D',  # green
+                np.False_: '#BDBDBD'   # grey
+            },
+            alpha=0.5,
+            edgecolor=None,
+            aspect=1.2,
+            s=30,
+            legend=False,
         )
+        ax = g.ax
 
-        if pval_cutoff:
-            plt.axhline(
-                y=-np.log10(pval_cutoff),
-                color='blue',
+        # Add threshold lines
+        if pval_threshold:
+            ax.axhline(
+                y=-np.log10(pval_threshold),
+                color='#A2A2A2',    # grey
                 linestyle='--',
-                label=f'pval cutoff: {pval_cutoff}')
+                label=pval_threshold)
 
-        if proteoform_score_cutoff:
-            plt.axvline(x=proteoform_score_cutoff,
-                        color='red',
-                        linestyle='--',
-                        label=f'proteoform score cutoff: {proteoform_score_cutoff}')
+        if score_threshold:
+            ax.axvline(
+                x=score_threshold,
+                color='#A2A2A2',    # grey
+                linestyle='--',
+                label=score_threshold)
 
-        plt.xlabel('Proteoform Score')
-        plt.ylabel('-log10(p-value)')
-        plt.legend()
-        plt.tight_layout()
-        plt.show()
+        ax.set_xlabel('Proteoform Score')
+        ax.set_ylabel(ylabel)
+        g.tight_layout()
 
-
+        if ax:
+            return ax
+        else:
+            plt.show()
+            return None

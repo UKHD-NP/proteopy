@@ -38,6 +38,8 @@ def peptides_np_custom(
     intensities = intensities.rename(columns={'filename': 'sample_id'})
     peptides = intensities[['protein_id', 'peptide_id']].copy()
     intensities = pd.pivot(intensities, index=['sample_id'], columns='peptide_id', values='intensity')
+    intensities.index.name = None
+    intensities.columns.name = None
 
     assert len(intensities.columns) == len(intensities.columns.unique())
     assert len(intensities.index) == len(intensities.index.unique())
@@ -45,12 +47,14 @@ def peptides_np_custom(
     # Variable annotation (.var)
     peptides = peptides.drop_duplicates(subset='peptide_id')
     peptides = peptides.set_index('peptide_id', drop=False)
+    peptides.index.name = None
     peptides = peptides.loc[intensities.columns,]
 
     # Observation annotation (.obs)
     sample_annotation_path = 'data/brain_cancer_annotation.csv'
     sample_annotation = pd.read_csv(sample_annotation_path)
     sample_annotation = sample_annotation.rename(columns={'filename': 'sample_id'}).set_index('sample_id', drop=False)
+    sample_annotation.index.name = None
 
     assert len(sample_annotation.index) == len(sample_annotation.index.unique())
     assert len(sample_annotation.columns) == len(sample_annotation.columns.unique())

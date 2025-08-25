@@ -128,7 +128,11 @@ def peptide_intensities(
                 rotation=group_by_label_rotation,
                 )
 
+        _ax.set_title(prot_id)
+        _ax.set_xlabel('Sample')
+        _ax.set_ylabel('Intensity')
         _ax.tick_params(axis='x', rotation=rotation)
+
         plt.tight_layout()
 
         if ax:

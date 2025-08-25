@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
@@ -77,61 +78,77 @@ def peptide_intensities(
 
     for prot_id in protein_ids:
         sub_df = df[df[protein_id_key] == prot_id]
-
         fig, _ax = plt.subplots(figsize=figsize)
 
-        sns.lineplot(
-            data=sub_df,
-            x='obs_index',
-            y='intensity',
-            units='var_index',
-            estimator=None,
-            hue=color if color else 'var_index',
-            ax=_ax,
-        )
-
-        _ax.legend(bbox_to_anchor=(1.01, 1), loc='upper left')
-
-        # Add group separator lines
-        obs_idxpos_map = {obs: i for i, obs in enumerate(obs_index_ordered)}
-        cats_ordered = group_by_order if group_by_order else list(cat_index_map.keys())
-        for cat in cats_ordered[:-1]:
-            last_obs_in_cat = cat_index_map[cat][-1]
-
-            _ax.axvline(
-                x=obs_idxpos_map[last_obs_in_cat] + 0.5,
-                ymin=0.02,
-                ymax=0.95,
-                color='#D8D8D8',
-                linestyle='--'
-                )
-        
-        # Add group labels above each group section
-        for cat in cats_ordered:
-            group_obs = cat_index_map[cat]
-
-            if not group_obs:
-                continue
-
-            start = obs_idxpos_map[group_obs[0]]
-            end = obs_idxpos_map[group_obs[-1]]
-            mid = (start + end) / 2
-
+        if sub_df.empty:
+            warnings.warn(f'No data found for protein: {prot_id}')
             _ax.text(
-                x=mid,
-                y=sub_df['intensity'].max() * 1.05,
-                s=cat,
-                ha='center',
-                va='bottom',
-                fontsize=12,
-                fontweight='bold',
-                rotation=group_by_label_rotation,
+                0.5,
+                0.5,
+                f'No data found for protein: {prot_id}',
+                ha='center', va='center', transform=_ax.transAxes,
+                fontsize=14,
+                color='gray'
                 )
+            _ax.set_xlim(0, 1)
+            _ax.set_ylim(0, 1)
+            _ax.set_xticks([])
+            _ax.set_yticks([])
+
+        else:
+            sns.lineplot(
+                data=sub_df,
+                x='obs_index',
+                y='intensity',
+                units='var_index',
+                estimator=None,
+                hue=color if color else 'var_index',
+                ax=_ax,
+                )
+
+            _ax.legend(bbox_to_anchor=(1.01, 1), loc='upper left')
+
+            # Add group separator lines
+            obs_idxpos_map = {obs: i for i, obs in enumerate(obs_index_ordered)}
+            cats_ordered = group_by_order if group_by_order else list(cat_index_map.keys())
+            for cat in cats_ordered[:-1]:
+                last_obs_in_cat = cat_index_map[cat][-1]
+
+                _ax.axvline(
+                    x=obs_idxpos_map[last_obs_in_cat] + 0.5,
+                    ymin=0.02,
+                    ymax=0.95,
+                    color='#D8D8D8',
+                    linestyle='--'
+                    )
+        
+            # Add group labels above each group section
+            for cat in cats_ordered:
+                group_obs = cat_index_map[cat]
+
+                if not group_obs:
+                    continue
+
+                start = obs_idxpos_map[group_obs[0]]
+                end = obs_idxpos_map[group_obs[-1]]
+                mid = (start + end) / 2
+
+                _ax.text(
+                    x=mid,
+                    y=sub_df['intensity'].max() * 1.05,
+                    s=cat,
+                    ha='center',
+                    va='bottom',
+                    fontsize=12,
+                    fontweight='bold',
+                    rotation=group_by_label_rotation,
+                    )
+
+            _ax.tick_params(axis='x', rotation=rotation)
 
         _ax.set_title(prot_id)
         _ax.set_xlabel('Sample')
         _ax.set_ylabel('Intensity')
-        _ax.tick_params(axis='x', rotation=rotation)
 
         plt.tight_layout()
 
@@ -153,7 +170,7 @@ def peptide_intensities(
             if show:
                 plt.show()
 
-            plt.close()
+            plt.close(fig)
 
         elif show:
             plt.show()

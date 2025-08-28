@@ -3,7 +3,7 @@ import pandas as pd
 import anndata as ad
 
 def peptides_np_custom(
-        peptide_intensities_path,
+        intensities_path,
         sample_annotation_path,
         sep=','):
     '''
@@ -33,7 +33,6 @@ def peptides_np_custom(
         raise ValueError('Invalid sep argument format.')
 
     # Peptide intensities (X)
-    intensities_path = 'data/brain_cancer_peptides.csv'
     intensities = pd.read_csv(intensities_path)
     intensities = intensities.rename(columns={'filename': 'sample_id'})
     peptides = intensities[['protein_id', 'peptide_id']].copy()
@@ -51,7 +50,6 @@ def peptides_np_custom(
     peptides = peptides.loc[intensities.columns,]
 
     # Observation annotation (.obs)
-    sample_annotation_path = 'data/brain_cancer_annotation.csv'
     sample_annotation = pd.read_csv(sample_annotation_path)
     sample_annotation = sample_annotation.rename(columns={'filename': 'sample_id'}).set_index('sample_id', drop=False)
     sample_annotation.index.name = None

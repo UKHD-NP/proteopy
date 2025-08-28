@@ -374,3 +374,19 @@ def peptide_intensities(
 
     if ax:
         return axes[0] if len(axes) == 1 else axes
+
+
+def n_peptides_per_gene(
+    adata,
+    gene_col = 'protein_id',
+    bin_width = 5,
+    xlim = None,
+    ):
+    genes = adata.var[gene_col]
+
+    counts = genes.value_counts()
+    min = 0
+    max = int(counts.max())
+    bins = range(min, max + bin_width - (max % bin_width) + 2, bin_width)
+
+    counts.plot(kind='hist', bins=bins, xlim=xlim)

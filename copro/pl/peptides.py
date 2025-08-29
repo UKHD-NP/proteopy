@@ -209,7 +209,12 @@ def peptide_intensities(
     assert protein_id_key in adata.var.columns
 
     # Format input
-    var = adata.var[protein_id_key].copy()
+    var_cols = [protein_id_key]
+
+    if color:
+        var_cols.append(color)
+
+    var = adata.var[var_cols].copy()
     var = var.reset_index().rename(columns={'index': 'var_index'})
 
     obs = adata.obs[[group_by]].copy()
@@ -278,16 +283,33 @@ def peptide_intensities(
         else:
 
             #sub_df = sub_df.sort_values(by=group_by)
- 
-            sns.lineplot(
+
+            if color:
+                sns.lineplot(
                     data=sub_df,
                     x='obs_index',
                     y='intensity',
-                    hue=color if color else 'var_index',
+                    hue=color,
                     style=group_by,
-                    markers=True,
+                    units='var_index',
+                    estimator=None,
+                    errorbar=None,
+                    marker='o',
                     dashes=False,
                     palette='Set2',
+                    ax=_ax,
+                    )
+            else:
+                sns.lineplot(
+                    data=sub_df,
+                    x='obs_index',
+                    y='intensity',
+                    hue='var_index',
+                    style=group_by,
+                    marker='o',
+                    dashes=False,
+                    palette='Set2',
+                    ax=_ax
                     )
  
             _ax.legend(bbox_to_anchor=(1.01, 1), loc='upper left')

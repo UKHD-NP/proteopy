@@ -6,6 +6,8 @@ def peptides_np_custom(
         intensities_path,
         sample_annotation_path,
         sep = ',',
+        sort_obs_by_sample_annotation = True,
+        ):
     '''
     Read in current typical NP proteomics output format.
 
@@ -37,6 +39,7 @@ def peptides_np_custom(
     intensities = intensities.rename(columns={'filename': 'sample_id'})
     peptides = intensities[['protein_id', 'peptide_id']].copy()
     intensities = pd.pivot(intensities, index=['sample_id'], columns='peptide_id', values='intensity')
+    intensities = intensities.sort_index(axis=0).sort_index(axis=1)
     intensities.index.name = None
     intensities.columns.name = None
 
@@ -71,6 +74,9 @@ def peptides_np_custom(
             f'sample_annotation, which were filled with nan.'
             ))
 
+    if sort_obs_by_sample_annotation:
+        intensities = intensities.loc[sample_annotation.index]
+    else:
         sample_annotation = sample_annotation.loc[intensities.index,]
 
 

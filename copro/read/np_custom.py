@@ -62,8 +62,10 @@ def peptides_np_custom(
 
     if len(sample_annotation.index.difference(intensities.index)):
         diff = sample_annotation.index.difference(intensities.index)
+        overlap = sample_annotation.index.intersection(intensities.index)
+        sample_annotation =  sample_annotation.loc[overlap,]
         warnings.warn((
-            f'There are {len(diff)} rows/obs in sample_annotation'
+            f'There are {len(diff)} rows/obs in sample_annotation '
             f'which are not found in intensities. They were ignored.'
             ))
 

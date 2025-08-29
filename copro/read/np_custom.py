@@ -57,13 +57,23 @@ def peptides_np_custom(
     assert len(sample_annotation.index) == len(sample_annotation.index.unique())
     assert len(sample_annotation.columns) == len(sample_annotation.columns.unique())
 
-    if sample_annotation.index.isin(intensities.index).all():
-        warnings.warn('Not all rows/obs in sample_annotation are found in intensities.')
-
     if len(sample_annotation.index.difference(intensities.index)):
         diff = sample_annotation.index.difference(intensities.index)
-        warnings.warn(f'There are {len(diff)} rows/obs in sample_annotation which are not found in intensities. They were ignored.')
+        warnings.warn((
+            f'There are {len(diff)} rows/obs in sample_annotation'
+            f'which are not found in intensities. They were ignored.'
+            ))
+
+    if len(intensities.index.difference(sample_annotation.index)):
+        diff = intensities.index.difference(sample_annotation.index)
+        warnings.warn((
+            f'There are {len(diff)} obs in intensities which are not found in '
+            f'sample_annotation, which were filled with nan.'
+            ))
+
         sample_annotation = sample_annotation.loc[intensities.index,]
+
+
 
     adata = ad.AnnData(
         intensities,

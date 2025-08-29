@@ -5,7 +5,7 @@ import anndata as ad
 def peptides_np_custom(
         intensities_path,
         sample_annotation_path,
-        sep=','):
+        sep = ',',
     '''
     Read in current typical NP proteomics output format.
 
@@ -33,7 +33,7 @@ def peptides_np_custom(
         raise ValueError('Invalid sep argument format.')
 
     # Peptide intensities (X)
-    intensities = pd.read_csv(intensities_path)
+    intensities = pd.read_csv(intensities_path, sep=sep_intensities)
     intensities = intensities.rename(columns={'filename': 'sample_id'})
     peptides = intensities[['protein_id', 'peptide_id']].copy()
     intensities = pd.pivot(intensities, index=['sample_id'], columns='peptide_id', values='intensity')
@@ -50,7 +50,7 @@ def peptides_np_custom(
     peptides = peptides.loc[intensities.columns,]
 
     # Observation annotation (.obs)
-    sample_annotation = pd.read_csv(sample_annotation_path)
+    sample_annotation = pd.read_csv(sample_annotation_path, sep=sep_sample_ann)
     sample_annotation = sample_annotation.rename(columns={'filename': 'sample_id'}).set_index('sample_id', drop=False)
     sample_annotation.index.name = None
 

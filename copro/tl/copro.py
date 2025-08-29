@@ -268,8 +268,8 @@ def peptide_clusters_from_dendograms(
     if 'dendograms' not in adata.uns:
         raise ValueError(f'dendograms not in .uns')
 
-    var = adata.var
-    var['cluster_id'] = -1
+    var = adata.var.copy()
+    var['cluster_id'] = np.nan
 
     clusters_ann = {}
 
@@ -289,11 +289,17 @@ def peptide_clusters_from_dendograms(
 
         clusters_ann[prot] = clusters
 
-
     assert not any((var['cluster_id'] == -1).tolist())
+
+    var['proteoform_id'] = (
+            var['protein_id'] +
+            '_' + 
+            var['cluster_id'].astype(int).astype(str)
+            )
 
     if inplace:
         adata.uns['clusters'] = clusters_ann
+        adata.var = var
 
     elif copy:
         adata_new = adata.copy()

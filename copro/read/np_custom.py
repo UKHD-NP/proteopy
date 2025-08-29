@@ -69,6 +69,7 @@ def peptides_np_custom(
 
     if len(intensities.index.difference(sample_annotation.index)):
         diff = intensities.index.difference(sample_annotation.index)
+        sample_annotation = sample_annotation.reindex(sample_annotation.index.append(diff))
         warnings.warn((
             f'There are {len(diff)} obs in intensities which are not found in '
             f'sample_annotation, which were filled with nan.'

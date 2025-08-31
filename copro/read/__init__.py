@@ -1,1 +1,1 @@
-from .np_custom import peptides_np_custom
+from .peptides_generic import peptides_long

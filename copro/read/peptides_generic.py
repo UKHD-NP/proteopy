@@ -2,7 +2,7 @@ import warnings
 import pandas as pd
 import anndata as ad
 
-def peptides_np_custom(
+def peptides_long(
         intensities_path,
         sample_annotation_path,
         sep = ',',

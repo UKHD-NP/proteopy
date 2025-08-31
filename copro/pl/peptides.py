@@ -194,6 +194,8 @@ def peptide_intensities(
     group_by=None,
     group_by_order=None,
     color=None,
+    log_transform=None,
+    z_transform=False,
     xlab_rotation=0,
     group_by_label_rotation=0,
     figsize=(15,6),
@@ -201,6 +203,12 @@ def peptide_intensities(
     save=None,
     ax=False
     ):
+    '''
+    Args:
+        log_transform (float, optional): Base for log transformation of the data. 1 will
+            be added to each value before transformation.
+    Returns:
+    '''
 
     # Check input
     if isinstance(protein_ids, str):
@@ -224,7 +232,22 @@ def peptide_intensities(
         obs[group_by] = obs[group_by].astype('category')
 
     X = adata.to_df().copy()
+
+    if log_transform:
+        X = X.apply(lambda x: np.log(x+1) / np.log(log_transform))
+    if z_transform:
+        print('z')
+        arr = X.to_numpy()
+        print(f'arr: {arr.shape}')
+        arr_z = (
+            (arr - np.mean(arr, axis=0, keepdims=True)) / 
+            np.std(arr, axis=0, keepdims=True)
+            )
+        print(f'arrz: {arr_z.shape}')
+        X = pd.DataFrame(arr_z, columns=X.columns, index=X.index)
+
     X = X.reset_index().rename(columns={'index': 'obs_index'})
+    print(X.dtypes)
 
     df = X.melt(id_vars='obs_index', var_name='var_index', value_name='intensity')
     df = pd.merge(df, var, on='var_index', how='left')
@@ -297,6 +320,7 @@ def peptide_intensities(
                     marker='o',
                     dashes=False,
                     palette='Set2',
+                    legend='brief',
                     ax=_ax,
                     )
             else:
@@ -309,11 +333,31 @@ def peptide_intensities(
                     marker='o',
                     dashes=False,
                     palette='Set2',
+                    legend='brief',
                     ax=_ax
                     )
- 
-            _ax.legend(bbox_to_anchor=(1.01, 1), loc='upper left')
 
+            # Legend
+            handles, labels = _ax.get_legend_handles_labels()
+
+            # Determine which labels correspond to the hue only (ignore style)
+            if color:
+                hue_values = sub_df[color].unique().astype(str)
+            else:
+                hue_values = sub_df['var_index'].unique().astype(str)
+
+            # Keep only legend entries whose label matches a hue value
+            new_handles_labels = [(h, l) for h, l in zip(handles, labels) if l in hue_values]
+
+            if new_handles_labels:
+                handles, labels = zip(*new_handles_labels)  # unzip back into separate lists
+                _ax.legend(
+                    handles,
+                    labels,
+                    bbox_to_anchor=(1.01, 1),
+                    loc='upper left',
+                    title=color if color else 'Peptide',
+                    )
 
             # Add group separator lines
             obs_idxpos_map = {obs: i for i, obs in enumerate(obs_index_ordered)}
@@ -337,6 +381,7 @@ def peptide_intensities(
                 if not group_obs:
                     continue
 
+                # Determine x-axis group regions
                 start = obs_idxpos_map[group_obs[0]]
                 end = obs_idxpos_map[group_obs[-1]]
                 mid = (start + end) / 2
@@ -344,9 +389,16 @@ def peptide_intensities(
                 rot = group_by_label_rotation if group_by_label_rotation else 0
                 ha_for_rot = 'center' if (rot % 360 == 0) else 'left'
 
+                # Determine padded y-axis limits
+                ymax = sub_df['intensity'].max()
+                ymin = sub_df['intensity'].min()
+                ypad_top = (ymax - ymin) * 0.15
+                ypad_bottom = (ymax - ymin) * 0.10
+                _ax.set_ylim(ymin - ypad_bottom, ymax + ypad_top)
+
                 _ax.text(
                     x=mid,
-                    y=sub_df['intensity'].max() * 1.02,
+                    y=ymax + ypad_top * 0.4,
                     s=cat,
                     ha=ha_for_rot,
                     va='bottom',

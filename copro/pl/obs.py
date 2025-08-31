@@ -1,3 +1,4 @@
+import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from pandas.api.types import is_string_dtype, is_categorical_dtype
@@ -7,6 +8,10 @@ def n_samples_by_category(
     category_cols,
     ignore_na=False,
     sort_by_counts=True,
+    x_label_rotation=45,
+    show=True,
+    save=False,
+    ax=False,
     ):
     if isinstance(category_cols, str):
         category_cols = [category_cols]
@@ -38,8 +43,7 @@ def n_samples_by_category(
         if not sort_by_counts:
             freq = freq[cats_order]
 
-        freq.plot(kind='bar')
-        plt.show()
+        _ax = freq.plot(kind='bar')
 
     elif len(category_cols) == 2:
         df = obs.groupby(category_cols, observed=False).size().unstack(fill_value=0)
@@ -48,8 +52,30 @@ def n_samples_by_category(
             new_order = df.sum(axis=1).sort_values(ascending=False).index.tolist()
             df = df.loc[new_order]
 
-        df.plot(kind='bar', stacked=True)
-        plt.legend(loc='center right', bbox_to_anchor=(2,0.5))
+        _ax = df.plot(kind='bar', stacked=True)
+        _ax.legend(loc='center right', bbox_to_anchor=(2,0.5))
         
     else:
         print('nr of categories > 2 not implemented yet.')
+
+    _ax.set_xlabel(first_cat_col)
+    _ax.set_ylabel('#')
+
+    ha = (
+        'right' if x_label_rotation > 0
+        else 'left' if x_label_rotation < 0
+        else 'center'
+        )
+    plt.setp(_ax.get_xticklabels(), rotation=x_label_rotation, ha=ha)
+
+    if show:
+        plt.show()
+    if save:
+        _ax.figure.savefig(save, dpi=300, bbox_inches='tight')
+    if ax:
+        return _ax
+    if not show and not save and not ax:
+        warnings.warn((
+            'Function does not do anything. Set at least one argument to True:'
+            ' show, save, ax'
+            ))

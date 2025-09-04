@@ -196,6 +196,7 @@ def peptide_intensities(
     color=None,
     log_transform=None,
     z_transform=False,
+    show_zeros=True,
     xlab_rotation=0,
     group_by_label_rotation=0,
     figsize=(15,6),
@@ -207,6 +208,10 @@ def peptide_intensities(
     Args:
         log_transform (float, optional): Base for log transformation of the data. 1 will
             be added to each value before transformation.
+        z_transform (float, optional): Transform values to have 0-mean and 1-variance
+            along the peptide axis. Always uses zeros instead of NaNs if present, even
+            if show_zeros=False.
+        show_zeros (bool, optional): Don't display zeros if False.
     Returns:
     '''
 
@@ -233,21 +238,26 @@ def peptide_intensities(
 
     X = adata.to_df().copy()
 
+    if not show_zeros:
+        X_zeros = X  # backup
+        X = X.replace(0, np.nan)
+
     if log_transform:
         X = X.apply(lambda x: np.log(x+1) / np.log(log_transform))
+
     if z_transform:
-        print('z')
-        arr = X.to_numpy()
-        print(f'arr: {arr.shape}')
+        arr_zeros = X_zeros.to_numpy()
         arr_z = (
-            (arr - np.mean(arr, axis=0, keepdims=True)) / 
-            np.std(arr, axis=0, keepdims=True)
+            (arr_zeros - np.mean(arr_zeros, axis=0, keepdims=True)) / 
+            np.std(arr_zeros, axis=0, keepdims=True)
             )
-        print(f'arrz: {arr_z.shape}')
+
+        if not show_zeros:
+            arr_z = np.where((arr_zeros == 0) & (arr_z != 0), np.nan, arr_z)
+                         
         X = pd.DataFrame(arr_z, columns=X.columns, index=X.index)
 
     X = X.reset_index().rename(columns={'index': 'obs_index'})
-    print(X.dtypes)
 
     df = X.melt(id_vars='obs_index', var_name='var_index', value_name='intensity')
     df = pd.merge(df, var, on='var_index', how='left')

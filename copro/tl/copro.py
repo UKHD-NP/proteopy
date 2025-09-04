@@ -292,7 +292,7 @@ def peptide_clusters_from_dendograms(
     assert not any((var['cluster_id'] == -1).tolist())
 
     var['proteoform_id'] = (
-            var['protein_id'] +
+            var['protein_id'].astype(str) +
             '_' + 
             var['cluster_id'].astype(int).astype(str)
             )

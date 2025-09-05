@@ -87,8 +87,3 @@ def proteoform_scores(
     else:
         plt.show()
         return
-
-proteoform_intensities = partial(
-    peptide_intensities,
-    color = 'proteoform_id',
-    )

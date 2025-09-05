@@ -280,6 +280,11 @@ def peptide_intensities(
         return axes[0] if len(axes) == 1 else axes
 
 
+proteoform_intensities = partial(
+    peptide_intensities,
+    color = 'proteoform_id',
+    )
+
 def n_peptides_per_gene(
     adata,
     gene_col = 'protein_id',

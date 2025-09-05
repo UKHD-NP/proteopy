@@ -7,6 +7,7 @@ def peptides_long(
         sample_annotation_path,
         sep = ',',
         sort_obs_by_sample_annotation = True,
+        fill_na = None,
         ):
     '''
     Read in current typical NP proteomics output format.
@@ -22,7 +23,6 @@ def peptides_long(
     Returns:
         anndata.AnnData
     '''
-
     if isinstance(sep, str):
         sep_intensities = sep
         sep_sample_ann = sep
@@ -42,6 +42,9 @@ def peptides_long(
     intensities = intensities.sort_index(axis=0).sort_index(axis=1)
     intensities.index.name = None
     intensities.columns.name = None
+
+    if fill_na is not None:
+        intensities = intensities.fillna(fill_na)
 
     assert len(intensities.columns) == len(intensities.columns.unique())
     assert len(intensities.index) == len(intensities.index.unique())

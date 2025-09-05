@@ -285,18 +285,3 @@ proteoform_intensities = partial(
     peptide_intensities,
     color = 'proteoform_id',
     )
-
-def n_peptides_per_gene(
-    adata,
-    gene_col = 'protein_id',
-    bin_width = 5,
-    xlim = None,
-    ):
-    genes = adata.var[gene_col]
-
-    counts = genes.value_counts()
-    min = 0
-    max = int(counts.max())
-    bins = range(min, max + bin_width - (max % bin_width) + 2, bin_width)
-
-    counts.plot(kind='hist', bins=bins, xlim=xlim)

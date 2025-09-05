@@ -1,5 +1,4 @@
 import numpy as np
-from functools import partial
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns

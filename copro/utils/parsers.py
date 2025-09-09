@@ -37,6 +37,9 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
         DataFrame with added columns:
         main_tumor_type, genetic_markers, subclass, subtype, rest.
     """
+    df = df.copy()
+    df.index.name = None
+
 
     # Compile patterns once
     # Genetic markers to capture (exact phrases)
@@ -182,7 +185,7 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
             subtype_val = strip_wrappers(subtype_val)
 
         return {
-            "main_tumor_type": main_tumor_type if main_tumor_type else None,
+            "tumor_family": main_tumor_type if main_tumor_type else None,
             "genetic_markers": genetic_markers,
             "subclass": subclass_val,
             "subtype": subtype_val,
@@ -214,4 +217,7 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
     new_df  = pd.concat(df_list, axis=1)
     new_df = new_df.set_index('index')
 
-    return new_df.loc[df.index,]
+    # Add original index
+    new_df = new_df.loc[df.index,]
+
+    return new_df

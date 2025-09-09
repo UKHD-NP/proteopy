@@ -1,5 +1,9 @@
 from .obs import n_samples_by_category
-from .intensities import peptide_intensities, proteoform_intensities
+from .intensities import (
+    peptide_intensities,
+    proteoform_intensities,
+    intensity_distribution_per_obs,
+    )
 from .proteoforms import proteoform_scores
 from .statistics_var import (
     n_detected_peptides_per_sample,

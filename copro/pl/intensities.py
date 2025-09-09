@@ -285,3 +285,115 @@ proteoform_intensities = partial(
     peptide_intensities,
     color = 'proteoform_id',
     )
+
+
+def intensity_distribution_per_obs(
+    adata,
+    group_by=None,
+    group_by_order=None,
+    zero_to_na=False,
+    log_transform = False,
+    z_transform = False,
+    ylabel='Intensity',
+    xlabel_rotation=90,
+    group_by_label_rotation=0,
+    show=True,
+    ax=False,
+    save=False,
+    figsize=(8,5)
+    ):
+    
+    df = adata.to_df()
+
+    if zero_to_na:
+        df = df.replace(0, np.nan)
+
+    if log_transform:
+        df = df.apply(lambda x: np.log(x+1) / np.log(log_transform))
+
+    if z_transform:
+        df = df.apply(lambda row: (row - row.mean(skipna=True)) / row.std(skipna=True), axis=1)
+
+    df = pd.melt(
+        df.reset_index(names='obs'),
+        id_vars='obs',
+        var_name='var',
+        value_name='intensity'
+    )
+    df = df[~df['intensity'].isna()]
+
+    # Merge group info
+    if group_by and group_by != 'obs':
+        obs = adata.obs[[group_by]].reset_index(names='obs')
+        df = pd.merge(df, obs, on='obs')
+    if group_by == 'obs':
+        df[group_by] = df['obs']
+    if not group_by:
+        group_by = 'all'
+        df[group_by] = 'all'
+
+    # Determine x-axis order
+    obs_df = adata.obs.reset_index().rename(columns={'index': 'obs'})
+    if group_by in obs_df.columns and isinstance(obs_df[group_by].dtype, pd.CategoricalDtype):
+        obs_df[group_by] = obs_df[group_by].astype('category')
+
+    if group_by_order:
+        cat_index_map = {cat: sorted(obs_df[obs_df[group_by] == cat]['obs'].to_list())
+                         for cat in group_by_order}
+    else:
+        cat_index_map = {cat: sorted(obs_df[obs_df[group_by] == cat]['obs'].to_list())
+                         for cat in obs_df[group_by].unique()}
+
+    x_ordered = [obs for cat in cat_index_map.values() for obs in cat]
+    df['obs'] = pd.Categorical(df['obs'], categories=x_ordered, ordered=True)
+
+    # Assign colors per group
+    df[group_by] = df[group_by].astype(str)
+    unique_groups = list(cat_index_map.keys())
+    palette_colors = sns.color_palette("Set2", n_colors=len(unique_groups))
+    color_map = {str(grp): palette_colors[i] for i, grp in enumerate(unique_groups)}
+
+    sample_palette = {obs: color_map[df.loc[df['obs'] == obs, group_by].iloc[0]] for obs in x_ordered}
+
+    fig, _ax = plt.subplots(figsize=figsize)
+    sns.boxplot(
+        data=df,
+        x='obs',
+        hue='obs',
+        y='intensity',
+        palette=sample_palette,
+        ax=_ax
+    )
+
+    plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha='right')
+    _ax.set_xlabel('')
+    _ax.set_ylabel(ylabel)
+
+    # Add group labels above groups
+    obs_idx_map = {obs: i for i, obs in enumerate(x_ordered)}
+    ymax = df['intensity'].max()
+    for cat, obs_list in cat_index_map.items():
+        if not obs_list:
+            continue
+        start_idx = obs_idx_map[obs_list[0]]
+        end_idx = obs_idx_map[obs_list[-1]]
+        mid_idx = (start_idx + end_idx) / 2
+        _ax.text(
+            x=mid_idx,
+            y=ymax * 1.05,
+            s=cat,
+            ha='center',
+            va='bottom',
+            fontsize=12,
+            fontweight='bold',
+            rotation=group_by_label_rotation
+        )
+
+    plt.tight_layout()
+
+    if save:
+        fig.savefig(save, dpi=300, bbox_inches='tight')
+    if show:
+        plt.show()
+    if ax:
+        return _ax

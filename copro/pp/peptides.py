@@ -16,6 +16,8 @@ def filter_genes_by_peptide_count(
         gene_ids_filt = counts[counts <= max].index
     elif min and max:
         gene_ids_filt = counts[(counts >= min) & (counts <= max)]
+    else:
+        raise ValueError('Pass at least one argument: min | max')
     
     var_filt = adata.var[genes.isin(gene_ids_filt)].index
     new_adata = adata[:,var_filt]

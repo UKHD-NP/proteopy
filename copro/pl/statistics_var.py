@@ -13,7 +13,7 @@ def n_elements_per_category(
     cats = [category_col]
 
     if elements_col:
-        cat.append(elements_col)
+        cats.append(elements_col)
     else:
         elements_col = 'index'
         var.reset_index()

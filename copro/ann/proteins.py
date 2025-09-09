@@ -1,3 +1,4 @@
+import warnings
 import pandas as pd
 
 def protein_ids(

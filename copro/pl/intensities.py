@@ -59,8 +59,8 @@ def peptide_intensities(
 
     X = adata.to_df().copy()
 
+    X_zeros = X  # backup
     if not show_zeros:
-        X_zeros = X  # backup
         X = X.replace(0, np.nan)
 
     if log_transform:

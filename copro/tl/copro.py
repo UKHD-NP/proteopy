@@ -168,19 +168,25 @@ def pairwise_peptide_correlations(
             w = w[mask]; z = z[mask]
             wsum = float(w.sum())
             if (mask.sum() >= min_contrib_batches) and (wsum >= min_wsum):
-                zbar = float((w * z).sum() / wsum)
-                rhat = float(np.tanh(zbar))
-                rows.append((prot, pa, pb, rhat))
+                # Fixed-effects mean (zbar_fe) and weighted between-batch variance (var_z_between)
+                zbar_fe = float((w * z).sum() / wsum)
+                Q = float((w * (z - zbar_fe) ** 2).sum())
+                var_z_between = Q / wsum
+
+                # Conservative PCC from fixed-effects mean (no DL): shift by var_z_between
+                rhat = float(np.tanh(zbar_fe - var_z_between))
+
+                rows.append((prot, pa, pb, rhat, var_z_between))
 
     if rows:
         pooled_df = (
-            pd.DataFrame(rows, columns=[protein_id, 'pepA', 'pepB', 'PCC'])
+            pd.DataFrame(rows, columns=[protein_id, 'pepA', 'pepB', 'PCC', 'var_z_between'])
             .set_index(protein_id)
             .sort_values(['pepA', 'pepB'])
             .sort_index()
         )
     else:
-        pooled_df = pd.DataFrame(columns=['pepA', 'pepB', 'PCC'])
+        pooled_df = pd.DataFrame(columns=['pepA', 'pepB', 'PCC', 'var_z_between'])
         pooled_df.index.name = protein_id
 
     return _finalize(pooled_df, per_batch=per_batch_df)
@@ -600,6 +606,16 @@ def proteoform_scores(
     if alpha:
         proteoform_scores.loc[pvals.index, 'is_proteoform'] = rejected.astype(int)
 
+    # --- drop existing score columns before merge (safe for re-runs) ---
+    score_cols = [
+        'proteoform_score',
+        'proteoform_score_z',
+        'proteoform_score_dz',
+        'proteoform_score_pval',
+        'proteoform_score_pval_adj',
+        'is_proteoform',
+    ]
+    var = var.drop(columns=[c for c in score_cols if c in var.columns])
     # Add all new scores to .var
     var_upd = pd.merge(
         var,

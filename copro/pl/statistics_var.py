@@ -4,6 +4,39 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+def var_completeness(
+    adata,
+    zero_to_na = False,
+    show = True,
+    ax = False,
+    save = False,
+    ):
+    vals = adata.to_df().copy()
+
+    if zero_to_na:
+        vals = vals.replace(0, np.nan)
+
+    completeness = vals.count() / adata.n_obs
+
+    fig, _ax = plt.subplots(figsize=(6,5))
+
+    sns.histplot(
+        completeness,
+        ax=_ax
+        )
+
+    if save:
+        fig.savefig(save, dpi=300, bbox_inches='tight')
+    if show:
+        plt.show()
+    if ax:
+        return _ax
+    if not save and not show and not ax:
+        raise ValueError((
+            'Args show, ax and save all set to False, function does nothing.'
+            ))
+
+
 def n_detected_var(
     adata,
     group_by=None,

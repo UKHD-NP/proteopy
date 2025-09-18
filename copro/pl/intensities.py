@@ -8,6 +8,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 import seaborn as sns
 import anndata as ad
 
+from .utils import _resolve_color_scheme
+
 def peptide_intensities(
     adata,
     protein_ids=None,
@@ -23,7 +25,8 @@ def peptide_intensities(
     figsize=(15,6),
     show=True,
     save=None,
-    ax=False
+    ax=False,
+    color_scheme=None,
     ):
     '''
     Args:
@@ -300,7 +303,8 @@ def intensity_distribution_per_obs(
     show=True,
     ax=False,
     save=False,
-    figsize=(8,5)
+    figsize=(8,5),
+    color_scheme=None,
     ):
     
     df = adata.to_df()
@@ -350,8 +354,9 @@ def intensity_distribution_per_obs(
     # Assign colors per group
     df[group_by] = df[group_by].astype(str)
     unique_groups = list(cat_index_map.keys())
-    palette_colors = sns.color_palette("Set2", n_colors=len(unique_groups))
-    color_map = {str(grp): palette_colors[i] for i, grp in enumerate(unique_groups)}
+    color_scheme
+    colors = _resolve_color_scheme(color_scheme, unique_groups)
+    color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
 
     sample_palette = {obs: color_map[df.loc[df['obs'] == obs, group_by].iloc[0]] for obs in x_ordered}
 

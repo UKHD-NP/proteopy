@@ -4,6 +4,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from .utils import _resolve_color_scheme
+
 def var_completeness(
     adata,
     zero_to_na = False,
@@ -47,7 +49,8 @@ def n_detected_var(
     group_by_label_rotation=0,
     show=True,
     ax=False,
-    save=False
+    save=False,
+    color_scheme=None,
     ):
 
     df = pd.melt(
@@ -90,8 +93,8 @@ def n_detected_var(
     counts[group_by] = counts[group_by].astype(str)
 
     unique_groups = list(cat_index_map.keys())
-    palette = sns.color_palette("Set2", n_colors=len(unique_groups))
-    color_map = {str(grp): palette[i] for i, grp in enumerate(unique_groups)}
+    colors = _resolve_color_scheme(color_scheme, unique_groups)
+    color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
     bar_colors = counts[group_by].map(color_map)
 
     fig, _ax = plt.subplots(figsize=(6,4))

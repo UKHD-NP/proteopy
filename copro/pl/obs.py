@@ -1,7 +1,9 @@
 import warnings
+
 import numpy as np
 import matplotlib.pyplot as plt
 from pandas.api.types import is_string_dtype, is_categorical_dtype
+from .utils import _resolve_color_scheme
 
 def n_samples_by_category(
     adata,
@@ -12,6 +14,7 @@ def n_samples_by_category(
     show=True,
     save=False,
     ax=False,
+    color_scheme=None,
     ):
     if isinstance(category_cols, str):
         category_cols = [category_cols]
@@ -43,7 +46,8 @@ def n_samples_by_category(
         if not sort_by_counts:
             freq = freq[cats_order]
 
-        _ax = freq.plot(kind='bar')
+        colors = _resolve_color_scheme(color_scheme, freq.index)
+        _ax = freq.plot(kind='bar', color=colors)
 
     elif len(category_cols) == 2:
         df = obs.groupby(category_cols, observed=False).size().unstack(fill_value=0)
@@ -52,7 +56,8 @@ def n_samples_by_category(
             new_order = df.sum(axis=1).sort_values(ascending=False).index.tolist()
             df = df.loc[new_order]
 
-        _ax = df.plot(kind='bar', stacked=True)
+        colors = _resolve_color_scheme(color_scheme, df.columns)
+        _ax = df.plot(kind='bar', stacked=True, color=colors)
         _ax.legend(loc='center right', bbox_to_anchor=(2,0.5))
         
     else:

@@ -138,6 +138,11 @@ n_detected_peptides_per_sample = partial(
     ylabel='Nr. peptides detected',
 )
 
+n_detected_proteins_per_sample = partial(
+    n_detected_var,
+    ylabel='Nr. proteins detected',
+)
+
 def n_elements_per_category(
     adata,
     category_col,

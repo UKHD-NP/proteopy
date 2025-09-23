@@ -35,29 +35,58 @@ def peptides_long(
         raise ValueError('Invalid sep argument format.')
 
     # Peptide intensities (X)
-    intensities = pd.read_csv(intensities_path, sep=sep_intensities)
+    if isinstance(intensities_path, pd.DataFrame):
+        intensities = intensities_path.copy()
+    else:
+        intensities = pd.read_csv(intensities_path, sep=sep_intensities)
     intensities = intensities.rename(columns={'filename': 'sample_id'})
-    peptides = intensities[['protein_id', 'peptide_id']].copy()
-    intensities = pd.pivot(intensities, index=['sample_id'], columns='peptide_id', values='intensity')
+
+    # Decide feature dimension: peptide if available, otherwise protein
+    has_peptide = 'peptide_id' in intensities.columns
+    feature_col = 'peptide_id' if has_peptide else 'protein_id'
+
+    required_cols = {'protein_id', 'sample_id', 'intensity'}
+    missing = required_cols.difference(intensities.columns)
+    if missing:
+        raise ValueError(f"Missing required column(s) in intensities: {missing}")
+
+    #intensities = pd.pivot(intensities, index=['sample_id'], columns=feature_col, values='intensity')
+    #@ToDo: aggfunc might do something bad here - carefully check
+    intensities = pd.pivot_table(intensities, index='sample_id', columns=feature_col, values='intensity', aggfunc='sum')
     intensities = intensities.sort_index(axis=0).sort_index(axis=1)
     intensities.index.name = None
     intensities.columns.name = None
 
     if fill_na is not None:
         intensities = intensities.fillna(fill_na)
+    
+    intensities.index = intensities.index.astype(str).str.strip()
 
     assert len(intensities.columns) == len(intensities.columns.unique())
     assert len(intensities.index) == len(intensities.index.unique())
 
     # Variable annotation (.var)
-    peptides = peptides.drop_duplicates(subset='peptide_id')
-    peptides = peptides.set_index('peptide_id', drop=False)
+    if has_peptide:
+        peptides = intensities_path[['protein_id', 'peptide_id']].copy() if isinstance(intensities_path, pd.DataFrame) else pd.read_csv(intensities_path, sep=sep_intensities)[['protein_id', 'peptide_id']]
+        peptides = peptides.drop_duplicates(subset='peptide_id')
+        peptides = peptides.set_index('peptide_id', drop=False)
+    else:
+        peptides = intensities_path[['protein_id']].copy() if isinstance(intensities_path, pd.DataFrame) else pd.read_csv(intensities_path, sep=sep_intensities)[['protein_id']]
+        peptides = peptides.drop_duplicates(subset='protein_id')
+        peptides = peptides.set_index('protein_id', drop=False)
     peptides.index.name = None
     peptides = peptides.loc[intensities.columns,]
 
     # Observation annotation (.obs)
-    sample_annotation = pd.read_csv(sample_annotation_path, sep=sep_sample_ann)
-    sample_annotation = sample_annotation.rename(columns={'filename': 'sample_id'}).set_index('sample_id', drop=False)
+    if isinstance(sample_annotation_path, pd.DataFrame):
+        sample_annotation = sample_annotation_path.copy()
+    else:
+        sample_annotation = pd.read_csv(sample_annotation_path, sep=sep_sample_ann)
+    sample_annotation = sample_annotation.rename(columns={'filename': 'sample_id'})
+    if 'sample_id' not in sample_annotation.columns:
+        raise ValueError("sample_annotation must contain a 'sample_id' (or 'filename') column.")
+    sample_annotation['sample_id'] = sample_annotation['sample_id'].astype(str).str.strip()
+    sample_annotation = sample_annotation.set_index('sample_id', drop=False)
     sample_annotation.index.name = None
 
     assert len(sample_annotation.index) == len(sample_annotation.index.unique())

@@ -5,10 +5,15 @@ import pandas as pd
 from pandas.api.types import is_categorical_dtype
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.patches import Patch
 import seaborn as sns
 import anndata as ad
+import math
+import os
+from scipy import sparse 
 
 from .utils import _resolve_color_scheme
+from copro.pp.var import is_log_transformed
 
 def peptide_intensities(
     adata,
@@ -402,3 +407,231 @@ def intensity_distribution_per_obs(
         plt.show()
     if ax:
         return _ax
+
+def intensity_hist_imputed(
+    adata,
+    layer: str | None = None,
+    bool_layer: str = "bool_imputed",
+    bins: int = 60,
+    density: bool = True,
+    kde: bool = False,
+    figsize=(7, 4),
+    palette: dict | None = None,      # {'Measured': '#4C78A8', 'Imputed': '#F58518'}
+    alpha: float = 0.6,
+    title: str | None = None,
+    legend_loc: str = "upper right",
+    per_sample: bool = False,
+    samples: list | None = None,      # list of obs names or integer indices (subset/order)
+    ncols: int = 4,
+    sharex: bool = True,
+    sharey: bool = True,
+    # new:
+    show: bool = True,
+    save: bool | str | os.PathLike = False,
+):
+    """
+    Plot histogram(s) of intensities in log2 scale colored by imputation status.
+
+    - Auto-detects log; if raw, plots in log2 (<=0 -> NA).
+    - Colors: 'Measured' vs 'Imputed' from layers[bool_layer].
+    - If per_sample=False: one combined histogram.
+      per_sample=True : grid of per-sample subplots (shared bins & one legend).
+
+    Parameters
+    ----------
+    show : bool
+        If True, call plt.show() at the end.
+    save : bool | str | Path
+        If True, save to a default filename.
+        If str/Path, save to that path. If False, do not save.
+    """
+    # --- pull data ---
+    Xsrc = adata.layers[layer] if layer is not None else adata.X
+    X = Xsrc.toarray() if sparse.issparse(Xsrc) else np.asarray(Xsrc, dtype=float)
+
+    if bool_layer not in adata.layers:
+        raise KeyError(f"'{bool_layer}' not found in adata.layers")
+    Bsrc = adata.layers[bool_layer]
+    B = Bsrc.toarray() if sparse.issparse(Bsrc) else np.asarray(Bsrc)
+    if B.shape != X.shape:
+        raise ValueError(f"Shape mismatch: data {X.shape} vs {bool_layer} {B.shape}")
+
+    # log2 for plotting (if needed)
+    is_log, _ = is_log_transformed(adata, layer=layer)
+    Y = X.copy()
+    if not is_log:
+        Y[~np.isfinite(Y) | (Y <= 0)] = np.nan
+        Y = np.log2(Y)
+    else:
+        Y[~np.isfinite(Y)] = np.nan
+
+    # palette & order
+    if palette is None:
+        palette = {"Measured": "#4C78A8", "Imputed": "#F58518"}
+    hue_order = ["Measured", "Imputed"]
+
+    # ------- Single (combined) histogram -------
+    if not per_sample:
+        vals = Y.ravel()
+        flags = B.astype(bool).ravel()
+        m = np.isfinite(vals)
+        vals = vals[m]
+        flags = flags[m]
+        if vals.size == 0:
+            raise ValueError("No finite values to plot after preprocessing.")
+
+        status = np.where(flags, "Imputed", "Measured")
+        df = pd.DataFrame({"intensity_log2": vals, "status": status})
+
+        bin_edges = np.histogram_bin_edges(df["intensity_log2"].to_numpy(), bins=bins)
+
+        fig, ax = plt.subplots(figsize=figsize)
+        sns.histplot(
+            data=df,
+            x="intensity_log2",
+            hue="status",
+            hue_order=[h for h in hue_order if (df["status"] == h).any()],
+            bins=bin_edges,
+            stat=("density" if density else "count"),
+            multiple="layer",
+            common_norm=False,
+            palette=palette,
+            alpha=alpha,
+            edgecolor=None,
+            ax=ax,
+            legend=False,
+        )
+
+        if kde:
+            for k, g in df.groupby("status"):
+                if len(g) > 1:
+                    sns.kdeplot(g["intensity_log2"], ax=ax, color=palette.get(k), lw=1.5)
+
+        ax.set_xlabel("Intensity (log2)")
+        ax.set_ylabel("Density" if density else "Count")
+        ax.set_title(title or "Intensity histogram (log2; colored by imputation)")
+
+        present = [h for h in hue_order if (df["status"] == h).any()]
+        handles = [Patch(facecolor=palette[h], edgecolor="none", alpha=alpha, label=h) for h in present]
+        ax.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
+
+        # save/show
+        if save:
+            path = save if isinstance(save, (str, os.PathLike)) else "intensity_hist_imputed.png"
+            fig.savefig(path, dpi=300, bbox_inches='tight')
+        if show:
+            plt.show()
+        return  # nothing else returned
+
+    # ------- Per-sample small multiples -------
+    # select samples
+    if samples is None:
+        idx = np.arange(adata.n_obs)
+        labels = adata.obs_names.to_numpy()
+    else:
+        idx, labels = [], []
+        for s in samples:
+            if isinstance(s, (int, np.integer)):
+                idx.append(int(s)); labels.append(adata.obs_names[int(s)])
+            else:
+                where = np.where(adata.obs_names == str(s))[0]
+                if where.size == 0:
+                    raise KeyError(f"Sample '{s}' not in adata.obs_names")
+                idx.append(int(where[0])); labels.append(str(s))
+        idx = np.asarray(idx, dtype=int)
+        labels = np.asarray(labels, dtype=object)
+
+    # global bins across all selected samples
+    all_vals = []
+    for i in idx:
+        vi = Y[i, :]
+        m = np.isfinite(vi)
+        if m.any():
+            all_vals.append(vi[m])
+    if len(all_vals) == 0:
+        raise ValueError("No finite values to plot after preprocessing across selected samples.")
+    bin_edges = np.histogram_bin_edges(np.concatenate(all_vals), bins=bins)
+
+    n = len(idx)
+    ncols = max(1, int(ncols))
+    nrows = int(math.ceil(n / ncols))
+    if figsize is None:
+        figsize = (ncols * 3.2, nrows * 2.6)
+
+    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False, sharex=sharex, sharey=sharey)
+
+    present_any = set()
+    for k, i in enumerate(idx):
+        r, c = divmod(k, ncols)
+        ax = axes[r, c]
+
+        vi = Y[i, :]
+        bi = B[i, :].astype(bool)
+
+        m = np.isfinite(vi)
+        vi = vi[m]
+        bi = bi[m]
+        if vi.size == 0:
+            ax.set_visible(False)
+            continue
+
+        status = np.where(bi, "Imputed", "Measured")
+        df_i = pd.DataFrame({"intensity_log2": vi, "status": status})
+        present = [h for h in hue_order if (df_i["status"] == h).any()]
+        present_any.update(present)
+
+        sns.histplot(
+            data=df_i,
+            x="intensity_log2",
+            hue="status",
+            hue_order=present,
+            bins=bin_edges,
+            stat=("density" if density else "count"),
+            multiple="layer",
+            common_norm=False,
+            palette=palette,
+            alpha=alpha,
+            edgecolor=None,
+            ax=ax,
+            legend=False,
+        )
+
+        if kde:
+            for lab in present:
+                g = df_i[df_i["status"] == lab]
+                if len(g) > 1:
+                    sns.kdeplot(g["intensity_log2"], ax=ax, color=palette.get(lab), lw=1.2)
+
+        ax.set_title(str(labels[k]))
+        if r == nrows - 1:
+            ax.set_xlabel("Intensity (log2)")
+        else:
+            ax.set_xlabel("")
+        if c == 0:
+            ax.set_ylabel("Density" if density else "Count")
+        else:
+            ax.set_ylabel("")
+
+    # hide any extra axes
+    for k in range(n, nrows * ncols):
+        r, c = divmod(k, ncols)
+        axes[r, c].set_visible(False)
+
+    # global legend (figure-level unless user asked for 'best')
+    present_any = [h for h in hue_order if h in present_any]
+    handles = [Patch(facecolor=palette[h], edgecolor="none", alpha=alpha, label=h) for h in present_any]
+    if legend_loc == "best":
+        axes[0, 0].legend(handles=handles, title="Status", loc="best", frameon=False)
+    else:
+        fig.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
+
+    plt.suptitle(title or "Intensity histograms per sample (log2; colored by imputation)", y=0.995, fontsize=12)
+    plt.tight_layout(rect=[0, 0, 1, 0.98])
+
+    # save/show
+    if save:
+        path = save if isinstance(save, (str, os.PathLike)) else "intensity_hist_imputed-per-sample.png"
+        fig.savefig(path, dpi=300, bbox_inches='tight')
+    if show:
+        plt.show()
+    return  # nothing returned

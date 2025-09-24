@@ -3,6 +3,7 @@ from .intensities import (
     peptide_intensities,
     proteoform_intensities,
     intensity_distribution_per_obs,
+    intensity_hist_imputed,
     )
 from .proteoforms import proteoform_scores
 from .statistics_var import (

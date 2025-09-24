@@ -425,7 +425,6 @@ def intensity_hist_imputed(
     ncols: int = 4,
     sharex: bool = True,
     sharey: bool = True,
-    # new:
     show: bool = True,
     save: bool | str | os.PathLike = False,
 ):

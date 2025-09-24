@@ -554,8 +554,6 @@ def intensity_hist_imputed(
     n = len(idx)
     ncols = max(1, int(ncols))
     nrows = int(math.ceil(n / ncols))
-    if figsize is None:
-        figsize = (ncols * 3.2, nrows * 2.6)
 
     fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False, sharex=sharex, sharey=sharey)
 

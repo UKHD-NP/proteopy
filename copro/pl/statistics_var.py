@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib as mpl
 
 from .utils import _resolve_color_scheme
 
@@ -76,6 +77,10 @@ def n_detected_var(
     counts = df.groupby(['obs', group_by], observed=True).size().reset_index(name='count')
 
     obs_df = adata.obs.reset_index().rename(columns={'index': 'obs'})
+
+    if group_by not in obs_df.columns:
+        obs_df[group_by] = 'all'
+
     if group_by in obs_df.columns and isinstance(obs_df[group_by].dtype, pd.CategoricalDtype):
         obs_df[group_by] = obs_df[group_by].astype('category')
 
@@ -93,9 +98,15 @@ def n_detected_var(
     counts[group_by] = counts[group_by].astype(str)
 
     unique_groups = list(cat_index_map.keys())
-    colors = _resolve_color_scheme(color_scheme, unique_groups)
-    color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
-    bar_colors = counts[group_by].map(color_map)
+    if group_by!= 'all':
+        if color_scheme is not None:
+            colors = _resolve_color_scheme(color_scheme, unique_groups)
+        else:
+            colors = mpl.colormaps['Set2'](range(len(unique_groups))).tolist()
+        color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
+        bar_colors = counts[group_by].map(color_map)
+    else:
+        bar_colors = 'C0'        
 
     fig, _ax = plt.subplots(figsize=(6,4))
     counts.plot(kind='bar', x='obs', y='count', ax=_ax, color=bar_colors, legend=False)

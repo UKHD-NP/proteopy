@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Patch
 import seaborn as sns
+import matplotlib as mpl
 import anndata as ad
 import math
 import os
@@ -343,6 +344,10 @@ def intensity_distribution_per_obs(
 
     # Determine x-axis order
     obs_df = adata.obs.reset_index().rename(columns={'index': 'obs'})
+
+    if group_by not in obs_df.columns:
+        obs_df[group_by] = 'all'
+
     if group_by in obs_df.columns and isinstance(obs_df[group_by].dtype, pd.CategoricalDtype):
         obs_df[group_by] = obs_df[group_by].astype('category')
 
@@ -359,9 +364,14 @@ def intensity_distribution_per_obs(
     # Assign colors per group
     df[group_by] = df[group_by].astype(str)
     unique_groups = list(cat_index_map.keys())
-    color_scheme
-    colors = _resolve_color_scheme(color_scheme, unique_groups)
-    color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
+    if group_by!= 'all':
+        if color_scheme is not None:
+            colors = _resolve_color_scheme(color_scheme, unique_groups)
+        else:
+            colors = mpl.colormaps['Set2'](range(len(unique_groups))).tolist()
+        color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
+    else:
+        color_map = {'all': 'C0'}
 
     sample_palette = {obs: color_map[df.loc[df['obs'] == obs, group_by].iloc[0]] for obs in x_ordered}
 

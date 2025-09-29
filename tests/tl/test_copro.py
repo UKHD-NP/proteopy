@@ -17,7 +17,7 @@ from copro.tl.copro import (
 
 from copro.utils.data_structures import ListDict
 
-from tests.utils.helpers import (
+from ..utils.helpers import (
     transform_dendogram_r2py,
     remap_dendogram_leaf_order,
     reconstruct_corrs_df_symmetric_from_long_df,

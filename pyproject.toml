@@ -1,0 +1,42 @@
+[build-system]
+requires = ['setuptools>=69', 'wheel']
+build-backend = 'setuptools.build_meta'
+
+[project]
+name = 'copro'
+version = '0.1.0'
+description = 'Analysis of bottom-up mass-spectrometry proteomics data with focus on peptide-level proteoform inference.'
+readme = 'README.md'
+requires-python = '>=3.10'
+license = {file = 'LICENCE.txt'}
+dependencies = [
+    'numpy',
+    'pandas',
+    'anndata',
+    'scipy',
+    'scikit-learn',
+    'matplotlib',
+    'seaborn',
+    'statsmodels',
+    ]
+
+[project.optional-dependencies]
+dev = [
+    'ipykernel',
+    'jupyterlab',
+    'nb_conda',
+    'pre-commit',
+    'pytest',
+    ]
+
+usage = [
+    'ipykernel',
+    'jupyterlab',
+    'nb_conda',
+    'scanpy',
+    'python_igraph',
+    'openpyxl',
+    ]
+
+[tool.setuptools.packages.find]
+include = ['copro*']

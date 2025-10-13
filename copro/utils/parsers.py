@@ -1,4 +1,5 @@
 import re
+import warnings
 import pandas as pd
 import numpy as np
 from typing import Dict, Optional, List
@@ -221,3 +222,16 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
     new_df = new_df.loc[df.index,]
 
     return new_df
+
+
+def diann_run(s, warn=False):
+    match = re.search(r'_(\d+)_T', s)
+
+    if match:
+        return 'Run_' + match.group(1)
+
+    if warn:
+        warnings.warn(f'No match for string:\n{s}')
+        return 'no_parse_match'
+
+    raise ValueError(f'No match for string:\n{s}')

@@ -7,8 +7,9 @@ def obs_merge(
     obs_on,
     df_on,
     suffix = '_annotated',
+    sort_obs_by_ann = False,
     ):
-    '''Annotate AnnData.var with df on a specific column.
+    '''Annotate AnnData.obs with df on a specific column.
 
     Args:
         adata (AnnData)
@@ -20,14 +21,35 @@ def obs_merge(
         AnnData with extended .obs
     '''
     adata = adata.copy()
-    obs = adata.obs.copy()
-    obs = obs.reset_index()
+    obs = adata.obs.copy().reset_index()
+
+    # Check input
+    if not obs_on in obs.columns:
+        raise ValueError()
+
+    if not df_on in df.columns:
+        raise ValueError()
 
     df[df_on] = df[df_on].astype(str)
+    df.drop_duplicates(keep='first', inplace=True)
 
     if len(df[df_on].unique()) != len(df):
-        df = df.drop_duplicates(subset=df_on, keep='first')
-        warnings.warn(f'Rows with repeated obs[obs_on] values were collapsed to the first occurance.')
+        df.drop_duplicates(subset=df_on, keep='first', inplace=True)
+        warnings.warn(f'Rows with repeated values in df_on were collapsed to the first occurance.')
+
+    diff_idx1 = set(df[df_on]).difference(set(obs[obs_on]))
+    if diff_idx1:
+        warnings.warn(
+            f'There are {len(diff_idx1)} unique values in df_on '
+            f'which are not found in obs_on. They were ignored.'
+            )
+
+    diff_idx2 = set(obs[obs_on]).difference(set(df[df_on]))
+    if diff_idx2:
+        warnings.warn(
+            f'There are {len(diff_idx2)} values in obs_on '
+            f'which are not found in df_on. They were filled with nan.'
+            )
 
     new_obs = pd.merge(
         obs,
@@ -48,5 +70,10 @@ def obs_merge(
         new_obs[obs_on] = new_obs[obs_on].astype('category')
 
     adata.obs = new_obs
+
+    if sort_obs_by_ann:
+        idx = [i for i in df[df_on] if i in obs[obs_on].values]
+        idx.extend(list(diff_idx2))
+        adata = adata[idx,]
 
     return adata

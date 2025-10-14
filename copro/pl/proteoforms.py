@@ -9,6 +9,8 @@ def proteoform_scores(
     adj=True,
     pval_threshold=None,
     score_threshold=None,
+    show=True,
+    save=False,
     ax=False,
     ):
 
@@ -58,29 +60,35 @@ def proteoform_scores(
         s=30,
         legend=False,
     )
-    ax = g.ax
+    _ax = g.ax
 
     # Add threshold lines
     if pval_threshold:
-        ax.axhline(
+        _ax.axhline(
             y=-np.log10(pval_threshold),
             color='#A2A2A2',    # grey
             linestyle='--',
             label=pval_threshold)
 
     if score_threshold:
-        ax.axvline(
+        _ax.axvline(
             x=score_threshold,
             color='#A2A2A2',    # grey
             linestyle='--',
             label=score_threshold)
 
-    ax.set_xlabel('Proteoform Score')
-    ax.set_ylabel(ylabel)
+    _ax.set_xlabel('Proteoform Score')
+    _ax.set_ylabel(ylabel)
     g.tight_layout()
 
-    if ax:
-        return ax
-    else:
+    if show:
         plt.show()
-        return
+    if save:
+        _ax.figure.savefig(save, dpi=300, bbox_inches='tight')
+    if ax:
+        return _ax
+    if not show and not save and not ax:
+        warnings.warn((
+            'Function does not do anything. Set at least one argument to True:'
+            ' show, save, ax'
+            ))

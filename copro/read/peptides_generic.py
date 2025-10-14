@@ -3,12 +3,12 @@ import pandas as pd
 import anndata as ad
 
 def peptides_long(
-        intensities_path,
-        sample_annotation_path,
-        sep = ',',
-        sort_obs_by_sample_annotation = True,
-        fill_na = None,
-        ):
+    intensities_path,
+    sample_annotation_path,
+    sep = ',',
+    sort_obs_by_sample_annotation = True,
+    fill_na = None,
+    ):
     '''
     Read in current typical NP proteomics output format.
 

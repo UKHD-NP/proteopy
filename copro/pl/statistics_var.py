@@ -26,6 +26,7 @@ def var_completeness(
         completeness,
         ax=_ax
         )
+    _ax.set_xlabel('1 - fraction of missing obs per var')
 
     if save:
         fig.savefig(save, dpi=300, bbox_inches='tight')

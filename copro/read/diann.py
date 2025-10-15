@@ -48,6 +48,7 @@ def diann(
         data['Run'] = data['Run'].apply(run_parser)
 
     if show_input_stats:
+        print('Before Q-value and proteotypicity filtering\n------')
         proteotypic_fraction = (data['Proteotypic'] == 1).sum() / len(data)
         print(f'Proteotypic peptide fraction: {proteotypic_fraction:.2f}')
 
@@ -82,7 +83,6 @@ def diann(
 
         # Q values stats
         q_stats = data[['Q.Value', 'Protein.Q.Value', 'Global.Q.Value']].describe()
-        print('Before Q-value filtering\n------')
         print(q_stats)
 
 
@@ -108,7 +108,7 @@ def diann(
     if show_input_stats:
         # Q values stats
         q_stats = data_sub[['Q.Value', 'Protein.Q.Value', 'Global.Q.Value']].describe()
-        print('\nAfter Q-value filtering\n-----')
+        print('\nAfter Q-value and proteotypicity filtering\n------')
         print(q_stats)
 
     # Check: how peptides map to proteins
@@ -135,11 +135,18 @@ def diann(
 
 
     precursor_data_summed = (
-        precursor_data.groupby([aggr_level,'Protein.Ids','Run'], observed=True)
+        precursor_data.groupby([aggr_level,'Protein.Ids','Run'], observed=True) # In theory grouping by protein.ids not necessary
         ['Precursor.Quantity']
         .sum()
         .reset_index()
         )
+
+    # Check: proteotypicity
+    assert ((
+        precursor_data_summed
+        .groupby('Stripped.Sequence', observed=True)['Protein.Ids']
+        .nunique().le(1).all()
+        )), "Error: Some peptides map to multiple proteins!"
 
     X = pd.pivot(
         precursor_data_summed,
@@ -193,7 +200,7 @@ def diann(
     var = precursor_meta.groupby(aggr_level, observed=True).first()
     var = var.loc[X.columns]
     var[aggr_level] = var.index
-    var['protein_id'] = var.index
+    var['peptide_id'] = var.index
     var.index.name = None
 
     del precursor_meta

@@ -95,6 +95,8 @@ def n_detected_var(
     counts = df.groupby(['obs', group_by], observed=True).size().reset_index(name='count')
 
     obs_df = adata.obs.reset_index().rename(columns={'index': 'obs'})
+    if group_by not in obs_df.columns:
+        obs_df[group_by] = 'all'
     if group_by in obs_df.columns and isinstance(obs_df[group_by].dtype, pd.CategoricalDtype):
         obs_df[group_by] = obs_df[group_by].astype('category')
 
@@ -113,11 +115,13 @@ def n_detected_var(
 
     unique_groups = list(cat_index_map.keys())
     colors = _resolve_color_scheme(color_scheme, unique_groups)
-    color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
-    bar_colors = counts[group_by].map(color_map)
+    plot_kwargs = {}
+    if colors is not None:
+        color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
+        plot_kwargs['color'] = counts[group_by].map(color_map).to_list()
 
     fig, _ax = plt.subplots(figsize=(6,4))
-    counts.plot(kind='bar', x='obs', y='count', ax=_ax, color=bar_colors, legend=False)
+    counts.plot(kind='bar', x='obs', y='count', ax=_ax, legend=False, **plot_kwargs)
 
     plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha='right')
     _ax.set_xlabel('')

@@ -6,19 +6,24 @@ import seaborn as sns
 
 from .utils import _resolve_color_scheme
 
-def var_completeness(
+def axis_completeness(
     adata,
+    axis,
     zero_to_na = False,
     show = True,
     ax = False,
     save = False,
     ):
+    '''Histogram of obs or var completeness.
+    Args:
+        axis (int, [0,1]): 0 = obs and 1 = var 
+    '''
     vals = adata.to_df().copy()
 
     if zero_to_na:
         vals = vals.replace(0, np.nan)
 
-    completeness = vals.count() / adata.n_obs
+    completeness = vals.count(axis=axis) / adata.shape[axis]
 
     fig, _ax = plt.subplots(figsize=(6,5))
 
@@ -26,7 +31,11 @@ def var_completeness(
         completeness,
         ax=_ax
         )
-    _ax.set_xlabel('1 - fraction of missing obs per var')
+
+    axes = ['var', 'obs']
+    _ax.set_xlabel(
+        f'1 - fraction of missing {axes[1-axis]} per {axes[0-axis]}'
+        )
 
     if save:
         fig.savefig(save, dpi=300, bbox_inches='tight')
@@ -39,6 +48,15 @@ def var_completeness(
             'Args show, ax and save all set to False, function does nothing.'
             ))
 
+var_completeness = partial(
+    axis_completeness,
+    axis=0,
+    )
+
+obs_completeness = partial(
+    axis_completeness,
+    axis=1,
+    )
 
 def n_detected_var(
     adata,

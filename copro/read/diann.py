@@ -157,7 +157,7 @@ def diann(
 
     X = X.sort_index(axis=0).sort_index(axis=1)
 
-    if fill_na:
+    if fill_na is not None:
         X.fillna(fill_na, inplace=True)
 
     X.columns.name = None

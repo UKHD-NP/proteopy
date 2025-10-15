@@ -5,10 +5,23 @@ from matplotlib.colors import Colormap
 
 def _resolve_color_scheme(color_scheme, labels):
     """Convert a user-supplied color scheme into a list matching `labels` order."""
-    if color_scheme is None:
-        return None
-
     labels_list = list(labels)
+
+    if color_scheme is None:
+        if not labels_list:
+            return None
+
+        color_cycle = plt.rcParams.get('axes.prop_cycle')
+
+        if color_cycle is None:
+            return None
+
+        default_colors = color_cycle.by_key().get('color', [])
+
+        if not default_colors:
+            return None
+
+        return [default_colors[i % len(default_colors)] for i in range(len(labels_list))]
 
     if isinstance(color_scheme, np.ndarray):
         color_scheme = color_scheme.tolist()

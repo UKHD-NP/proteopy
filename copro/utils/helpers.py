@@ -51,7 +51,11 @@ def reconstruct_corrs_df_symmetric_from_long_df(df, var_a_col=0, var_b_col=1, co
             elif np.isnan(corr_matrix[j, i]) and not np.isnan(corr_matrix[i, j]):
                 corr_matrix[j, i] = corr_matrix[i, j]
             elif np.isnan(corr_matrix[j, i]) and np.isnan(corr_matrix[i, j]):
-                raise ValueError('Logical bug')
+                rev = {i: pep for pep, i in pep_to_idx.items()}
+                raise ValueError((
+                    f'Logical bug. For combination of peptides: {rev[i]} and '
+                    f'{rev[j]} there was no value found.'
+                    ))
             elif not np.isnan(corr_matrix[j, i]) and not np.isnan(corr_matrix[i, j]):
                 assert corr_matrix[i,j] == corr_matrix[j,i]
     

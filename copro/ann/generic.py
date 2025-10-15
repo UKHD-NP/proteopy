@@ -33,9 +33,16 @@ def obs_merge(
     df[df_on] = df[df_on].astype(str)
     df.drop_duplicates(keep='first', inplace=True)
 
+    # Duplicates in df_on
     if len(df[df_on].unique()) != len(df):
+        counts = df.value_counts(df_on)
+        duplicates = counts[counts > 1].index.to_list()
         df.drop_duplicates(subset=df_on, keep='first', inplace=True)
-        warnings.warn(f'Rows with repeated values in df_on were collapsed to the first occurance.')
+        warnings.warn(
+            f'{len(duplicates)} df_on values had duplicates '
+            f'and were collapsed to the first occurance.\n'
+            f'Duplicates: {duplicates}'
+            )
 
     diff_idx1 = set(df[df_on]).difference(set(obs[obs_on]))
     if diff_idx1:

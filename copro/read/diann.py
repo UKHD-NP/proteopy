@@ -42,7 +42,43 @@ def diann(
             'run_parser arg must either be a function or None.'
             ))
 
-    data = pd.read_csv(diann_output_path, sep='\t', header=0)
+    base_required_cols = {
+        'Run',
+        'Proteotypic',
+        'Protein.Ids',
+        'Precursor.Quantity',
+        'Protein.Q.Value',
+        'Global.Q.Value',
+        'Q.Value',
+        'Protein.Group',
+        'Genes',
+        'Protein.Names',
+        'Stripped.Sequence',
+        }
+
+    required_cols = set(base_required_cols)
+    required_cols.add(aggr_level)
+
+    if aggr_level == 'Precursor.Id':
+        required_cols.update({'Modified.Sequence', 'Precursor.Charge'})
+    if aggr_level == 'Modified.Sequence':
+        required_cols.add('Modified.Sequence')
+
+    header = pd.read_csv(diann_output_path, sep='\t', nrows=0)
+    missing_cols = sorted(required_cols - set(header.columns))
+
+    if missing_cols:
+        missing_str = ', '.join(missing_cols)
+        raise ValueError(
+            f'Missing required columns in DIA-NN output: {missing_str}.'
+        )
+
+    data = pd.read_csv(
+        diann_output_path,
+        sep='\t',
+        header=0,
+        usecols=sorted(required_cols),
+    )
 
     if run_parser:
         data['Run'] = data['Run'].apply(run_parser)

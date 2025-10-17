@@ -8,7 +8,7 @@ from sklearn.cluster import AgglomerativeClustering
 from scipy.stats import norm
 from statsmodels.stats.multitest import multipletests
 
-from copro.utils.helpers import reconstruct_corrs_df_symmetric_from_long_df
+from copro.utils.copf import reconstruct_corrs_df_symmetric_from_long_df
 from copro.utils.data_structures import BinaryClusterTree
 
 NOISE = 1e6

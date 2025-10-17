@@ -57,12 +57,12 @@ def peptide_intensities(
     obs = adata.obs[[group_by]].copy()
     obs = obs.reset_index().rename(columns={'index': 'obs_index'})
 
-    if is_categorical_dtype(obs[group_by]):
+    if not is_categorical_dtype(obs[group_by]):
         obs[group_by] = obs[group_by].astype('category')
 
     X = adata.to_df().copy()
 
-    X_zeros = X  # backup
+    X_zeros = X.copy()  # backup
     if not show_zeros:
         X = X.replace(0, np.nan)
 
@@ -88,10 +88,15 @@ def peptide_intensities(
     df = pd.merge(df, obs, on='obs_index', how='left')
 
     # Explicitly order the x axis observations to group by group_by
+    if is_categorical_dtype(obs[group_by]):
+        categories = list(obs[group_by].cat.categories)
+    else:
+        categories = list(pd.unique(obs[group_by]))
+
     cat_index_map = {
-        cat: sorted(obs[obs[group_by] == cat]['obs_index'].to_list())
-        for cat in obs[group_by].cat.categories
-        }
+        cat: sorted(obs.loc[obs[group_by] == cat, 'obs_index'].to_list())
+        for cat in categories
+    }
 
     if group_by_order:
         obs_index_ordered = [
@@ -369,6 +374,9 @@ def intensity_distribution_per_obs(
         palette=sample_palette,
         ax=_ax
     )
+
+    if _ax.get_legend() is not None:
+        _ax.get_legend().remove()
 
     plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha='right')
     _ax.set_xlabel('')

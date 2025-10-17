@@ -31,13 +31,13 @@ def filter_completeness(
 
     if min_fraction:
         completeness = vals.count(axis_i) / adata.shape[axis_i]
-        mask_fraction = completeness > min_fraction
+        mask_fraction = completeness >= min_fraction
     else:
         mask_fraction = pd.Series([True] * adata.shape[axis])
 
     if min_nr:
         counts = vals.count(axis_i)
-        mask_nr = counts > min_nr
+        mask_nr = counts >= min_nr
     else:
         mask_nr = pd.Series([True] * adata.shape[axis])
 

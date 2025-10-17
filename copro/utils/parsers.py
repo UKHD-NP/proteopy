@@ -226,9 +226,12 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
 
 def diann_run(s, warn=False):
     match = re.search(r'_(\d+)_T', s)
-
     if match:
         return 'Run_' + match.group(1)
+
+    match = re.search(r'(?<=_)(?:N?\d{2,5}(?:_[A-Za-z0-9]+)*_[A-Za-z]+|N?\d{5}|N?\d{2}_\d{4}[A-Za-z]?_[A-Za-z]+)(?=_T1_DIA)', s)
+    if match:
+        return 'Run_' + match.group(0)
 
     if warn:
         warnings.warn(f'No match for string:\n{s}')

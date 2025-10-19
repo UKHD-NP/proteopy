@@ -66,6 +66,9 @@ def pairwise_peptide_correlations(
     protein_id='protein_id',
     inplace=True,
     copy=False,
+    batch_key: str | None = None,   # per-batch if provided → always pooled
+    min_contrib_batches: int = 1,   # pooling threshold
+    min_wsum: float = 0.0,          # pooling threshold on sum(n_b-3)
     ):
 
     if inplace and copy:
@@ -74,6 +77,23 @@ def pairwise_peptide_correlations(
     if protein_id not in adata.var.columns:
         raise ValueError(f'protein_id: {protein_id} not in .var.columns')
 
+    STORE_KEY = "pairwise_peptide_correlations"
+    PER_BATCH_STORE_KEY = "pairwise_peptide_correlations_by_batch"
+
+    def _finalize(out, per_batch=None):
+        if copy:
+            adata_new = adata.copy()
+            adata_new.uns[STORE_KEY] = out
+            if per_batch is not None:
+                adata_new.uns[PER_BATCH_STORE_KEY] = per_batch
+            return adata_new
+        if inplace:
+            adata.uns[STORE_KEY] = out
+            if per_batch is not None:
+                adata.uns[PER_BATCH_STORE_KEY] = per_batch
+            return
+        return out
+    
     def compute_corrs(df):
         corrs = pairwise_peptide_correlations_(
             df,
@@ -97,20 +117,79 @@ def pairwise_peptide_correlations(
         var_name='obs_id',
         value_name='intensity')
 
-    corrs = traces_df.groupby('protein_id', observed=True).apply(compute_corrs, include_groups=False)
-    corrs = corrs.droplevel(1, axis=0)
-    corrs = corrs.sort_values(['pepA', 'pepB']).sort_index()
+    if batch_key is None:
+        corrs = traces_df.groupby('protein_id', observed=True).apply(compute_corrs, include_groups=False)
+        corrs = corrs.droplevel(1, axis=0)
+        corrs = corrs.sort_values(['pepA', 'pepB']).sort_index()
+        return _finalize(corrs)
 
-    if inplace:
-        adata.uns['pairwise_peptide_correlations'] = corrs
+    if batch_key not in adata.obs.columns:
+        raise ValueError(f"batch_key '{batch_key}' not found in .obs.columns")
 
-    elif copy:
-        adata_new = adata.copy()
-        adata_new.uns['pairwise_peptide_correlations'] = corrs
-        return adata_new
+    batches = (
+        adata.obs[[batch_key]]
+        .reset_index()
+        .rename(columns={'index': 'obs_id', batch_key: 'batch_id'})
+    )
+    long = traces_df.merge(batches, on='obs_id', how='left')
 
+    batch_sizes = adata.obs[batch_key].value_counts().to_dict()
+    batch_weights = {b: max(n - 3.0, 0.0) for b, n in batch_sizes.items()}
+
+    per_batch = (
+        long
+        .groupby([protein_id, 'batch_id'], observed=True)
+        .apply(compute_corrs, include_groups=False)
+    )
+
+    if per_batch.empty:
+        per_batch_df = pd.DataFrame(columns=['pepA', 'pepB', 'PCC'])
+        per_batch_df.index = pd.MultiIndex.from_tuples([], names=[protein_id, 'batch_id'])
     else:
-        return corrs
+        per_batch_df = (
+            per_batch
+            .reset_index(level=2, drop=True)
+            .sort_values(['pepA', 'pepB'])
+            .sort_index()
+        )
+
+    # Fisher pooling across batches
+    rows = []
+    for prot, gprot in per_batch_df.reset_index().groupby(protein_id, observed=True, sort=False):
+        for (pa, pb), gp in gprot.groupby(['pepA', 'pepB'], observed=True, sort=False):
+            r = gp['PCC'].to_numpy(dtype=float)
+            bids = gp['batch_id'].to_numpy()
+            r = np.clip(r, -0.999999, 0.999999)
+            z = np.arctanh(r)
+            w = np.array([batch_weights.get(b, 0.0) for b in bids], dtype=float)
+            mask = w > 0
+            if not np.any(mask):
+                continue
+            w = w[mask]; z = z[mask]
+            wsum = float(w.sum())
+            if (mask.sum() >= min_contrib_batches) and (wsum >= min_wsum):
+                # Fixed-effects mean (zbar_fe) and weighted between-batch variance (var_z_between)
+                zbar_fe = float((w * z).sum() / wsum)
+                Q = float((w * (z - zbar_fe) ** 2).sum())
+                var_z_between = Q / wsum
+
+                # Conservative PCC from fixed-effects mean (no DL): shift by var_z_between
+                rhat = float(np.tanh(zbar_fe - var_z_between))
+
+                rows.append((prot, pa, pb, rhat, var_z_between))
+
+    if rows:
+        pooled_df = (
+            pd.DataFrame(rows, columns=[protein_id, 'pepA', 'pepB', 'PCC', 'var_z_between'])
+            .set_index(protein_id)
+            .sort_values(['pepA', 'pepB'])
+            .sort_index()
+        )
+    else:
+        pooled_df = pd.DataFrame(columns=['pepA', 'pepB', 'PCC', 'var_z_between'])
+        pooled_df.index.name = protein_id
+
+    return _finalize(pooled_df, per_batch=per_batch_df)
 
 
 def peptide_dendograms_by_correlation_(
@@ -527,6 +606,16 @@ def proteoform_scores(
     if alpha:
         proteoform_scores.loc[pvals.index, 'is_proteoform'] = rejected.astype(int)
 
+    # --- drop existing score columns before merge (safe for re-runs) ---
+    score_cols = [
+        'proteoform_score',
+        'proteoform_score_z',
+        'proteoform_score_dz',
+        'proteoform_score_pval',
+        'proteoform_score_pval_adj',
+        'is_proteoform',
+    ]
+    var = var.drop(columns=[c for c in score_cols if c in var.columns])
     # Add all new scores to .var
     var_upd = pd.merge(
         var,

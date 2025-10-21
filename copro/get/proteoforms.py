@@ -2,11 +2,19 @@ import pandas as pd
 
 def proteoforms_df(
     adata,
+    proteins=None,
+    only_proteins=False,
     score_threshold=None,
     pval_threshold=None,
     pval_adj_threshold=None,
-    only_proteins=False,
     ):
+
+    if isinstance(proteins, str):
+        proteins = [proteins]
+    elif isinstance(proteins, list):
+        pass
+    else:
+        raise ValueError('arg: proteins, must me str or list of strings')
 
     cols = [
         'protein_id',
@@ -17,7 +25,7 @@ def proteoforms_df(
         'proteoform_score_pval_adj',
         'is_proteoform']
 
-    proteoforms = adata.var[cols].copy()
+    proteoforms = adata.var[adata.var['protein_id'].isin(proteins)][cols].copy()
 
     mask_notna = proteoforms['proteoform_score_pval'].notna()
     proteoforms = proteoforms.loc[mask_notna,]

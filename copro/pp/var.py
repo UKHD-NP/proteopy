@@ -3,13 +3,13 @@ from functools import partial
 import numpy as np
 import pandas as pd
 
-def filter_completeness(
+def filter_axis(
     adata,
     axis,
     min_fraction = None,
     min_nr = None,
-    zero_to_na = False,
     group_by = None,
+    zero_to_na = False,
     inplace = True,
     ):
     '''
@@ -111,11 +111,25 @@ def filter_completeness(
         return adata
 
 filter_obs_completeness = partial(
-    filter_completeness,
+    filter_axis,
     axis=0,
+    min_nr=None,
     )
 
 filter_var_completeness = partial(
-    filter_completeness,
+    filter_axis,
     axis=1,
+    min_nr=None,
+    )
+
+filter_obs_by_min_nr_var = partial(
+    filter_axis,
+    axis=0,
+    min_fraction=None,
+    )
+
+filter_var_by_min_nr_obs = partial(
+    filter_axis,
+    axis=1,
+    min_fraction=None,
     )

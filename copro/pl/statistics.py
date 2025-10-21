@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib as mpl
 
 from .utils import _resolve_color_scheme
 
@@ -116,6 +117,7 @@ def n_detected_var(
     unique_groups = list(cat_index_map.keys())
     colors = _resolve_color_scheme(color_scheme, unique_groups)
     plot_kwargs = {}
+
     if colors is not None:
         color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
         plot_kwargs['color'] = counts[group_by].map(color_map).to_list()

@@ -4,6 +4,7 @@ from .intensities import (
     proteoform_intensities,
     intensity_distribution_per_obs,
     intensity_hist_imputed,
+    cv_distribution,
     )
 from .proteoforms import proteoform_scores
 from .statistics import (

@@ -1,4 +1,7 @@
-from .obs import n_samples_by_category
+from .obs import (
+    n_samples_by_category,
+    obs_correlation_matrix,
+    )
 from .intensities import (
     peptide_intensities,
     proteoform_intensities,

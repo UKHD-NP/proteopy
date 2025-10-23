@@ -249,11 +249,11 @@ def peptides_long_from_df(
 
 
 def peptides_long(
-    filepath: str,
+    intensities: str,
     *,
-    sep: str = "\t",
     filename_annotation: str | None = None,
     peptides_annotation_path: str | None = None,
+    sep: str = "\t",
     fill_na: float | None = None,
     column_map: Dict[str, str] | None = None,
     sort_obs_by_annotation: bool = False,
@@ -262,16 +262,16 @@ def peptides_long(
 
 	Parameters
 	----------
-	filepath :
+	intensities :
 	    Path to a delimited text file containing peptide intensities.
 	filename_annotation :
 	    Optional path to per-filename annotations to be injected into `adata.obs`.
 	peptides_annotation_path :
 	    Optional path to per-peptide annotations merged into `adata.var`.
-	sep :
-	    Delimiter passed to `pandas.read_csv`; defaults to tab for TSV files.
 	fill_na :
 	    Optional replacement value for missing intensity entries.
+	sep :
+	    Delimiter passed to `pandas.read_csv`; defaults to tab for TSV files.
 	column_map :
 	    Optional mapping that specifies custom column names for the keys
 	    ``{"peptide_id", "protein_id", "filename", "intensities"}``.
@@ -284,7 +284,7 @@ def peptides_long(
     AnnData
         Structured representation of the peptide intensities ready for downstream analysis.
     """
-    df = pd.read_csv(filepath, sep=sep)
+    df = pd.read_csv(intensities, sep=sep)
 
     filename_annotation_df = (
         pd.read_csv(filename_annotation, sep=sep) if filename_annotation else None

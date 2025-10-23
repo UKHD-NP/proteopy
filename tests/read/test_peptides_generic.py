@@ -37,16 +37,16 @@ def test_peptides_long_from_df_basic():
     adata = peptides_long_from_df(
         intensities_df,
         filename_annotation_df=filename_annotation_df,
-        peptides_annotation_df=peptides_annotation_df,
+        peptide_annotation_df=peptides_annotation_df,
         fill_na=0.0,
-    )
+        )
 
     assert adata.X.shape == (2, 2)
     np.testing.assert_allclose(
         adata.X,
         np.array([[10.0, 0.0], [1e-8, 5.5]]),
         atol=1e-12,
-    )
+        )
 
     assert adata.obs_names.tolist() == ["sample_a", "sample_b"]
     assert adata.obs["condition"].tolist() == ["control", "treated"]
@@ -70,9 +70,9 @@ def test_peptides_long_basic(tmp_path):
     adata = peptides_long(
         str(intensities_path),
         filename_annotation_path=str(filename_annotation_path),
-        peptides_annotation_path=str(peptide_annotation_path),
+        peptide_annotation_path=str(peptide_annotation_path),
         fill_na=0.0,
-    )
+        )
 
     assert adata.obs_names.tolist() == ["sample_a", "sample_b"]
     assert adata.obs["condition"].tolist() == ["control", "treated"]
@@ -85,4 +85,4 @@ def test_peptides_long_basic(tmp_path):
         adata.X,
         np.array([[10.0, 0.0], [1e-8, 5.5]]),
         atol=1e-12,
-    )
+        )

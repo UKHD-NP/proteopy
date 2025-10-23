@@ -7,19 +7,18 @@ import anndata as ad
 import pandas as pd
 
 
-def peptides_long_from_df(
+def proteins_long_from_df(
     df: pd.DataFrame,
     *,
     filename_annotation_df: pd.DataFrame | None = None,
-    peptide_annotation_df: pd.DataFrame | None = None,
+    protein_annotation_df: pd.DataFrame | None = None,
     fill_na: float | None = None,
     column_map: Dict[str, str] | None = None,
     sort_obs_by_annotation: bool = False,
     ) -> ad.AnnData:
-    """Convert pre-loaded peptide-level tables into an AnnData container."""
-    # Normalise the user-supplied column names to internal canonical labels.
+    """Convert pre-loaded protein-level tables into an AnnData container."""
+
     column_aliases = {
-        "peptide_id": "peptide_id",
         "protein_id": "protein_id",
         "filename": "filename",
         "intensities": "intensities",
@@ -35,36 +34,26 @@ def peptides_long_from_df(
 
     df = df.copy()
 
-    required_actual_columns = {column_aliases[key] for key in column_aliases}
-    missing_columns = required_actual_columns.difference(df.columns)
+    required_columns = {column_aliases[key] for key in column_aliases}
+    missing_columns = required_columns.difference(df.columns)
     if missing_columns:
         raise ValueError(
             "DataFrame is missing required columns: "
             f"{', '.join(sorted(missing_columns))}"
             )
 
-    # Rename columns so downstream logic can rely on canonical labels.
     rename_map_main = {actual: canonical for canonical, actual in column_aliases.items()}
     df = df.rename(columns=rename_map_main)
 
     sample_column = "filename"
-    duplicate_mask = df.duplicated(subset=[sample_column, "peptide_id"])
+    duplicate_mask = df.duplicated(subset=[sample_column, "protein_id"])
     if duplicate_mask.any():
-        duplicated = df.loc[duplicate_mask, [sample_column, "peptide_id"]]
+        duplicated = df.loc[duplicate_mask, [sample_column, "protein_id"]]
         raise ValueError(
-            "Duplicate peptide entries per sample detected: "
+            "Duplicate protein entries per sample detected: "
             f"{duplicated.to_dict(orient='records')}"
             )
 
-    protein_counts = df.groupby("peptide_id")["protein_id"].nunique()
-    inconsistent = protein_counts[protein_counts > 1]
-    if not inconsistent.empty:
-        raise ValueError(
-            "Each peptide_id must map to exactly one protein_id; conflicts for: "
-            f"{', '.join(map(str, inconsistent.index.tolist()))}"
-            )
-
-    # Optionally fill _missing intensity values, keeping original data untouched.
     if fill_na is not None:
         fill_value = float(fill_na)
         df_work = df.copy()
@@ -73,25 +62,17 @@ def peptides_long_from_df(
         df_work = df
 
     default_obs_order = df_work[sample_column].drop_duplicates().tolist()
-    annotation_order = None
+    annotation_order: list[str] | None = None
 
-    # Reshape to samples x peptides matrix.
     intensity_matrix = df_work.pivot(
         index=sample_column,
-        columns="peptide_id",
+        columns="protein_id",
         values="intensities",
         )
     intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
     intensity_matrix.index.name = None
     intensity_matrix.columns.name = None
 
-    peptide_to_protein = (
-        df_work.groupby("peptide_id", sort=False)["protein_id"]
-        .first()
-        .reindex(intensity_matrix.columns)
-        )
-
-    # Build obs with the sample identifier retained as a column.
     obs = pd.DataFrame(index=intensity_matrix.index)
     obs["filename"] = obs.index
 
@@ -125,18 +106,18 @@ def peptides_long_from_df(
         obs_filenames = set(obs["filename"])
         annotation_filenames = set(annotation_df_unique["filename"])
 
-        ignored_annotations_count = len(annotation_filenames.difference(obs_filenames))
-        if ignored_annotations_count:
+        ignored_annotations = len(annotation_filenames.difference(obs_filenames))
+        if ignored_annotations:
             print(
-                f"{ignored_annotations_count} filename entries in the annotation "
-                "file were not present in the intensity table and were ignored."
+                f"{ignored_annotations} filename entries in the annotation file "
+                "were not present in the intensity table and were ignored."
                 )
 
-        missing_annotation_count = len(obs_filenames.difference(annotation_filenames))
-        if missing_annotation_count:
+        missing_annotations = len(obs_filenames.difference(annotation_filenames))
+        if missing_annotations:
             print(
-                f"{missing_annotation_count} filename entries in the intensity "
-                "table did not have a matching annotation."
+                f"{missing_annotations} filename entries in the intensity table "
+                "did not have a matching annotation."
                 )
 
         annotation_order = [
@@ -148,76 +129,74 @@ def peptides_long_from_df(
             annotation_df_unique,
             how="left",
             on="filename",
-            suffixes=("", "_annotation"),
             )
         merged_obs.set_index("_obs_index", inplace=True)
         merged_obs.index.name = None
         obs = merged_obs
 
-    # Initialise var with peptide/protein identifiers.
     var = pd.DataFrame(index=intensity_matrix.columns)
     var.index.name = None
-    var["peptide_id"] = var.index
-    var["protein_id"] = peptide_to_protein.loc[var.index].values
+    var["protein_id"] = var.index
 
-    if peptide_annotation_df is not None:
-        peptide_annotation_df = peptide_annotation_df.copy()
-        rename_map_peptide = {
+    if protein_annotation_df is not None:
+        protein_annotation_df = protein_annotation_df.copy()
+        rename_map_protein = {
             actual: canonical
             for canonical, actual in column_aliases.items()
-            if actual in peptide_annotation_df.columns and canonical != actual
+            if actual in protein_annotation_df.columns and canonical != actual
             }
-        peptide_annotation_df = peptide_annotation_df.rename(columns=rename_map_peptide)
+        protein_annotation_df = protein_annotation_df.rename(
+            columns=rename_map_protein
+            )
 
-        if "peptide_id" not in peptide_annotation_df.columns:
+        if "protein_id" not in protein_annotation_df.columns:
             raise ValueError(
-                "Peptide annotation file is missing the required `peptide_id` column."
+                "Protein annotation file is missing the required `protein_id` column."
                 )
 
-        duplicate_mask = peptide_annotation_df.duplicated(
-            subset=["peptide_id"], keep=False
+        duplicate_mask = protein_annotation_df.duplicated(
+            subset=["protein_id"], keep=False
             )
         if duplicate_mask.any():
-            duplicate_count = peptide_annotation_df.loc[
-                duplicate_mask, "peptide_id"
-            ].nunique()
+            duplicate_count = protein_annotation_df.loc[
+                duplicate_mask, "protein_id"
+                ].nunique()
             warnings.warn(
-                "Duplicate peptide entries found in peptide annotation file; "
-                f"keeping the first occurrence for {duplicate_count} peptides.",
+                "Duplicate protein entries found in protein annotation file; "
+                f"keeping the first occurrence for {duplicate_count} proteins.",
                 UserWarning,
                 )
 
-        peptide_annotation_unique = peptide_annotation_df.drop_duplicates(
-            subset=["peptide_id"], keep="first"
+        protein_annotation_unique = protein_annotation_df.drop_duplicates(
+            subset=["protein_id"], keep="first"
             )
 
-        var_peptides = set(var["peptide_id"])
-        annotation_peptides = set(peptide_annotation_unique["peptide_id"])
+        var_proteins = set(var["protein_id"])
+        annotation_proteins = set(protein_annotation_unique["protein_id"])
 
-        ignored_peptide_annotations = len(
-            annotation_peptides.difference(var_peptides)
+        ignored_protein_annotations = len(
+            annotation_proteins.difference(var_proteins)
             )
-        if ignored_peptide_annotations:
+        if ignored_protein_annotations:
             print(
-                f"{ignored_peptide_annotations} peptide entries in the annotation "
+                f"{ignored_protein_annotations} protein entries in the annotation "
                 "file were not present in the intensity matrix and were ignored."
                 )
 
-        missing_peptide_annotations = len(
-            var_peptides.difference(annotation_peptides)
-        )
-        if missing_peptide_annotations:
+        missing_protein_annotations = len(
+            var_proteins.difference(annotation_proteins)
+            )
+        if missing_protein_annotations:
             print(
-                f"{missing_peptide_annotations} peptide entries in the intensity "
-                "matrix did not have a matching peptide annotation."
+                f"{missing_protein_annotations} protein entries in the intensity "
+                "matrix did not have a matching protein annotation."
                 )
 
         var_reset = var.reset_index().rename(columns={"index": "_var_index"})
         merged_var = var_reset.merge(
-            peptide_annotation_unique,
+            protein_annotation_unique,
             how="left",
-            on="peptide_id",
-            suffixes=("", "_annotation"),
+            on="protein_id",
             )
         merged_var.set_index("_var_index", inplace=True)
         merged_var.index.name = None
@@ -226,7 +205,7 @@ def peptides_long_from_df(
     if sort_obs_by_annotation:
         desired_order = annotation_order or default_obs_order
         seen = set()
-        final_order = []
+        final_order: list[str] = []
         for name in desired_order:
             if name in intensity_matrix.index and name not in seen:
                 final_order.append(name)
@@ -248,61 +227,34 @@ def peptides_long_from_df(
     return adata
 
 
-def peptides_long(
+def proteins_long(
     intensities_path: str,
     *,
-    filename_annotation_path: str | None = None,
-    peptide_annotation_path: str | None = None,
     sep: str = "\t",
+    filename_annotation_path: str | None = None,
+    protein_annotation_path: str | None = None,
     fill_na: float | None = None,
     column_map: Dict[str, str] | None = None,
     sort_obs_by_annotation: bool = False,
     ) -> ad.AnnData:
-    """Read and format peptide-level files into an AnnData container.
-
-	Parameters
-	----------
-	intensities_path : str
-	    Path to a delimited text file containing peptide intensities.
-	filename_annotation_path : str
-	    Optional path to per-filename annotations to be injected into `adata.obs`.
-	peptide_annotation_path : str
-	    Optional path to per-peptide annotations merged into `adata.var`.
-	fill_na :
-	    Optional replacement value for missing intensity entries.
-	sep :
-	    Delimiter passed to `pandas.read_csv`; defaults to tab for TSV files.
-	column_map :
-	    Optional mapping that specifies custom column names for the keys
-	    ``{"peptide_id", "protein_id", "filename", "intensities"}``.
-	sort_obs_by_annotation :
-	    When True, reorder observations to match the order of filenames in the
-	    annotation (if supplied) or the original intensity table.
-
-    Returns
-    -------
-    AnnData
-        Structured representation of the peptide intensities ready for downstream analysis.
-    """
+    """Read protein-level files and delegate to ``proteins_long_from_df``."""
     df = pd.read_csv(intensities_path, sep=sep)
 
     filename_annotation_df = (
         pd.read_csv(filename_annotation_path, sep=sep) if filename_annotation_path else None
         )
 
-    peptide_annotation_df = (
-        pd.read_csv(peptide_annotation_path, sep=sep)
-        if peptide_annotation_path
+    protein_annotation_df = (
+        pd.read_csv(protein_annotation_path, sep=sep)
+        if protein_annotation_path
         else None
         )
 
-    adata = peptides_long_from_df(
+    return proteins_long_from_df(
         df,
         filename_annotation_df=filename_annotation_df,
-        peptide_annotation_df=peptide_annotation_df,
+        protein_annotation_df=protein_annotation_df,
         fill_na=fill_na,
         column_map=column_map,
         sort_obs_by_annotation=sort_obs_by_annotation,
         )
-
-    return adata

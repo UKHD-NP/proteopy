@@ -69,7 +69,7 @@ def test_peptides_long_basic(tmp_path):
 
     adata = peptides_long(
         str(intensities_path),
-        filename_annotation=str(filename_annotation_path),
+        filename_annotation_path=str(filename_annotation_path),
         peptides_annotation_path=str(peptide_annotation_path),
         fill_na=0.0,
     )

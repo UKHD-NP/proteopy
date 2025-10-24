@@ -58,10 +58,10 @@ def quantify_by_var(
         records.append(rec)
 
     var_new = pd.DataFrame.from_records(records).set_index(group_col)
-
     # align var rows to aggregated matrix columns
     var_new = var_new.loc[agg_vals.columns]
     var_new[group_col] = var_new.index
+    var_new.index.name = None  
 
     # --- Rebuild AnnData so X and var change together
     if inplace:

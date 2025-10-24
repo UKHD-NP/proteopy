@@ -26,6 +26,7 @@ def proteoforms_df(
         'proteoform_score_pval_adj',
         'is_proteoform']
 
+    proteins = proteins or adata.var['protein_id'].to_list()
     proteoforms = adata.var[adata.var['protein_id'].isin(proteins)][cols].copy()
 
     if proteins:

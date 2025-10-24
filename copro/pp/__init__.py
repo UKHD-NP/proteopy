@@ -9,6 +9,9 @@ from .var import (
     impute_downshift,
     calculate_groupwise_cv,
     )
-from .peptides import filter_genes_by_peptide_count
+from .peptides import (
+    filter_genes_by_peptide_count,
+    extract_peptide_groups,
+    )   
 from .normalization import normalize_bulk
 from .copro import remove_zero_variance_variables

@@ -8,7 +8,7 @@ import pandas as pd
 
 
 def proteins_long_from_df(
-    df: pd.DataFrame,
+    intensities_df: pd.DataFrame,
     *,
     filename_annotation_df: pd.DataFrame | None = None,
     protein_annotation_df: pd.DataFrame | None = None,
@@ -21,7 +21,7 @@ def proteins_long_from_df(
     column_aliases = {
         "protein_id": "protein_id",
         "filename": "filename",
-        "intensities": "intensities",
+        "intensity": "intensity",
         }
     if column_map:
         unexpected = set(column_map).difference(column_aliases)
@@ -32,7 +32,7 @@ def proteins_long_from_df(
                 )
         column_aliases.update(column_map)
 
-    df = df.copy()
+    df = intensities_df.copy()
 
     required_columns = {column_aliases[key] for key in column_aliases}
     missing_columns = required_columns.difference(df.columns)
@@ -57,7 +57,7 @@ def proteins_long_from_df(
     if fill_na is not None:
         fill_value = float(fill_na)
         df_work = df.copy()
-        df_work["intensities"] = df_work["intensities"].fillna(fill_value)
+        df_work["intensity"] = df_work["intensity"].fillna(fill_value)
     else:
         df_work = df
 
@@ -67,7 +67,7 @@ def proteins_long_from_df(
     intensity_matrix = df_work.pivot(
         index=sample_column,
         columns="protein_id",
-        values="intensities",
+        values="intensity",
         )
     intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
     intensity_matrix.index.name = None

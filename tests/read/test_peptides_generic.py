@@ -7,10 +7,10 @@ from copro.read.peptides_generic import peptides_long, peptides_long_from_df
 def _build_test_frames():
     intensities_df = pd.DataFrame(
         [
-            {"filename": "sample_a", "peptide_id": "pep_1", "protein_id": "prot_1", "intensities": 10.0},
-            {"filename": "sample_a", "peptide_id": "pep_2", "protein_id": "prot_2", "intensities": np.nan},
-            {"filename": "sample_b", "peptide_id": "pep_1", "protein_id": "prot_1", "intensities": 1e-8},
-            {"filename": "sample_b", "peptide_id": "pep_2", "protein_id": "prot_2", "intensities": 5.5},
+            {"filename": "sample_a", "peptide_id": "pep_1", "protein_id": "prot_1", "intensity": 10.0},
+            {"filename": "sample_a", "peptide_id": "pep_2", "protein_id": "prot_2", "intensity": np.nan},
+            {"filename": "sample_b", "peptide_id": "pep_1", "protein_id": "prot_1", "intensity": 1e-8},
+            {"filename": "sample_b", "peptide_id": "pep_2", "protein_id": "prot_2", "intensity": 5.5},
         ]
     )
 

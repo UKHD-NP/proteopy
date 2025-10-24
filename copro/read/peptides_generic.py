@@ -8,7 +8,7 @@ import pandas as pd
 
 
 def peptides_long_from_df(
-    df: pd.DataFrame,
+    intensities_df: pd.DataFrame,
     *,
     filename_annotation_df: pd.DataFrame | None = None,
     peptide_annotation_df: pd.DataFrame | None = None,
@@ -22,7 +22,7 @@ def peptides_long_from_df(
         "peptide_id": "peptide_id",
         "protein_id": "protein_id",
         "filename": "filename",
-        "intensities": "intensities",
+        "intensity": "intensity",
         }
     if column_map:
         unexpected = set(column_map).difference(column_aliases)
@@ -33,7 +33,7 @@ def peptides_long_from_df(
                 )
         column_aliases.update(column_map)
 
-    df = df.copy()
+    df = intensities_df.copy()
 
     required_actual_columns = {column_aliases[key] for key in column_aliases}
     missing_columns = required_actual_columns.difference(df.columns)
@@ -68,7 +68,7 @@ def peptides_long_from_df(
     if fill_na is not None:
         fill_value = float(fill_na)
         df_work = df.copy()
-        df_work["intensities"] = df_work["intensities"].fillna(fill_value)
+        df_work["intensity"] = df_work["intensity"].fillna(fill_value)
     else:
         df_work = df
 
@@ -79,7 +79,7 @@ def peptides_long_from_df(
     intensity_matrix = df_work.pivot(
         index=sample_column,
         columns="peptide_id",
-        values="intensities",
+        values="intensity",
         )
     intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
     intensity_matrix.index.name = None
@@ -274,7 +274,7 @@ def peptides_long(
 	    Delimiter passed to `pandas.read_csv`; defaults to tab for TSV files.
 	column_map :
 	    Optional mapping that specifies custom column names for the keys
-	    ``{"peptide_id", "protein_id", "filename", "intensities"}``.
+	    ``{"peptide_id", "protein_id", "filename", "intensity"}``.
 	sort_obs_by_annotation :
 	    When True, reorder observations to match the order of filenames in the
 	    annotation (if supplied) or the original intensity table.

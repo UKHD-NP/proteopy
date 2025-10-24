@@ -4,6 +4,6 @@ from .peptides_generic import (
     )
 from .proteins_generic import (
     proteins_long,
-    protins_long_from_df,
+    proteins_long_from_df,
     )
 from .diann import diann

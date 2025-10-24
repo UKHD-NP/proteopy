@@ -80,8 +80,10 @@ def peptides_long_from_df(
         index=sample_column,
         columns="peptide_id",
         values="intensity",
-        )
+    )
     intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
+    if fill_na is not None:
+        intensity_matrix = intensity_matrix.fillna(fill_value)
     intensity_matrix.index.name = None
     intensity_matrix.columns.name = None
 
@@ -268,14 +270,14 @@ def peptides_long(
 	    Optional path to per-filename annotations to be injected into `adata.obs`.
 	peptide_annotation_path : str
 	    Optional path to per-peptide annotations merged into `adata.var`.
-	fill_na :
+	fill_na : float
 	    Optional replacement value for missing intensity entries.
-	sep :
+	sep : str
 	    Delimiter passed to `pandas.read_csv`; defaults to tab for TSV files.
-	column_map :
+	column_map : dict
 	    Optional mapping that specifies custom column names for the keys
 	    ``{"peptide_id", "protein_id", "filename", "intensity"}``.
-	sort_obs_by_annotation :
+	sort_obs_by_annotation : bool
 	    When True, reorder observations to match the order of filenames in the
 	    annotation (if supplied) or the original intensity table.
 

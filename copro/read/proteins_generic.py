@@ -68,8 +68,10 @@ def proteins_long_from_df(
         index=sample_column,
         columns="protein_id",
         values="intensity",
-        )
+    )
     intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
+    if fill_na is not None:
+        intensity_matrix = intensity_matrix.fillna(fill_value)
     intensity_matrix.index.name = None
     intensity_matrix.columns.name = None
 

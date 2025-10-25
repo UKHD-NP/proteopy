@@ -176,7 +176,7 @@ def summarize_overlapping_peptides(
     agg_vals = vals.groupby(group_keys, axis=1).sum(min_count=1)  # obs × unique groups
 
     # --- build new var table (aggregate annotations)
-    groups = adata.var.assign(_var_index=adata.var_names).groupby(group_col, sort=True)
+    groups = adata.var.groupby(group_col, sort=True)
     records, group_to_peptide = [], {}
 
     for gkey, df_g in groups:

@@ -35,8 +35,8 @@ def quantify_by_var(
 
     # --- Group columns by group_col and sum (NaN-aware; future-proof syntax)
     group_keys = adata.var[group_col].astype(str)
-    # transpose, group by the grouping Series, sum, then transpose back
-    agg_vals = vals.T.groupby(group_keys).sum(min_count=1).T  # (obs × unique groups)
+    # group columns directly by group_keys and sum (no transpose needed)
+    agg_vals = vals.groupby(group_keys, axis=1).sum(min_count=1)  # (obs × unique groups)
 
     # --- Build new var table (aggregate annotations per group)
     records = []

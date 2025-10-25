@@ -172,8 +172,8 @@ def summarize_overlapping_peptides(
 
     # --- group columns by group_col and sum (NaN-aware; future-proof syntax)
     group_keys = adata.var[group_col].astype(str)
-    vals.columns = group_keys.values
-    agg_vals = vals.groupby(group_keys, axis=1).sum(min_count=1)  # obs × unique groups
+    # vals.columns = group_keys.values  # Removed: do not mutate columns
+    agg_vals = vals.T.groupby(group_keys).sum(min_count=1).T  # obs × unique groups
 
     # --- build new var table (aggregate annotations)
     groups = adata.var.groupby(group_col, sort=True)

@@ -17,8 +17,6 @@ def quantify_by_var(
     ----------
     adata : AnnData
         Input AnnData with .X (obs x vars) and .var annotations.
-    peptide_col : str
-        Name of peptide identifier column (not required; annotations are aggregated generically).
     group_col : str
         Column in adata.var to group by (e.g. 'proteoform_id').
     inplace : bool

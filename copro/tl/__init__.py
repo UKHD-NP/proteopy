@@ -4,3 +4,4 @@ from .copro import (
     peptide_clusters_from_dendograms,
     proteoform_scores,
     )
+from .quantify import quantify_by_var

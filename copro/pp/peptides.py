@@ -1,3 +1,7 @@
+import numpy as np
+import pandas as pd
+import anndata as ad
+
 def filter_genes_by_peptide_count(
     adata,
     min = None,
@@ -30,7 +34,7 @@ def filter_genes_by_peptide_count(
 
 import pandas as pd
 from collections import defaultdict
-from typing import List, Dict
+from typing import Callable, List, Dict, Union
 
 def _group_peptides(peptides: List[str]) -> Dict[str, List[str]]:
     """
@@ -124,3 +128,142 @@ def extract_peptide_groups(
         adata_copy = adata.copy()
         adata_copy.var["peptide_group"] = group_col.values
         return adata_copy
+
+def summarize_overlapping_peptides(
+    adata: ad.AnnData,
+    peptide_col: str = "peptide_id",
+    group_by: str = "peptide_group",
+    layer: str | None = None,
+    func: Union[str, Callable] = "sum",
+    inplace: bool = True,
+):
+    """
+    Aggregate intensities in adata.X across peptides sharing the same `group_col`.
+
+    - Sums intensities in adata.X within each group (NaN-aware).
+    - Uses the longest peptide_id in each group as the new var_name.
+    - Keeps both the representative peptide_id as a column and index.
+    - Retains the grouping key as 'peptide_group'.
+    - Concatenates differing .var annotations using ';'.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Input AnnData object with quantitative data and annotations.
+    peptide_col : str
+        Column in adata.var containing peptide identifiers (or will be created from var_names).
+    group_by : str
+        Column in adata.var specifying grouping (e.g. 'peptide_group' or 'proteoform_id').
+    layer : str | None
+        Optional key in `adata.layers` specifying which matrix to aggregate; defaults to `.X`.
+    func : {'sum', 'mean', 'median', 'max'} | Callable
+        Aggregation applied across peptides in each group.
+    inplace : bool
+        If True, modifies adata in place. Otherwise returns a new AnnData.
+
+    Returns
+    -------
+    AnnData | None
+        Aggregated AnnData if inplace=False, else modifies in place.
+    """
+    # --- safety checks
+    if group_by not in adata.var.columns:
+        raise KeyError(f"'{group_by}' not found in adata.var")
+    if peptide_col not in adata.var.columns:
+        # fallback: use var_names as peptide identifiers
+        adata.var[peptide_col] = adata.var_names.astype(str)
+
+    # --- matrix as DataFrame (obs × vars)
+    vals = pd.DataFrame(
+        adata.layers[layer] if layer is not None else adata.X,
+        index=adata.obs_names,
+        columns=adata.var_names,
+    )
+
+    # --- group columns by group_col and sum (NaN-aware; future-proof syntax)
+    group_keys = adata.var[group_by].astype(str)
+    # vals.columns = group_keys.values  # Removed: do not mutate columns
+    grouped = vals.T.groupby(group_keys, sort=True, observed=True)
+    if isinstance(func, str):
+        if func == "sum":
+            agg_vals = grouped.sum(min_count=1).T
+        elif func == "mean":
+            agg_vals = grouped.mean().T
+        elif func == "median":
+            agg_vals = grouped.median().T
+        elif func == "max":
+            agg_vals = grouped.max().T
+        else:
+            raise ValueError("Unsupported func. Choose from 'sum', 'mean', 'median', or 'max'.")
+    elif callable(func):
+        agg_vals = grouped.aggregate(func).T
+        if isinstance(agg_vals, pd.Series):
+            agg_vals = agg_vals.to_frame().T
+        if not isinstance(agg_vals, pd.DataFrame):
+            raise TypeError("Callable `func` must return a DataFrame or Series per group.")
+    else:
+        raise TypeError("`func` must be either a string identifier or a callable.")
+
+    # --- build new var table (aggregate annotations)
+    groups = adata.var.groupby(group_by, sort=True, observed=True)
+    records, group_to_peptide = [], {}
+
+    for gkey, df_g in groups:
+        # pick longest peptide_id (tie-break lexicographically)
+        longest_pep = sorted(df_g[peptide_col].astype(str), key=lambda s: (-len(s), s))[0]
+        group_to_peptide[str(gkey)] = longest_pep
+
+        rec = {
+            group_by: str(gkey),
+            peptide_col: longest_pep,
+            "n_grouped": len(df_g),
+        }
+
+        # aggregate all other var columns
+        for col in adata.var.columns:
+            if col in (group_by, peptide_col):
+                continue
+            unique_vals = sorted(set(df_g[col].dropna().astype(str)))
+            if len(unique_vals) == 0:
+                rec[col] = np.nan
+            elif len(unique_vals) == 1:
+                rec[col] = unique_vals[0]
+            else:
+                rec[col] = ";".join(unique_vals)
+        records.append(rec)
+
+    var_new = pd.DataFrame.from_records(records).set_index(peptide_col)
+
+    # --- rename aggregated matrix columns from group key → longest peptide
+    agg_vals.columns = [group_to_peptide[k] for k in agg_vals.columns]
+    var_new = var_new.loc[agg_vals.columns]  # ensure same order
+
+    # --- ensure 'peptide_id' column always matches index
+    var_new[peptide_col] = var_new.index
+
+    # --- rebuild AnnData (shape consistency guaranteed)
+    if inplace:
+        adata._init_as_actual(
+            X=agg_vals.values,
+            obs=adata.obs.copy(),
+            var=var_new,
+            uns=adata.uns,
+            obsm=adata.obsm,
+            varm={},     # drop since vars changed
+            varp={},
+            layers={},   # reset layers for safety
+            obsp=adata.obsp if hasattr(adata, "obsp") else None,
+        )
+        adata.var_names = var_new.index
+        return None
+    else:
+        out = ad.AnnData(
+            X=agg_vals.values,
+            obs=adata.obs.copy(),
+            var=var_new.copy(),
+            uns=adata.uns.copy(),
+            obsm=adata.obsm.copy(),
+            obsp=adata.obsp.copy() if hasattr(adata, "obsp") else None,
+        )
+        out.var_names = var_new.index
+        return out

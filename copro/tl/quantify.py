@@ -1,3 +1,4 @@
+from functools import partial
 import numpy as np
 import pandas as pd
 import anndata as ad
@@ -5,7 +6,7 @@ from typing import Callable, Optional, Union
 
 def quantify_by_var(
     adata: ad.AnnData,
-    group_by: str = "proteoform_id",
+    group_by: str = None,
     layer=None,
     func: Union[str, Callable] = "sum",
     inplace: bool = True,
@@ -20,7 +21,7 @@ def quantify_by_var(
     adata : AnnData
         Input AnnData with .X (obs x vars) and .var annotations.
     group_by : str
-        Column in adata.var to group by (e.g. 'proteoform_id').
+        Column in adata.var to group by (e.g. 'protein_id').
     layer : str | None
         Optional key in `adata.layers`; when set, quantification uses that layer
         instead of the default `adata.X`.
@@ -34,7 +35,7 @@ def quantify_by_var(
     AnnData | None
         Aggregated AnnData if inplace=False; otherwise None.
     """
-    if group_by not in adata.var.columns:
+    if group_by is None or group_by not in adata.var.columns:
         raise KeyError(f"'{group_by}' not found in adata.var")
 
     # --- Matrix as DataFrame (obs × vars)
@@ -105,7 +106,7 @@ def quantify_by_var(
             layers={},   # reset layers unless you implement layer aggregation
             obsp=adata.obsp if hasattr(adata, "obsp") else None,
         )
-        adata.var_names = var_new.index  # now group_by (e.g. proteoform_id)
+        adata.var_names = var_new.index
         return None
     else:
         out = ad.AnnData(
@@ -118,3 +119,13 @@ def quantify_by_var(
         )
         out.var_names = var_new.index
         return out
+
+quantify_proteins = partial(
+    quantify_by_var,
+    group_by='protein_id',
+    )
+
+quantify_proteoforms = partial(
+    quantify_by_var,
+    group_by='proteoform_id',
+    )

@@ -235,6 +235,15 @@ vignettes/*.pdf
 # pkgdown site
 docs/
 
+# Sphinx documentation:
+!docs/
+!docs/conf.py
+!docs/*.rst
+!docs/**/*.rst
+!docs/**/*.md
+!docs/Makefile
+!docs/make.bat
+
 # translation temp files
 po/*~
 

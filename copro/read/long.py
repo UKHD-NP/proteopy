@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import warnings
-from typing import Dict
+from typing import Dict, Literal
 
 import anndata as ad
 import pandas as pd
@@ -250,66 +250,6 @@ def peptides_long_from_df(
     return adata
 
 
-def peptides_long(
-    intensities_path: str,
-    *,
-    filename_annotation_path: str | None = None,
-    peptide_annotation_path: str | None = None,
-    sep: str = "\t",
-    fill_na: float | None = None,
-    column_map: Dict[str, str] | None = None,
-    sort_obs_by_annotation: bool = False,
-    ) -> ad.AnnData:
-    """Read and format peptide-level files into an AnnData container.
-
-	Parameters
-	----------
-	intensities_path : str
-	    Path to a delimited text file containing peptide intensities.
-	filename_annotation_path : str
-	    Optional path to per-filename annotations to be injected into `adata.obs`.
-	peptide_annotation_path : str
-	    Optional path to per-peptide annotations merged into `adata.var`.
-	fill_na : float
-	    Optional replacement value for missing intensity entries.
-	sep : str
-	    Delimiter passed to `pandas.read_csv`; defaults to tab for TSV files.
-	column_map : dict
-	    Optional mapping that specifies custom column names for the keys
-	    ``{"peptide_id", "protein_id", "filename", "intensity"}``.
-	sort_obs_by_annotation : bool
-	    When True, reorder observations to match the order of filenames in the
-	    annotation (if supplied) or the original intensity table.
-
-    Returns
-    -------
-    AnnData
-        Structured representation of the peptide intensities ready for downstream analysis.
-    """
-    df = pd.read_csv(intensities_path, sep=sep)
-
-    filename_annotation_df = (
-        pd.read_csv(filename_annotation_path, sep=sep) if filename_annotation_path else None
-        )
-
-    peptide_annotation_df = (
-        pd.read_csv(peptide_annotation_path, sep=sep)
-        if peptide_annotation_path
-        else None
-        )
-
-    adata = peptides_long_from_df(
-        df,
-        filename_annotation_df=filename_annotation_df,
-        peptide_annotation_df=peptide_annotation_df,
-        fill_na=fill_na,
-        column_map=column_map,
-        sort_obs_by_annotation=sort_obs_by_annotation,
-        )
-
-    return adata
-
-
 def proteins_long_from_df(
     intensities_df: pd.DataFrame,
     *,
@@ -532,33 +472,84 @@ def proteins_long_from_df(
     return adata
 
 
-def proteins_long(
+def long(
     intensities_path: str,
     *,
+    level: Literal["peptide", "protein"] | None = None,
     sep: str = "\t",
     filename_annotation_path: str | None = None,
-    protein_annotation_path: str | None = None,
+    annotation_path: str | None = None,
     fill_na: float | None = None,
     column_map: Dict[str, str] | None = None,
     sort_obs_by_annotation: bool = False,
     ) -> ad.AnnData:
-    """Read protein-level files and delegate to ``proteins_long_from_df``."""
+    """Read long-format peptide or protein files into an AnnData container.
+
+    Parameters
+    ----------
+    intensities_path : str
+        Path to a delimited text file containing long-form intensities.
+    level : {"peptide", "protein"}, default None
+        Select whether to process peptide- or protein-level inputs. This argument is required.
+    sep : str, default "\\t"
+        Delimiter passed to `pandas.read_csv`.
+    filename_annotation_path : str, optional
+        Optional path to per-filename annotations to be injected into `adata.obs`.
+    annotation_path : str, optional
+        Optional path to feature-level annotations merged into `adata.var`.
+        The file is interpreted as peptide annotations when `level="peptide"` and as
+        protein annotations when `level="protein"`.
+    fill_na : float, optional
+        Optional replacement value for missing intensity entries.
+    column_map : dict, optional
+        Optional mapping that specifies custom column names for the expected keys.
+    sort_obs_by_annotation : bool, default False
+        When True, reorder observations to match the order of filenames in the
+        annotation (if supplied) or the original intensity table.
+
+    Returns
+    -------
+    AnnData
+        Structured representation of the long-form intensities ready for downstream analysis.
+    """
+    if level is None:
+        raise ValueError("level is required; expected 'peptide' or 'protein'.")
+
+    level_normalised = level.lower()
+    if level_normalised not in {"peptide", "protein"}:
+        raise ValueError(
+            "level must be one of {'peptide', 'protein'}; "
+            f"got {level!r} instead."
+            )
+
     df = pd.read_csv(intensities_path, sep=sep)
 
     filename_annotation_df = (
-        pd.read_csv(filename_annotation_path, sep=sep) if filename_annotation_path else None
-        )
-
-    protein_annotation_df = (
-        pd.read_csv(protein_annotation_path, sep=sep)
-        if protein_annotation_path
+        pd.read_csv(filename_annotation_path, sep=sep)
+        if filename_annotation_path
         else None
         )
+
+    annotation_df = (
+        pd.read_csv(annotation_path, sep=sep)
+        if annotation_path
+        else None
+        )
+
+    if level_normalised == "peptide":
+        return peptides_long_from_df(
+            df,
+            filename_annotation_df=filename_annotation_df,
+            peptide_annotation_df=annotation_df,
+            fill_na=fill_na,
+            column_map=column_map,
+            sort_obs_by_annotation=sort_obs_by_annotation,
+            )
 
     return proteins_long_from_df(
         df,
         filename_annotation_df=filename_annotation_df,
-        protein_annotation_df=protein_annotation_df,
+        protein_annotation_df=annotation_df,
         fill_na=fill_na,
         column_map=column_map,
         sort_obs_by_annotation=sort_obs_by_annotation,

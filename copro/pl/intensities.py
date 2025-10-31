@@ -16,6 +16,7 @@ from scipy import sparse
 from .utils import _resolve_color_scheme
 from copro.pp.var import is_log_transformed
 
+
 def peptide_intensities(
     adata,
     protein_ids=None,
@@ -294,14 +295,13 @@ def peptide_intensities(
     if ax:
         return axes[0] if len(axes) == 1 else axes
 
-
 proteoform_intensities = partial(
     peptide_intensities,
     color = 'proteoform_id',
     )
 
 
-def intensity_distribution_per_obs(
+def intensity_box_per_obs(
     adata,
     group_by=None,
     group_by_order=None,
@@ -425,6 +425,7 @@ def intensity_distribution_per_obs(
         plt.show()
     if ax:
         return _ax
+
 
 def intensity_hist_imputed(
     adata,
@@ -650,125 +651,3 @@ def intensity_hist_imputed(
     if show:
         plt.show()
     return  # nothing returned
-
-def cv_distribution(
-    adata,
-    color_scheme=None,   
-    figsize: tuple = (6, 4),
-    alpha: float = 0.8,
-    hline: float | None = None,
-    show_points: bool = False,
-    point_alpha: float = 0.7,
-    point_size: float = 1,
-    order: list | None = None,
-    group_label_rotation: int | float = 0,
-    show: bool = True,
-    ax: bool = False,
-    save: str | None = None,
-):
-    """
-    Plot violin plots of all 'cv_' columns stored in adata.var,
-    optionally showing all individual variable CVs as points.
-
-    Compatible with Seaborn >= 0.14.
-    """
-
-    # --- find CV columns
-    cv_cols = [c for c in adata.var.columns if c.startswith("cv_")]
-    if not cv_cols:
-        raise ValueError("No 'cv_' columns found in adata.var.")
-
-    # --- reshape data
-    df = adata.var[cv_cols].copy()
-    df_melted = df.melt(var_name="Group", value_name="CV")
-    df_melted["Group"] = df_melted["Group"].str.replace("^cv_", "", regex=True)
-
-    # --- determine order
-    if order is None:
-        order = df_melted["Group"].unique().tolist()
-
-    # --- build palette
-    if color_scheme is None:
-        palette = dict(zip(order, sns.color_palette("Set2", n_colors=len(order))))
-    elif isinstance(color_scheme, (list, tuple)):
-        palette = dict(zip(order, color_scheme))
-    elif isinstance(color_scheme, dict):
-        palette = color_scheme
-    else:
-        raise TypeError(
-            "color_scheme must be None, list/tuple, or dict (e.g. adata.uns['colors_area_short'])."
-        )
-
-    # --- create figure
-    fig, ax_plot = plt.subplots(figsize=figsize, dpi=150)
-
-    # --- plot violins
-    sns.violinplot(
-        data=df_melted,
-        x="Group",
-        y="CV",
-        hue="Group",
-        order=order,
-        palette=palette,
-        cut=0,
-        inner="box",
-        alpha=alpha,
-        legend=False,
-        ax=ax_plot,
-    )
-
-    # --- optionally overlay points
-    if show_points:
-        sns.stripplot(
-            data=df_melted,
-            x="Group",
-            y="CV",
-            order=order,
-            color="black",
-            alpha=point_alpha,
-            size=point_size,
-            jitter=0.2,
-            dodge=False,
-            ax=ax_plot,
-        )
-
-    # --- optional horizontal dashed line
-    if hline is not None:
-        ax_plot.axhline(
-            y=hline,
-            color="black",
-            linestyle="--",
-            linewidth=1,
-            alpha=0.8,
-        )
-        # add annotation for clarity
-        ax_plot.text(
-            x=-0.4,
-            y=hline,
-            s=f"{hline:.2f}",
-            color="black",
-            va="bottom",
-            ha="left",
-            fontsize=8,
-        )
-
-    # --- finalize axes
-    ax_plot.set_xlabel("")
-    ax_plot.set_ylabel("Coefficient of Variation (CV)")
-    for label in ax_plot.get_xticklabels():  # ✅ safe label rotation
-        label.set_rotation(group_label_rotation)
-    ax_plot.set_title("Distribution of CV across groups")
-    sns.despine()
-    plt.tight_layout()
-
-    # --- save figure if requested
-    if save:
-        fig.savefig(save, dpi=300, bbox_inches="tight")
-        print(f"Figure saved to: {save}")
-
-    # --- show or return
-    if show:
-        plt.show()
-
-    if ax:
-        return ax_plot

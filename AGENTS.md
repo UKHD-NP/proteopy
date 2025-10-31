@@ -75,6 +75,8 @@ from tests.utils.helpers import transform_dendogram_r2py  # test helper function
 Avoid prolixity:
  - type checking only in function arguments and function output, not when defining variables.
 
+If the function uses the AnnData.X matrix, functions should always check if it is a scipy.sparse matrix. As a general practice, the matrix will be made non-sparse for its algorithm but if possible sparse operations on the sparse matrix will be used to obtain the same result. If the function modifies the AnnData.X matrix inplace or returns an transformed AnnData matrix and the input was a sparse matrix, it is ensured, that the output AnnData.X matrix is also sparse.
+
 ### Function argument guidelines
 
 General argument guidelines:

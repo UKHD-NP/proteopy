@@ -1,1 +1,4 @@
-from .anndata import sanitize_obs_cols
+from .anndata import (
+    is_proteodata,
+    sanitize_obs_cols,
+    )

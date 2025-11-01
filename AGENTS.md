@@ -14,6 +14,11 @@ Input data for tutorials such as curated datasets, reference proteome and other 
 Sphinx documentation source directory is found in `docs/`.
 Keep new artefacts lightweight and committed with provenance notes.
 
+### Assumptions of data strucutre
+CoPro assumes the following to be able to determine if the query AnnData contains proteomics data:
+ - if the data is a protein-level proteomics dataset, it must contain the .var column `protein_id` which contains the same values and in the same order as the .var index and .var_names.
+ - if the data is a peptide-level proteomics dataset, it must contain the .var columns `peptide_id` and `protein_id`. The `peptide_id` column contains the same values and in the same order as the .var index and .var_names. The `protein_id` are the proteins that the peptides map to. It must be single mapping, so no peptide should map to more than one protein_id.
+
 ### Module structure and function locations 
 
 copro/
@@ -54,6 +59,7 @@ copro/
 │   │   ├── maxquant.py
 │   │   └── fragpipe.py
 │   └── utils: directory containing miscellaneous modules which aid in proteomics data wrangling, transformation and analysis
+│       ├── anndata.py
 │       └── parsers.py
 └── tests: tests mirroring copro directory, file and function structure
 
@@ -75,17 +81,20 @@ from tests.utils.helpers import transform_dendogram_r2py  # test helper function
 Avoid prolixity:
  - type checking only in function arguments and function output, not when defining variables.
 
-If the function uses the AnnData.X matrix, functions should always check if it is a scipy.sparse matrix. As a general practice, the matrix will be made non-sparse for its algorithm but if possible sparse operations on the sparse matrix will be used to obtain the same result. If the function modifies the AnnData.X matrix inplace or returns an transformed AnnData matrix and the input was a sparse matrix, it is ensured, that the output AnnData.X matrix is also sparse.
+### Function guidelines
 
-### Function argument guidelines
+Use the funcion is_proteodata() found in copro/utils/anndata.py to check weather the supplied AnnData object conforms to the proteomics data assumptions for the copro package. The is_proteodata() is called at the beginning of the function and before returning the new anndata or modifying the supplied AnnData inplace.
+As a reminder, the proteomics data assumptions are that:
+ - if the data is a protein-level proteomics dataset, it must contain the .var column `protein_id` which contains the same values and in the same order as the .var index and .var_names.
+ - if the data is a peptide-level proteomics dataset, it must contain the .var columns `peptide_id` and `protein_id`. The `peptide_id` column contains the same values and in the same order as the .var index and .var_names. The `protein_id` are the proteins that the peptides map to. It must be single mapping, so no peptide should map to more than one protein_id.
+
+If the function uses the AnnData.X matrix, always check if it is a scipy.sparse matrix. As a general practice, the matrix will be made non-sparse for its algorithm but if possible sparse operations on the sparse matrix will be used to obtain the same result. If the function modifies the AnnData.X matrix inplace or returns an transformed AnnData matrix and the input was a sparse matrix, it is ensured, that the output AnnData.X matrix is also sparse.
+
 
 General argument guidelines:
  - essential arguments which should be found in all functions unless it does not make sense: 
     adata : AnnData
         Input AnnData with .X (obs x vars) and .var annotations.
-        Default=None (do not include this line in docstrings)
-    group_by : str
-        Column in adata.var to group by (e.g. 'protein_id').
         Default=None (do not include this line in docstrings)
     layer : str | None
         Optional key in `adata.layers`; when set, quantification uses that layer
@@ -100,8 +109,8 @@ General argument guidelines:
     metadata_key : str
         When the function requires a metadata (.obs or .var) key by definition, this argument supplies the column. For example the function batch_correct would require the argument batch_key found in .obs. Replace metadata in metadata_key with the expected type of metadata.
         Default=Depends on the function and convention (do not include this line in docstrings)
-    group_by : str | None
-        Optional: column in .obs or .var to group the data by for the function algorithm.
+    groupby : str
+        Column in AnnData .var or .obs to perform grouping for the function algorithm (e.g. group by sample 'condition' to compute average peptide intensities across observations).
         Default=None (do not include this line in docstrings)
 
 Module-specific function guidelines
@@ -152,15 +161,17 @@ this number. If None, use the internal function defaults.
     groups : list | None
         Restrict plot to particular groups.
         Default=None (do not include this line in docstrings)
+    orderby : str | list | None
+        Categorical .obs or .var column by which to order the observations or variables for plotting.
+        Default=None (do not include this line in docstrings)
     order : str | list | None
-        If `group_by` is None, the order by which to present the obs/vars. If `None` 
-        use the .var_names or .obs_names order, depending on the plot.
+        The order by which to present the observations, variables, or categories. If `orderby` is None and `order` is None, the existing .var_names or .obs_names order will be used. If `orderby` is None and `order` is not None, `order` contains the order by which observations or variables will be plotted. If `orderby` is not None and `order` is None, the unique values in the `sortby` column will be used to plot the the axis. If `sortby` is categorical, the category order will be used, if it is str or object the order of occurance will be used. If `sortby` is not None and `order` is not None, `order` defines the order by which the unique `sortby` column values are plotted in the relevant axis.
         Default=None (do not include this line in docstrings)
-    group_by : str | list | None
-        .obs or .var (depending on the function) by which to group the data for plotting.
-        Default=None (do not include this line in docstrings)
-    group_by_order : str | list | None
-        Order of `group_by` groups for the plotting visualization. By default uses the appearance order if the column type is string, if it is a categorical column use the category order.
+    ascending : bool | None
+        If `order` is None, sort the function relevant axis by a function-relevant
+        metric. For example, if the plotting function computes the average var across
+        obs and plots this in a barplot, sort the obs bars by ascending var average if
+        True, if False sort the obs bars by descending var average.
         Default=None (do not include this line in docstrings)
 
 ### Further relevant files

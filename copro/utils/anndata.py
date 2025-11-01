@@ -1,6 +1,118 @@
-import pandas as pd
-import numpy as np
 import json
+import re
+import warnings
+
+import numpy as np
+import pandas as pd
+from anndata import AnnData
+
+
+def _var_column_matches_axis(adata: AnnData, column: str) -> bool:
+    """Return True when the chosen .var column exactly matches both axis definitions."""
+    if column not in adata.var.columns:
+        return False
+
+    series = adata.var[column]
+    if series.isna().any():
+        return False
+
+    values = series.to_numpy()
+    var_names = adata.var_names.to_numpy()
+    var_index = adata.var.index.to_numpy()
+
+    return np.array_equal(values, var_names) and np.array_equal(values, var_index)
+
+
+def _has_multiple_values_per_cell(
+    series: pd.Series, delimiters: str = " ,;"
+) -> bool:
+    """Return True when any entry contains more than one value separated by delimiters."""
+    if series.isna().any():
+        return True
+
+    tokens = series.astype(str).str.strip()
+    if (tokens == "").any():
+        return True
+
+    pattern = f"[{re.escape(delimiters)}]"
+    return tokens.str.contains(pattern).any()
+
+
+def is_proteodata(
+    adata: AnnData
+    ) -> tuple[bool, str | None]:
+    """
+    Check whether the AnnData object stores peptide- or protein-level proteomics data.
+
+    Parameters
+    ----------
+    adata
+        AnnData object whose `.var` annotations will be inspected.
+
+    Returns
+    -------
+    tuple[bool, str | None]
+        `(True, "peptide")` if the data satisfy the peptide-level assumptions,
+        `(True, "protein")` if they satisfy the protein-level assumptions,
+        otherwise `(False, None)`.
+
+    Notes
+    -----
+    Peptide-level data must provide both `.var["peptide_id"]` and `.var["protein_id"]`.
+    The `peptide_id` column must match `adata.var_names` (and the `.var` index)
+    exactly, and every `protein_id` entry must map to a single protein.
+
+    Protein-level data must provide `.var["protein_id"]`, must *not* contain a
+    `peptide_id` column, and the `protein_id` values must match `adata.var_names`
+    (and the `.var` index) exactly.
+    """
+    if not isinstance(adata, AnnData):
+        raise TypeError("is_proteodata expects an AnnData object.")
+
+    if adata.var is None or adata.var.empty:
+        return False, None
+
+    var = adata.var
+    has_protein_id = "protein_id" in var.columns
+    has_peptide_id = "peptide_id" in var.columns
+
+    if has_peptide_id:
+        if not has_protein_id:
+            raise ValueError(
+                    "Found a 'peptide_id' column but no 'protein_id' column."
+                    "If working at peptide-level, a peptide_id -> protein_id mapping"
+                    "must be included"
+                )
+            return False, None
+
+        if not _var_column_matches_axis(adata, "peptide_id"):
+            raise ValueError(
+                "Found a 'peptide_id' column but it does not match AnnData.var_names. "
+                "If your data are protein-level, please rename or remove the "
+                "'peptide_id' column."
+            )
+
+        if _has_multiple_values_per_cell(var["protein_id"]):
+            warnings.warn(
+                "Detected peptides mapping to multiple proteins. "
+                "Ensure each peptide maps to exactly one protein_id.",
+                stacklevel=2,
+            )
+            return False, None
+
+        return True, "peptide"
+
+    if not has_protein_id:
+        return False, None
+
+    if not _var_column_matches_axis(adata, "protein_id"):
+        raise ValueError(
+            "Found a 'protein_id' column but it does not match AnnData.var_names."
+        )
+        return False, None
+
+    return True, "protein"
+
 
 def sanitize_obs_cols(
     adata,

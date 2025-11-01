@@ -59,12 +59,13 @@ def is_proteodata(
     Notes
     -----
     Peptide-level data must provide both `.var["peptide_id"]` and `.var["protein_id"]`.
-    The `peptide_id` column must match `adata.var_names` (and the `.var` index)
-    exactly, and every `protein_id` entry must map to a single protein.
+    Every `peptide_id` value must be unique, and the column must match
+    `adata.var_names` (and the `.var` index) exactly. Each peptide must map to
+    exactly one `protein_id`.
 
     Protein-level data must provide `.var["protein_id"]`, must *not* contain a
     `peptide_id` column, and the `protein_id` values must match `adata.var_names`
-    (and the `.var` index) exactly.
+    (and the `.var` index) exactly while also being unique.
     """
     if not isinstance(adata, AnnData):
         raise TypeError("is_proteodata expects an AnnData object.")
@@ -92,6 +93,12 @@ def is_proteodata(
                 "'peptide_id' column."
             )
 
+        if not var["peptide_id"].is_unique:
+            raise ValueError(
+                "Found duplicate entries in '.var[\"peptide_id\"]'. "
+                "Peptide identifiers must be distinct."
+            )
+
         if _has_multiple_values_per_cell(var["protein_id"]):
             warnings.warn(
                 "Detected peptides mapping to multiple proteins. "
@@ -110,6 +117,12 @@ def is_proteodata(
             "Found a 'protein_id' column but it does not match AnnData.var_names."
         )
         return False, None
+
+    if not var["protein_id"].is_unique:
+        raise ValueError(
+            "Found duplicate entries in '.var[\"protein_id\"]'. "
+            "Protein identifiers must be distinct."
+        )
 
     return True, "protein"
 

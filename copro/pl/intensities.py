@@ -13,8 +13,8 @@ import math
 import os
 from scipy import sparse 
 
-from .utils import _resolve_color_scheme
-from copro.pp.var import is_log_transformed
+from copro.utils.matplotlib import _resolve_color_scheme
+from copro.utils.array import is_log_transformed
 
 
 def peptide_intensities(

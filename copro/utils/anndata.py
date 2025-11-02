@@ -122,7 +122,7 @@ def _check_uniqueness(adata: AnnData, warn_only: bool = False) -> None:
             shown = ", ".join(map(repr, dups[:10]))
             extra = "" if len(dups) <= 10 else f" … and {len(dups) - 10} more"
             msg = (
-                f"Duplicate {axis_name} names detected: {shown}{extra}. "
+                f"Duplicate names detected in {axis_name} axis: {shown}{extra}. "
                 "Consider calling `.obs_names_make_unique()` or "
                 "`.var_names_make_unique()` (depending on axis) to fix."
             )
@@ -209,7 +209,7 @@ def is_proteodata(
     if adata.var is None or adata.var.empty:
         return False, None
 
-    _check_structure(adata)
+    _check_structure(adata)  # also checks if obs/vars are unique
 
     var = adata.var
     has_protein_id = "protein_id" in var.columns
@@ -231,12 +231,6 @@ def is_proteodata(
                 "'peptide_id' column."
             )
 
-        if not var["peptide_id"].is_unique:
-            raise ValueError(
-                "Found duplicate entries in '.var[\"peptide_id\"]'. "
-                "Peptide identifiers must be distinct."
-            )
-
         if _has_multiple_values_per_cell(var["protein_id"]):
             warnings.warn(
                 "Detected peptides mapping to multiple proteins. "
@@ -255,12 +249,6 @@ def is_proteodata(
             "Found a 'protein_id' column but it does not match AnnData.var_names."
         )
         return False, None
-
-    if not var["protein_id"].is_unique:
-        raise ValueError(
-            "Found duplicate entries in '.var[\"protein_id\"]'. "
-            "Protein identifiers must be distinct."
-        )
 
     return True, "protein"
 

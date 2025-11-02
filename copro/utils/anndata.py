@@ -209,6 +209,8 @@ def is_proteodata(
     if adata.var is None or adata.var.empty:
         return False, None
 
+    _check_structure(adata)
+
     var = adata.var
     has_protein_id = "protein_id" in var.columns
     has_peptide_id = "peptide_id" in var.columns

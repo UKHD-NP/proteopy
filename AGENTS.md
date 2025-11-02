@@ -68,8 +68,31 @@ All public API functions are defined in the respective __init__.py files.
 ## Coding style
 Target Python 3.10–3.11 compatibility, use 4-space indentation, and prefer f-strings for formatting. Follow `snake_case` for functions and variables, `CamelCase` for classes, and `UPPER_CASE` for constants. Keep modules cohesive and add docstrings summarizing inputs/outputs. Follow PEP8 guidelines with exception that the maximum line-length should be 88 characters as per BLACK. Autosave formatting with `flake8` and error-level `pylint` must pass before you push.
 
+Avoid prolixity:
+ - type checking only in function arguments and function output, not when defining variables.
 
-## Coding conventions
+Whenever the content of brackets (parenthesis, square bracket
+```python
+some_function(
+    arg1=arg1,
+    arg2=arg2,
+    arg3=arg3,
+    )
+
+def my_function(
+    arg1,
+    arg2,
+    arg3,
+    ):
+
+raise ValueError(
+    "Line one\n"
+    "Line two\n"
+    "Line three\n"
+    )
+```
+
+## Modules
 All pre-processing (pp), tool (tl) and annotation (ann) functions are performed inplace by default.
 
 Internal modules are called in the following way:
@@ -78,8 +101,7 @@ from copro.copf import pairwise_pepide_correlations  # public API
 from copro.utils.anndata import sanitize_obs  # private API
 from tests.utils.helpers import transform_dendogram_r2py  # test helper functions
 ```
-Avoid prolixity:
- - type checking only in function arguments and function output, not when defining variables.
+### Functions
 
 ### Function guidelines
 

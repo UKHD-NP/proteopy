@@ -369,7 +369,7 @@ def impute_downshift(
 
 def calculate_groupwise_cv(
     adata,
-    groupby: str,
+    group_by: str,
     layer: str | None = None,
     zero_to_na: bool = True,
     min_n: int = 1,
@@ -377,7 +377,7 @@ def calculate_groupwise_cv(
 ):
     """
     Compute the coefficient of variation (CV = std / mean)
-    for each variable (var) within each group defined by adata.obs[groupby].
+    for each variable (var) within each group defined by adata.obs[group_by].
 
     Adds new columns 'cv_<group>' to adata.var.
 
@@ -385,7 +385,7 @@ def calculate_groupwise_cv(
     ----------
     adata : AnnData
         AnnData object containing quantitative data.
-    groupby : str
+    group_by : str
         Column in adata.obs defining groups.
     layer : str or None, optional
         Layer to use for data. If None, uses adata.X.
@@ -414,7 +414,7 @@ def calculate_groupwise_cv(
     if zero_to_na:
         vals = vals.replace(0, np.nan)
 
-    groups = adata.obs[groupby].astype(str)
+    groups = adata.obs[group_by].astype(str)
     group_names = groups.unique()
 
     # --- compute CVs per group

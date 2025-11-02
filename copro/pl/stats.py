@@ -342,7 +342,7 @@ def obs_correlation_matrix(
     adata,
     method: str = "pearson",          # "pearson" or "spearman"
     zero_to_na: bool = False,         # set zeros -> NaN before correlating
-    groupby: str | None = None,       # obs column for sample colors
+    group_by: str | None = None,       # obs column for sample colors
     color_scheme=None,                # list/tuple/dict (e.g. adata.uns['colors_area_short'])
     figsize=(9, 7),
     cmap: str = "coolwarm",
@@ -376,11 +376,11 @@ def obs_correlation_matrix(
     else:
         center_val = float(np.nanmean(A))  # degenerate case
 
-    # ---- optional row/col colors from obs[groupby]
+    # ---- optional row/col colors from obs[group_by]
     row_colors = None
     legend_handles = None
-    if groupby is not None:
-        groups = adata.obs.loc[corr_df.index, groupby]
+    if group_by is not None:
+        groups = adata.obs.loc[corr_df.index, group_by]
         cats = pd.Categorical(groups).categories
 
         # normalize provided color scheme to dict keyed by string labels
@@ -390,7 +390,7 @@ def obs_correlation_matrix(
         elif isinstance(color_scheme, (list, tuple)):
             if len(color_scheme) < len(cats):
                 raise ValueError(
-                    f"color_scheme has {len(color_scheme)} colors but {len(cats)} groups in '{groupby}'"
+                    f"color_scheme has {len(color_scheme)} colors but {len(cats)} groups in '{group_by}'"
                 )
             palette = {str(cat): color_scheme[i] for i, cat in enumerate(cats)}
         elif isinstance(color_scheme, dict):
@@ -429,11 +429,11 @@ def obs_correlation_matrix(
         cbar_kws={"label": f"{method.capitalize()}"},
     )
 
-    # ---- add legend for groupby colors
+    # ---- add legend for group_by colors
     if legend_handles is not None:
         g.ax_heatmap.legend(
             handles=legend_handles,
-            title=groupby,
+            title=group_by,
             bbox_to_anchor=(1.05, 1),
             loc='upper left',
             borderaxespad=0.,

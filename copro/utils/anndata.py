@@ -7,6 +7,142 @@ import pandas as pd
 from anndata import AnnData
 
 
+def _axis_len(a, axis: int = 0) -> int:
+    """
+    returns the length along `axis` using .shape if available,
+    otherwise falls back to len(a).
+    """
+    # Prefer shape if present (numpy, pandas, scipy.sparse, torch, etc.)
+    shape = getattr(a, "shape", None)
+    if shape is not None:
+        try:
+            return int(shape[axis])
+        except Exception:
+            pass
+    # Fallback
+    try:
+        return int(len(a))
+    except Exception as e:
+        raise TypeError(
+            (
+                "Object of type "
+                f"{type(a)!r} does not expose a usable length along axis {axis}."
+            )
+        ) from e
+
+
+def _check_2d_shape(adata: AnnData) -> None:
+    """
+    Ensure .X is 2-dimensional if present.
+    """
+    if adata.X is not None:
+        shp = getattr(adata.X, "shape", ())
+        if len(shp) != 2:
+            raise ValueError(
+                f"X needs to be 2-dimensional, not {len(shp)}-dimensional."
+            )
+
+
+def _check_axis_synchronization(adata: AnnData) -> None:
+    """
+    Ensure obs/var are synchronized with obs_names/var_names and that
+    obsm/varm first dimensions match n_obs/n_vars respectively.
+    """
+    # obs axis
+    if len(adata.obs) != len(adata.obs_names):
+        raise ValueError(
+            (
+                "Length of obs "
+                f"({len(adata.obs)}) does not match length of obs_names "
+                f"({len(adata.obs_names)})."
+            )
+        )
+    if not adata.obs.index.equals(adata.obs_names):
+        raise ValueError("obs.index must exactly match obs_names.")
+
+    # var axis
+    if len(adata.var) != len(adata.var_names):
+        raise ValueError(
+            (
+                "Length of var "
+                f"({len(adata.var)}) does not match length of var_names "
+                f"({len(adata.var_names)})."
+            )
+        )
+    if not adata.var.index.equals(adata.var_names):
+        raise ValueError("var.index must exactly match var_names.")
+
+    # obsm dimensions
+    for key, arr in adata.obsm.items():
+        n0 = _axis_len(arr, 0)
+        if n0 != adata.n_obs:
+            raise ValueError(
+                (
+                    f"obsm['{key}'] must have first dimension equal to "
+                    f"n_obs ({adata.n_obs}), but has {n0}."
+                )
+            )
+
+    # varm dimensions
+    for key, arr in adata.varm.items():
+        n0 = _axis_len(arr, 0)
+        if n0 != adata.n_vars:
+            raise ValueError(
+                (
+                    f"varm['{key}'] must have first dimension equal to "
+                    f"n_vars ({adata.n_vars}), but has {n0}."
+                )
+            )
+
+
+def _check_dimensions(adata: AnnData) -> None:
+    """
+    Composite dimension/index checks for an AnnData object.
+    """
+    _check_2d_shape(adata)
+    _check_axis_synchronization(adata)
+
+
+def _check_uniqueness(adata: AnnData, warn_only: bool = False) -> None:
+    """
+    Check uniqueness of obs/var indices.
+    Raises a ValueError by default if duplicates are found.
+
+    Parameters
+    ----------
+    adata : AnnData
+        The AnnData object to validate.
+    warn_only : bool, optional (default: False)
+        If True, duplicates will only trigger warnings instead of errors.
+    """
+    def _handle_duplicates(axis_name: str, index):
+        dup_mask = index.duplicated()
+        if dup_mask.any():
+            dups = index[dup_mask].unique()
+            shown = ", ".join(map(repr, dups[:10]))
+            extra = "" if len(dups) <= 10 else f" … and {len(dups) - 10} more"
+            msg = (
+                f"Duplicate {axis_name} names detected: {shown}{extra}. "
+                "Consider calling `.obs_names_make_unique()` or "
+                "`.var_names_make_unique()` (depending on axis) to fix."
+            )
+            if warn_only:
+                warnings.warn(msg, UserWarning, stacklevel=2)
+            else:
+                raise ValueError(msg)
+
+    _handle_duplicates("obs", adata.obs.index)
+    _handle_duplicates("var", adata.var.index)
+
+
+def _check_structure(adata: AnnData) -> None:
+    """
+    High-level structure checks for an AnnData object.
+    """
+    _check_uniqueness(adata)
+    _check_dimensions(adata)
+
+
 def _var_column_matches_axis(adata: AnnData, column: str) -> bool:
     """Return True when the chosen .var column exactly matches both axis definitions."""
     if column not in adata.var.columns:

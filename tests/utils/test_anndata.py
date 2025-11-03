@@ -22,8 +22,10 @@ class TestIsProteodata:
         adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=peptides))
         adata.var["peptide_id"] = peptides
 
+        assert is_proteodata(adata) == (False, None)
+
         with pytest.raises(ValueError, match="no 'protein_id' column"):
-            is_proteodata(adata)
+            is_proteodata(adata, raise_error=True)
 
     def test_peptide_id_must_be_unique(self):
         peptides = ["PEP1", "PEP1"]
@@ -45,19 +47,20 @@ class TestIsProteodata:
         adata.var["peptide_id"] = ["PEP1", "PEP_DIFFERENT"]
         adata.var["protein_id"] = ["PROT1", "PROT2"]
 
-        with pytest.raises(ValueError, match="does not match AnnData.var_names"):
-            is_proteodata(adata)
+        assert is_proteodata(adata) == (False, None)
 
-    def test_peptide_multiple_protein_mapping_warns_and_returns_false(self):
+        with pytest.raises(ValueError, match="does not match AnnData.var_names"):
+            is_proteodata(adata, raise_error=True)
+
+    def test_peptide_multiple_protein_mapping_returns_false(self):
         peptides = ["PEP1", "PEP2"]
         adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=peptides))
         adata.var["peptide_id"] = peptides
         adata.var["protein_id"] = ["PROT1;PROT2", "PROT3"]
 
-        with pytest.warns(UserWarning, match="multiple proteins"):
-            result = is_proteodata(adata)
-
-        assert result == (False, None)
+        assert is_proteodata(adata) == (False, None)
+        with pytest.raises(ValueError, match="multiple proteins"):
+            is_proteodata(adata, raise_error=True)
 
     def test_returns_true_for_valid_protein_data(self):
         proteins = ["PROT_A", "PROT_B"]
@@ -72,8 +75,10 @@ class TestIsProteodata:
         adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=proteins))
         adata.var["protein_id"] = ["PROT_A", "PROT_C"]
 
+        assert is_proteodata(adata) == (False, None)
+
         with pytest.raises(ValueError, match="does not match AnnData.var_names"):
-            is_proteodata(adata)
+            is_proteodata(adata, raise_error=True)
 
     def test_protein_id_must_be_unique(self):
         proteins = ["PROT_A", "PROT_A"]

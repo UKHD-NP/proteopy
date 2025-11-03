@@ -1,6 +1,6 @@
 import json
 import re
-import warnings
+from functools import partial
 
 import numpy as np
 import pandas as pd
@@ -175,8 +175,10 @@ def _has_multiple_values_per_cell(
 
 
 def is_proteodata(
-    adata: AnnData
-    ) -> tuple[bool, str | None]:
+    adata: AnnData,
+    *,
+    raise_error: bool = False,
+) -> tuple[bool, str | None]:
     """
     Check whether the AnnData object stores peptide- or protein-level proteomics data.
 
@@ -184,13 +186,16 @@ def is_proteodata(
     ----------
     adata
         AnnData object whose `.var` annotations will be inspected.
+    raise_error
+        If True, raise a ValueError for proteomics-specific validation failures
+        instead of returning False.
 
     Returns
     -------
     tuple[bool, str | None]
         `(True, "peptide")` if the data satisfy the peptide-level assumptions,
         `(True, "protein")` if they satisfy the protein-level assumptions,
-        otherwise `(False, None)`.
+        otherwise `(False, None)` when `raise_error` is False.
 
     Notes
     -----
@@ -202,6 +207,9 @@ def is_proteodata(
     Protein-level data must provide `.var["protein_id"]`, must *not* contain a
     `peptide_id` column, and the `protein_id` values must match `adata.var_names`
     (and the `.var` index) exactly while also being unique.
+
+    Set `raise_error=True` to raise a ValueError instead of returning False when
+    the proteomics-specific validation fails.
     """
     if not isinstance(adata, AnnData):
         raise TypeError("is_proteodata expects an AnnData object.")
@@ -217,26 +225,32 @@ def is_proteodata(
 
     if has_peptide_id:
         if not has_protein_id:
-            raise ValueError(
-                    "Found a 'peptide_id' column but no 'protein_id' column."
-                    "If working at peptide-level, a peptide_id -> protein_id mapping"
-                    "must be included"
-                )
+            msg = (
+                "Found a 'peptide_id' column but no 'protein_id' column. "
+                "If working at peptide-level, a peptide_id -> protein_id mapping "
+                "must be included."
+            )
+            if raise_error:
+                raise ValueError(msg)
             return False, None
 
         if not _var_column_matches_axis(adata, "peptide_id"):
-            raise ValueError(
+            msg = (
                 "Found a 'peptide_id' column but it does not match AnnData.var_names. "
                 "If your data are protein-level, please rename or remove the "
                 "'peptide_id' column."
             )
+            if raise_error:
+                raise ValueError(msg)
+            return False, None
 
         if _has_multiple_values_per_cell(var["protein_id"]):
-            warnings.warn(
+            msg = (
                 "Detected peptides mapping to multiple proteins. "
-                "Ensure each peptide maps to exactly one protein_id.",
-                stacklevel=2,
+                "Ensure each peptide maps to exactly one protein_id."
             )
+            if raise_error:
+                raise ValueError(msg)
             return False, None
 
         return True, "peptide"
@@ -245,12 +259,16 @@ def is_proteodata(
         return False, None
 
     if not _var_column_matches_axis(adata, "protein_id"):
-        raise ValueError(
+        msg = (
             "Found a 'protein_id' column but it does not match AnnData.var_names."
         )
+        if raise_error:
+            raise ValueError(msg)
         return False, None
 
     return True, "protein"
+
+check_proteodata = partial(is_proteodata, raise_error=True)
 
 
 def sanitize_obs_cols(

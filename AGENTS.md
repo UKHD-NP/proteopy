@@ -60,7 +60,47 @@ New assets must remain lightweight and include provenance notes.
   - Use `black` for auto-formatting
 
 ### Style Notes
-Prefer f-strings for string interpolation. Use type hints in function signatures but avoid verbose variable-level type checking.
+Prefer f-strings for string interpolation. Use type hints in function signatures and docstrings but avoid verbose variable-level type checking.
+
+**Example of type hints**
+```python
+import pandas as pd
+some_function(
+    df: pd.DataFrame
+)
+```
+
+**Example of docstrings**
+```python
+def preprocess_data(
+    adata: ad.AnnData,
+    min_proteins: int = 200,
+    min_samples: int = 3,
+    log_transform: bool = True,
+    inplace: True,
+) -> ad.AnnData:
+    """
+    Preprocess an AnnData object by filtering and normalizing cells and genes.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData`
+    min_proteins : int, optional
+        Minimum number of proteins expressed per sample. Samples with fewer proteins
+        are filtered out. Defaults to 200.
+    min_samples : int, optional
+        Minimum number of samples expressing a protein. Proteins detected in fewer
+        samples are removed. Defaults to 3.
+    inplace : bool, optional
+        If False, return a copy of `adata`. Otherwise, modify in place. Defaults to False.
+
+    Returns
+    -------
+    AnnData
+        The filtered and optionally transformed AnnData object.
+```
+
 
 **Example of preferred multi-line formatting:**
 
@@ -103,16 +143,20 @@ from tests.utils.helpers import transform_dendogram_r2py # test helper
 
 #### 1) Validate proteomics assumptions
 Every public function that accepts an `AnnData` must call
-`copro/utils/anndata.py:is_proteodata()` at the beginning and again before returning
+`copro/utils/anndata.py:check_proteodata()` at the beginning and again before returning
 (if a new `AnnData` is returned or the input is modified in-place).
 
-Assumptions enforced by `is_proteodata()`:
+Assumptions enforced by `check_proteodata()`:
 - Protein-level datasets: `.var['protein_id']` must exist and match `.var_names`
   (same values in the same order).
 - Peptide-level datasets: `.var['peptide_id']` and `.var['protein_id']` must exist.
   - `.var['peptide_id']` matches `.var_names` (same values and order).
   - `.var['protein_id']` contains the single-mapped protein for each peptide
     (no peptide maps to multiple proteins).
+
+The helper function is_proteodata can also be useful to detect if the anndata is a
+proteodata dataset and at which level as it returns (bool, str) where the string is
+either 'peptide' or 'protein'. 
 
 #### 2) Handle sparse `.X` consistently
 If a function uses `AnnData.X`:
@@ -129,8 +173,8 @@ from scipy import sparse
 
 def example_fn(adata, *, inplace=True, **kwargs):
     # Validate upfront
-    from copro.utils.anndata import is_proteodata
-    is_proteodata(adata)
+    from copro.utils.anndata import check_proteodata
+    check_proteodata(adata)
 
     X = adata.X
     was_sparse = sparse.issparse(X)
@@ -147,14 +191,14 @@ def example_fn(adata, *, inplace=True, **kwargs):
     if inplace:
         if was_sparse and not sparse.issparse(adata.X):
             adata.X = sparse.csr_matrix(adata.X)
-        is_proteodata(adata)  # validate before returning
+        check_proteodata(adata)  # validate before returning
         return None
     else:
         adata_out = adata.copy()
         # assign X_new to adata_out.X
         if was_sparse and not sparse.issparse(adata_out.X):
             adata_out.X = sparse.csr_matrix(adata_out.X)
-        is_proteodata(adata_out)  # validate before returning
+        check_proteodata(adata_out)  # validate before returning
         return adata_out
 ```
 
@@ -187,8 +231,8 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `show: bool`
   Call plt.show() at the end of the function (default=True).
 
-- `save: bool | str | Path | None`
-  Save the figure: True for a filename, str/Path for a specific path, False/None to skip saving (default=None).  
+- `save: str | Path | None`
+  Save the figure: str/Path for a specific path, None to skip saving (default=None).  
 
 - `ax: bool`
   Return the underlying Matplotlib Axes object instead of displaying the plot (default=None).

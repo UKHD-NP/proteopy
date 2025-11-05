@@ -15,8 +15,11 @@ _GOOGLE_START = re.compile(r"^\s*Args:\s*\Z")
 _REST_PARAM  = lambda name: re.compile(rf"^\s*:param\s+{re.escape(name)}\s*:")
 _REST_TYPE   = lambda name: re.compile(rf"^\s*:type\s+{re.escape(name)}\s*:")
 
-def _numpy_param_re(name):   # e.g. "greeting : str"
-    return re.compile(rf"^(\s*){re.escape(name)}\s*:", re.UNICODE)
+def _numpy_param_re(name):   # e.g. "greeting : str" or just "greeting"
+    return re.compile(
+        rf"^(\s*){re.escape(name)}\s*(?::|\Z)",
+        re.UNICODE,
+    )
 
 def _google_param_re(name):  # e.g. "greeting (str):" or "greeting:"
     return re.compile(rf"^(\s*){re.escape(name)}\s*(\([^)]+\))?\s*:\s*\Z")

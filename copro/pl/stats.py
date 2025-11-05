@@ -1,7 +1,7 @@
 from functools import partial
 import warnings
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Sequence
 
 import numpy as np
 import pandas as pd
@@ -15,6 +15,7 @@ from matplotlib.axes import Axes
 from matplotlib.patches import Patch
 import seaborn as sns
 import matplotlib as mpl
+from matplotlib.ticker import MaxNLocator
 
 from copro.utils.anndata import check_proteodata
 from copro.utils.matplotlib import _resolve_color_scheme
@@ -334,86 +335,216 @@ n_proteins_per_obs = partial(
 
 
 def n_obs_per_category(
-    adata,
-    category_cols,
-    ignore_na=False,
-    sort_by_counts=True,
-    x_label_rotation=45,
-    show=True,
-    save=False,
-    ax=False,
-    color_scheme=None,
-    ):
-    if isinstance(category_cols, str):
-        category_cols = [category_cols]
+    adata: ad.AnnData,
+    category_key: str | Sequence[str],
+    categories: Sequence[Any] | None = None,
+    ignore_na: bool = False,
+    ascending: bool = False,
+    order: Sequence[Any] | None = None,
+    xlabel_rotation: float = 45.0,
+    color_scheme: Any | None = None,
+    figsize: tuple[float, float] = (6.0, 4.0),
+    show: bool = True,
+    save: str | Path | None = None,
+    ax: bool = False,
+) -> Axes | None:
+    """
+    Plot counts of observations per category (optionally stratified).
 
-    first_cat_col = category_cols[0]
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        Annotated data matrix with categorical obs annotations.
+    category_key : str | Sequence[str]
+        One or two column names in ``adata.obs`` used to stratify observations.
+    categories : Sequence[Any] | None
+        Labels from the first category column to display on the x-axis. Rows
+        whose first-column value is not listed are dropped.
+    ignore_na : bool
+        Drop observations with missing labels when ``True``; otherwise, missing
+        values are shown as ``"missing"``.
+    ascending : bool
+        Sort categories by total counts when no explicit order is supplied.
+        ``True`` places lower counts on the left.
+    order : Sequence[Any] | None
+        Explicit order for the x-axis labels (values of the first category
+        column). Any levels not listed are appended afterwards in their intrinsic
+        order. When provided, ``ascending`` is ignored.
+    xlabel_rotation : float
+        Rotation angle (degrees) applied to the x-axis tick labels.
+    color_scheme : Any | None
+        Mapping, sequence, colormap name, or callable used to colour categories.
+    figsize : tuple[float, float]
+        Figure size (width, height) in inches used for
+        :func:`matplotlib.pyplot.subplots`.
+    show : bool
+        Call :func:`matplotlib.pyplot.show` when ``True``.
+    save : str | Path | None
+        Save the figure to the provided path (``str`` or :class:`~pathlib.Path``).
+    ax : bool
+        Return the :class:`~matplotlib.axes.Axes` instead of displaying the plot.
+    """
+    check_proteodata(adata)
 
-    obs = adata.obs[category_cols].copy()
+    if isinstance(category_key, str):
+        category_cols = [category_key]
+    else:
+        category_cols = list(category_key)
+    if not category_cols:
+        raise ValueError("category_key must contain at least one column name.")
+
+    missing_label = "missing"
+    unknown_cols = [col for col in category_cols if col not in adata.obs]
+    if unknown_cols:
+        raise KeyError(
+            "Column(s) missing in adata.obs: "
+            f"{', '.join(map(str, unknown_cols))}."
+        )
+
+    obs = adata.obs.loc[:, category_cols].copy()
 
     for col in category_cols:
         if not (is_string_dtype(obs[col]) or is_categorical_dtype(obs[col])):
-            obs[col] = obs[col].astype(str)
+            obs[col] = obs[col].astype("string")
+        if ignore_na:
+            continue
+        if is_categorical_dtype(obs[col]):
+            if missing_label not in obs[col].cat.categories:
+                obs[col] = obs[col].cat.add_categories([missing_label])
+            obs[col] = obs[col].fillna(missing_label)
+        else:
+            obs[col] = obs[col].fillna(missing_label)
 
-    cats_order = (
-        obs[first_cat_col].cat.categories.tolist()
-        if is_categorical_dtype(obs[first_cat_col])
-        else obs[first_cat_col].unique().tolist()
-        )
+    first_cat_col = category_cols[0]
 
-    for n_col, col in enumerate(category_cols):
-        if not ignore_na and obs[col].isna().any():
-            obs[col] = obs[col].cat.add_categories(['missing'])
-            obs[col] = obs[col].fillna('missing')
+    if ignore_na:
+        obs = obs.dropna(subset=category_cols, how="any")
 
+    first_cat_col = category_cols[0]
 
-    # Plot
+    selected_categories: list[Any] | None = None
+    if categories is not None:
+        if isinstance(categories, (str, bytes)):
+            selected_categories = [categories]
+        else:
+            selected_categories = list(categories)
+        if not selected_categories:
+            raise ValueError("categories must contain at least one label.")
+        mask = obs[first_cat_col].isin(selected_categories)
+        if not mask.any():
+            raise ValueError("No observations match the requested categories.")
+        obs = obs.loc[mask].copy()
+
+    if obs.empty:
+        raise ValueError("No observations available after NA handling.")
+    for col in category_cols:
+        if is_categorical_dtype(obs[col]):
+            obs[col] = obs[col].cat.remove_unused_categories()
+
+    def _ordered_categories(series: pd.Series) -> list[Any]:
+        if is_categorical_dtype(series):
+            ordered = list(series.cat.categories)
+        else:
+            ordered = list(pd.unique(series))
+        if not ignore_na and missing_label in ordered:
+            ordered = [
+                value for value in ordered if value != missing_label
+            ] + [missing_label]
+        return ordered
+
+    first_level_order = _ordered_categories(obs[first_cat_col])
+
+    if selected_categories is not None:
+        first_level_order = [
+            category for category in selected_categories if category in first_level_order
+        ]
+    if order is not None:
+        if isinstance(order, str):
+            specified = [order]
+        else:
+            specified = list(order)
+        unknown_specified = [cat for cat in specified if cat not in first_level_order]
+        if unknown_specified:
+            raise ValueError(
+                "Order values not present in the first category column: "
+                f"{', '.join(map(str, unknown_specified))}."
+            )
+        remaining = [cat for cat in first_level_order if cat not in specified]
+        first_level_order = specified + remaining
+
+    use_count_sort = order is None and selected_categories is None
+
+    fig, _ax = plt.subplots(figsize=figsize)
+
     if len(category_cols) == 1:
-        freq = obs[first_cat_col].value_counts()
+        freq = obs[first_cat_col].value_counts(dropna=False)
 
-        if not sort_by_counts:
-            freq = freq[cats_order]
+        if use_count_sort:
+            freq = freq.sort_values(ascending=ascending)
+        else:
+            freq = freq.reindex(first_level_order, fill_value=0)
+        plot_kwargs: dict[str, Any] = {}
+        if color_scheme is not None:
+            colors = _resolve_color_scheme(color_scheme, freq.index)
+            if colors is not None:
+                plot_kwargs["color"] = colors
 
-        colors = _resolve_color_scheme(color_scheme, freq.index)
-        _ax = freq.plot(kind='bar', color=colors)
+        freq.plot(kind="bar", ax=_ax, **plot_kwargs)
 
     elif len(category_cols) == 2:
-        df = obs.groupby(category_cols, observed=False).size().unstack(fill_value=0)
-
-        if sort_by_counts:
-            new_order = df.sum(axis=1).sort_values(ascending=False).index.tolist()
-            df = df.loc[new_order]
-
+        second_cat_col = category_cols[1]
+        second_level_order = _ordered_categories(obs[second_cat_col])
+        df = (
+            obs.groupby(category_cols, observed=False)
+            .size()
+            .unstack(fill_value=0)
+        )
+        df = df.reindex(first_level_order, fill_value=0)
+        df = df.reindex(columns=second_level_order, fill_value=0)
+        if use_count_sort:
+            df = df.loc[df.sum(axis=1).sort_values(ascending=ascending).index]
         colors = _resolve_color_scheme(color_scheme, df.columns)
-        _ax = df.plot(kind='bar', stacked=True, color=colors)
-        _ax.legend(loc='center right', bbox_to_anchor=(2,0.5))
-        
+        plot_kwargs: dict[str, Any] = {}
+        if colors is not None:
+            plot_kwargs["color"] = colors
+        df.plot(kind="bar", stacked=True, ax=_ax, **plot_kwargs)
+        if df.shape[1] > 1:
+            _ax.legend(loc="center right", bbox_to_anchor=(1.4, 0.5))
     else:
-        print('nr of categories > 2 not implemented yet.')
+        raise NotImplementedError(
+            "Plotting more than two category columns is not implemented."
+        )
 
+    _ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     _ax.set_xlabel(first_cat_col)
     _ax.set_ylabel('#')
 
     ha = (
-        'right' if x_label_rotation > 0
-        else 'left' if x_label_rotation < 0
+        'right' if xlabel_rotation > 0
+        else 'left' if xlabel_rotation < 0
         else 'center'
         )
-    plt.setp(_ax.get_xticklabels(), rotation=x_label_rotation, ha=ha)
+    plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha=ha)
+
+    fig.tight_layout()
+
+    save_path: Path | None = Path(save) if save is not None else None
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
 
     if show:
         plt.show()
-    if save:
-        _ax.figure.savefig(save, dpi=300, bbox_inches='tight')
     if ax:
         return _ax
-    if not show and not save and not ax:
-        warnings.warn((
-            'Function does not do anything. Set at least one argument to True:'
-            ' show, save, ax'
-            ))
 
-# TODO: make a better wrapper
+    if not show and save_path is None and not ax:
+        warnings.warn(
+            "Function does not do anything. Enable `show`, provide a `save` path, "
+            "or set `ax=True`."
+        )
+        plt.close(fig)
+
 n_samples_per_category = n_obs_per_category
 
 

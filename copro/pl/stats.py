@@ -208,14 +208,18 @@ def completeness(
             "Args show, ax and save all set to False, function does nothing.",
         )
 
+docstr_header="Plot a histogram of completeness per variable.\n"
 completeness_per_var = partial_with_docsig(
     completeness,
     axis=0,
+    docstr_header=docstr_header,
     )
 
+docstr_header="Plot a histogram of completeness per observation.\n"
 completeness_per_obs = partial_with_docsig(
     completeness,
     axis=1,
+    docstr_header=docstr_header,
     )
 
 

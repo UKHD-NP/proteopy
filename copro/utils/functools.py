@@ -122,21 +122,52 @@ def _format_fixed_note(fixed_map: Dict[str, object], func_name: str) -> str:
         f"    This function is a partial of `{func_name}`, with the following arguments fixed: {kv}."
     )
 
+def _replace_doc_header(lines, new_header: str):
+    header_text = dedent(new_header).strip()
+    header_lines = header_text.splitlines() if header_text else []
+
+    if not lines:
+        return header_lines
+
+    param_idx = None
+    for idx, line in enumerate(lines):
+        if _NUMPY_START.match(line):
+            param_idx = idx
+            break
+
+    if param_idx is None:
+        return header_lines
+
+    tail = lines[param_idx:]
+    while tail and tail[0].strip() == "":
+        tail = tail[1:]
+
+    if header_lines:
+        return header_lines + [""] + tail
+    return tail
+
 def _prune_docstring(doc: str,
                      fixed_names: Set[str],
                      add_note: bool,
                      fixed_map: Dict[str, object],
-                     func_name: str) -> str:
-    if not doc:
-        note = _format_fixed_note(fixed_map, func_name) if add_note and fixed_map else ""
-        return note.strip()
-
-    lines = dedent(doc).splitlines()
+                     func_name: str,
+                     docstr_header: Optional[str]) -> str:
+    if doc:
+        lines = dedent(doc).splitlines()
+    else:
+        lines = []
 
     # Remove parameter entries for fixed names
-    for name in fixed_names:
-        _remove_numpy_google_param_blocks(lines, name)
-        _remove_rest_param_lines(lines, name)
+    if lines:
+        for name in fixed_names:
+            _remove_numpy_google_param_blocks(lines, name)
+            _remove_rest_param_lines(lines, name)
+
+    if docstr_header is not None:
+        lines = _replace_doc_header(lines, docstr_header)
+
+    if not lines and docstr_header:
+        lines = dedent(docstr_header).strip().splitlines()
 
     # Normalize blank lines
     pruned = []
@@ -180,7 +211,14 @@ def _prune_annotations(ann: Optional[dict], fixed_names: Set[str]) -> Optional[d
 # Public helper
 # -----------------------
 
-def partial_with_docsig(func, /, *args, add_fixed_note: bool = True, **kwargs):
+def partial_with_docsig(
+    func,
+    /,
+    *args,
+    add_fixed_note: bool = True,
+    docstr_header: Optional[str] = None,
+    **kwargs,
+):
     """
     Create a functools.partial that:
       - inherits metadata (__name__, __module__, __qualname__, __wrapped__, etc.)
@@ -197,6 +235,9 @@ def partial_with_docsig(func, /, *args, add_fixed_note: bool = True, **kwargs):
         Positional args to fix.
     add_fixed_note : bool, optional
         Whether to append a note about fixed arguments. Default True.
+    docstr_header : str, optional
+        When provided, replace the original docstring header (up to the
+        Parameters section) with this text.
     **kwargs
         Keyword args to fix.
 
@@ -226,7 +267,8 @@ def partial_with_docsig(func, /, *args, add_fixed_note: bool = True, **kwargs):
         fixed_names,
         add_note=add_fixed_note,
         fixed_map=fixed_map,
-        func_name=getattr(func, "__name__", "<callable>")
+        func_name=getattr(func, "__name__", "<callable>"),
+        docstr_header=docstr_header,
     )
 
     return p

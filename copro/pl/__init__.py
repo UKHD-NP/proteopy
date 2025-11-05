@@ -6,6 +6,7 @@ from .intensities import (
     )
 
 from .stats import (
+    completeness,
     completeness_per_var,
     completeness_per_obs,
     n_obs_per_category,

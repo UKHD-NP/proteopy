@@ -1,67 +1,220 @@
 from functools import partial
 import warnings
+from pathlib import Path
+from typing import Any, Iterable
+
 import numpy as np
 import pandas as pd
+import anndata as ad
 from pandas.api.types import is_string_dtype, is_categorical_dtype
+from scipy import sparse
+from scipy.spatial.distance import squareform
+from scipy.cluster.hierarchy import linkage
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib.patches import Patch
 import seaborn as sns
 import matplotlib as mpl
-from scipy.spatial.distance import squareform
-from scipy.cluster.hierarchy import linkage
 
+from copro.utils.anndata import check_proteodata
 from copro.utils.matplotlib import _resolve_color_scheme
+from copro.utils.functools import partial_with_docsig
 
 
-def completeness_per_axis(
-    adata,
-    axis,
-    zero_to_na = False,
-    show = True,
-    ax = False,
-    save = False,
-    ):
-    '''Histogram of obs or var completeness.
-    Args:
-        axis (int, [0,1]): 0 = obs and 1 = var 
-    '''
-    vals = adata.to_df().copy()
+def completeness(
+    adata: ad.AnnData,
+    axis: int,
+    layer: str | None = None,
+    zero_to_na: bool = False,
+    groups: Iterable[Any] | str | None = None,
+    group_by: str | None = None,
+    xlabel_rotation: float = 0.0,
+    figsize: tuple[float, float] = (6.0, 5.0),
+    show: bool = True,
+    ax: bool = False,
+    save: bool | str | Path | None = False,
+) -> Axes | None:
+    """
+    Plot a histogram of completeness across observations or variables.
 
-    if zero_to_na:
-        vals = vals.replace(0, np.nan)
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` object with proteomics annotations.
+    axis
+        `0` plots completeness per variable, `1` per observation.
+    layer
+        Name of the layer to use instead of `.X`. Defaults to `.X`.
+    zero_to_na
+        Treat zero entries as missing values when True.
+    groups
+        Optional iterable of group labels to include.
+    group_by
+        Column name in `.var` (axis 0) or `.obs` (axis 1) used to stratify
+        completeness into groups. Triggers a boxplot when provided.
+    xlabel_rotation
+        Rotation angle in degrees applied to x-axis tick labels.
+    figsize
+        Tuple ``(width, height)`` controlling figure size in inches.
+    show
+        Display the plot with `plt.show()` when True.
+    ax
+        Return the Matplotlib Axes object instead of displaying the plot.
+    save
+        File path or truthy value to trigger `fig.savefig`.
+    """
+    check_proteodata(adata)
 
-    completeness = vals.count(axis=axis) / adata.shape[axis]
+    if axis not in (0, 1):
+        raise ValueError("`axis` must be either 0 (var) or 1 (obs).")
 
-    fig, _ax = plt.subplots(figsize=(6,5))
+    if layer is None:
+        matrix = adata.X
+    else:
+        if layer not in adata.layers:
+            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+        matrix = adata.layers[layer]
 
-    sns.histplot(
-        completeness,
-        ax=_ax
+    if matrix is None:
+        raise ValueError("Selected matrix is empty; cannot compute completeness.")
+
+    n_obs, n_vars = matrix.shape
+    axis_length = n_obs if axis == 0 else n_vars
+
+    if axis_length == 0:
+        raise ValueError("Cannot compute completeness on empty axis.")
+
+    if sparse.issparse(matrix):
+        matrix_coo = matrix.tocoo()
+        data = matrix_coo.data
+        rows = matrix_coo.row
+        cols = matrix_coo.col
+
+        if zero_to_na:
+            valid_mask = (~np.isnan(data)) & (data != 0)
+            if axis == 0:
+                counts = np.bincount(
+                    cols[valid_mask],
+                    minlength=n_vars,
+                )
+            else:
+                counts = np.bincount(
+                    rows[valid_mask],
+                    minlength=n_obs,
+                )
+        else:
+            nan_mask = np.isnan(data)
+            if axis == 0:
+                nan_counts = np.bincount(
+                    cols[nan_mask],
+                    minlength=n_vars,
+                )
+                counts = n_obs - nan_counts
+            else:
+                nan_counts = np.bincount(
+                    rows[nan_mask],
+                    minlength=n_obs,
+                )
+                counts = n_vars - nan_counts
+    else:
+        values = np.asarray(matrix)
+        valid_mask = ~np.isnan(values)
+        if zero_to_na:
+            valid_mask &= values != 0
+        counts = valid_mask.sum(axis=axis)
+
+    counts = np.asarray(counts, dtype=float)
+    completeness = counts / axis_length
+
+    if axis == 0:
+        index = adata.var_names
+        axis_labels = ("var", "obs")
+        grouping_frame = adata.var
+    else:
+        index = adata.obs_names
+        axis_labels = ("obs", "var")
+        grouping_frame = adata.obs
+
+    completeness_series = pd.Series(completeness, index=index)
+
+    if group_by is None:
+        fig, _ax = plt.subplots(figsize=figsize)
+        sns.histplot(
+            completeness_series,
+            ax=_ax,
         )
-
-    axes = ['var', 'obs']
-    _ax.set_xlabel(
-        f'1 - fraction of missing {axes[1-axis]} per {axes[0-axis]}'
+        _ax.set_xlabel(
+            f"Fraction of non-missing {axis_labels[1]} values per {axis_labels[0]}",
         )
+        plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation)
+    else:
+        if group_by not in grouping_frame.columns:
+            raise KeyError(
+                f"Column '{group_by}' not found in "
+                f"{'.var' if axis == 0 else '.obs'}",
+            )
+        group_series = grouping_frame[group_by].reindex(index, copy=False)
+        plot_df = pd.DataFrame(
+            {
+                "completeness": completeness_series,
+                group_by: group_series,
+            },
+            index=index,
+        )
+        plot_df = plot_df.dropna(subset=[group_by])
+
+        if groups is not None:
+            if isinstance(groups, str):
+                groups = [groups]
+            else:
+                groups = list(groups)
+            plot_df = plot_df[plot_df[group_by].isin(groups)]
+            order = [grp for grp in groups if grp in plot_df[group_by].unique()]
+        else:
+            order = None
+
+        if plot_df.empty:
+            raise ValueError(
+                "No data available for the requested grouping combination.",
+            )
+
+        if isinstance(plot_df[group_by].dtype, pd.CategoricalDtype):
+            plot_df[group_by] = plot_df[group_by].cat.remove_unused_categories()
+            if order is None:
+                order = list(plot_df[group_by].cat.categories)
+
+        fig, _ax = plt.subplots(figsize=figsize)
+        sns.boxplot(
+            data=plot_df,
+            x=group_by,
+            y="completeness",
+            order=order,
+            ax=_ax,
+        )
+        _ax.set_ylabel(
+            f"Fraction of non-missing {axis_labels[1]} values per {axis_labels[0]}",
+        )
+        _ax.set_xlabel(group_by)
+        plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation)
 
     if save:
-        fig.savefig(save, dpi=300, bbox_inches='tight')
+        fig.savefig(save, dpi=300, bbox_inches="tight")
     if show:
         plt.show()
     if ax:
         return _ax
     if not save and not show and not ax:
-        raise ValueError((
-            'Args show, ax and save all set to False, function does nothing.'
-            ))
+        raise ValueError(
+            "Args show, ax and save all set to False, function does nothing.",
+        )
 
-completeness_per_var = partial(
-    completeness_per_axis,
+completeness_per_var = partial_with_docsig(
+    completeness,
     axis=0,
     )
 
-completeness_per_obs = partial(
-    completeness_per_axis,
+completeness_per_obs = partial_with_docsig(
+    completeness,
     axis=1,
     )
 

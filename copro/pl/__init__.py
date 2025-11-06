@@ -13,8 +13,8 @@ from .stats import (
     n_samples_per_category,
     n_peptides_per_obs,
     n_proteins_per_obs,
-    n_peptides_per_gene,
-    n_proteoforms_per_gene,
+    n_peptides_per_protein,
+    n_proteoforms_per_protein,
     cv_by_category,
     obs_correlation_matrix,
     )

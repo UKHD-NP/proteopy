@@ -832,44 +832,154 @@ n_samples_per_category = n_obs_per_category
 
 
 def n_cat1_per_cat2_hist(
-    adata,
-    category_col,
-    entries_col = None,
-    bin_width = None,
-    bin_range = None,
-    ):
-    var = adata.var.copy()
-    cats = [category_col]
+    adata: ad.AnnData,
+    first_category: str,
+    second_category: str,
+    axis: int,
+    bin_width: float | None = None,
+    bin_range: tuple[float, float] | None = None,
+    figsize: tuple[float, float] = (6.0, 4.0),
+    show: bool = True,
+    save: str | Path | None = None,
+    ax: bool = False,
+) -> Axes | None:
+    """
+    Plot the distribution of the number of first-category entries per second
+    category.
 
-    if entries_col:
-        cats.append(entries_col)
-    else:
-        entries_col = 'index'
-        var = var.reset_index()
-        cats.append('index')
+    Parameters
+    ----------
+    adata : AnnData
+        Annotated data matrix.
+    second_category : str
+        Column name identifying the primary category. Resolved from
+        ``adata.obs`` when ``axis == 0`` and ``adata.var`` when ``axis == 1``.
+        Passing ``"index"`` is not supported.
+    first_category : str
+        Column providing the secondary category from the same axis as
+        ``second_category``. Pass ``"index"`` to use ``adata.obs_names`` (``axis
+        == 0``) or ``adata.var_names`` (``axis == 1``).
+    axis : int
+        ``0`` to work on ``adata.obs``, ``1`` to work on ``adata.var``.
+    bin_width : float | None
+        Optional histogram bin width. Must be positive when provided.
+    bin_range : tuple[float, float] | None
+        Optional tuple ``(lower, upper)`` limiting the histogram bins. ``lower``
+        must be strictly smaller than ``upper``.
+    figsize : tuple[float, float]
+        Size (width, height) in inches passed to
+        :func:`matplotlib.pyplot.subplots`.
+    show : bool
+        Call :func:`matplotlib.pyplot.show` when ``True``.
+    save : str | Path | None
+        Save the figure to the provided path when given.
+    ax : bool
+        Return the :class:`~matplotlib.axes.Axes` instance instead of displaying
+        the plot.
+    """
+    check_proteodata(adata)
+    # Ensures that the 'index' has unique values if used
 
-    var = var.drop_duplicates(subset=cats, keep='first')
-    counts = var.groupby(category_col, observed=False).size()
+    if axis not in (0, 1):
+        raise ValueError("axis must be either 0 (.obs) or 1 (.var).")
 
-    sns.histplot(
-        counts,
-        binwidth=bin_width if bin_width else None,
-        binrange=bin_range if bin_range else None,
+    frame = adata.obs if axis == 0 else adata.var
+    frame_label = ".obs" if axis == 0 else ".var"
+
+    if second_category == "index":
+        raise ValueError(
+            "`second_category='index'` is not supported; pass 'index' via "
+            "`first_category` instead."
+        )
+    if second_category not in frame:
+        raise KeyError(
+            f"Column '{second_category}' not found in adata{frame_label}."
+        )
+    if first_category != "index" and first_category not in frame:
+        raise KeyError(
+            f"Column '{first_category}' not found in adata{frame_label}."
         )
 
-    plt.show()
+    if bin_width is not None:
+        if bin_width <= 0:
+            raise ValueError("bin_width must be a positive number.")
+    if bin_range is not None:
+        if (
+            not isinstance(bin_range, tuple)
+            or len(bin_range) != 2
+            or not all(np.isfinite(bin_range))
+        ):
+            raise TypeError(
+                "bin_range must be a tuple of two finite numbers (lower, upper)."
+            )
+        lower, upper = bin_range
+        if lower >= upper:
+            raise ValueError("bin_range lower bound must be less than upper bound.")
 
-n_peptides_per_gene = partial(
-    n_cat1_per_cat2_hist,
-    category_col = 'protein_id',
-    bin_width = 5,
-    )
+    temp_col = "__copro_axis_index__" if first_category == "index" else first_category
+    data = frame[[second_category]].copy()
+    if first_category == "index":
+        index_values = adata.obs_names if axis == 0 else adata.var_names
+        data[temp_col] = index_values
+    else:
+        data[temp_col] = frame[first_category]
+    data = data.drop_duplicates(subset=[second_category, temp_col])
+    counts = data.groupby(second_category, observed=False).size()
 
-n_proteoforms_per_gene = partial(
-    n_cat1_per_cat2_hist,
-    entries_col = 'proteoform_id',
-    category_col = 'protein_id',
+    if counts.empty:
+        raise ValueError(
+            "No entries available to compute counts for the requested categories."
+        )
+
+    fig, _ax = plt.subplots(figsize=figsize)
+    if first_category == "index":
+        entry_label = "observations" if axis == 0 else "variables"
+    else:
+        entry_label = first_category
+    sns.histplot(
+        counts,
+        binwidth=bin_width,
+        binrange=bin_range,
+        ax=_ax,
     )
+    _ax.set_xlabel(f"Number of {entry_label} per {second_category}")
+    _ax.set_ylabel(f"# {second_category}")
+    fig.tight_layout()
+
+    if save is not None:
+        fig.savefig(save, dpi=300, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    if ax:
+        return _ax
+
+    if not show and save is None and not ax:
+        warnings.warn(
+            "Function does not do anything. Enable `show`, provide a `save` path, "
+            "or set `ax=True`."
+        )
+        plt.close(fig)
+
+docstr_header = (
+    "Plot the distribution of the number of first-category entries per second category."
+    )
+n_peptides_per_protein = partial_with_docsig(
+    n_cat1_per_cat2_hist,
+    first_category="peptide_id",
+    second_category="protein_id",
+    axis=1,
+    docstr_header=docstr_header,
+)
+
+n_proteoforms_per_protein = partial_with_docsig(
+    n_cat1_per_cat2_hist,
+    second_category="proteoform_id",
+    first_category="protein_id",
+    axis=1,
+    docstr_header=docstr_header,
+)
 
 
 def cv_by_category(

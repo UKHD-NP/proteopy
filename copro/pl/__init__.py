@@ -15,7 +15,7 @@ from .stats import (
     n_proteins_per_obs,
     n_peptides_per_protein,
     n_proteoforms_per_protein,
-    cv_by_category,
+    cv_by_group,
     obs_correlation_matrix,
     )
 

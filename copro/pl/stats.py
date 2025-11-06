@@ -20,6 +20,7 @@ from matplotlib.ticker import MaxNLocator
 from copro.utils.anndata import check_proteodata, is_proteodata
 from copro.utils.matplotlib import _resolve_color_scheme
 from copro.utils.functools import partial_with_docsig
+from copro.pp.stats import calculate_groupwise_cv
 
 
 def completeness(
@@ -982,32 +983,123 @@ n_proteoforms_per_protein = partial_with_docsig(
 )
 
 
-def cv_by_category(
-    adata,
-    color_scheme=None,   
-    figsize: tuple = (6, 4),
+def cv_by_group(
+    adata: ad.AnnData,
+    group_by: str,
+    layer: str | None = None,
+    zero_to_na: bool = True,
+    min_n: int = 1,
+    order: list | None = None,
+    color_scheme=None,
     alpha: float = 0.8,
     hline: float | None = None,
     show_points: bool = False,
     point_alpha: float = 0.7,
     point_size: float = 1,
-    order: list | None = None,
-    group_label_rotation: int | float = 0,
+    xlabel_rotation: int | float = 0,
+    figsize: tuple[float, float] = (6, 4),
     show: bool = True,
     ax: bool = False,
     save: str | None = None,
 ):
     """
-    Plot violin plots of all 'cv_' columns stored in adata.var,
-    optionally showing all individual variable CVs as points.
+    Compute per-group coefficients of variation and plot their distributions.
 
-    Compatible with Seaborn >= 0.14.
+    Parameters
+    ----------
+    adata : AnnData
+        AnnData object that contains proteomics quantifications.
+    group_by : str
+        Column in ``adata.obs`` used to define observation groups for CV
+        calculation.
+    layer : str or None, optional
+        AnnData layer to read intensities from. Defaults to ``adata.X``.
+    zero_to_na : bool, optional
+        Replace zero values with NaN before computing CVs. Default is ``True``.
+    min_n : int, optional
+        Minimum number of observations per variable required to compute a CV.
+        Variables with fewer non-NaN entries receive NaN. Default is ``1``.
+    order : list or None, optional
+        Explicit order of group labels (without the ``cv_`` prefix) along the
+        x-axis. When ``None`` the observed group order is used.
+    color_scheme : sequence, dict or None, optional
+        Color assignments for groups. When None, uses the Matplotlib default
+        color cycle.
+    alpha : float, optional
+        Transparency for the violin bodies. Default is ``0.8``.
+    hline : float or None, optional
+        If set, draw a horizontal dashed line at this CV value.
+    show_points : bool, optional
+        Overlay individual variable CVs as a strip plot. Default is ``False``.
+    point_alpha : float, optional
+        Opacity for individual points when ``show_points`` is ``True``.
+    point_size : float, optional
+        Size of the individual CV points. Default is ``1``.
+    xlabel_rotation : float, optional
+        Rotation angle (degrees) for the x-axis group labels.
+    figsize : tuple of float, optional
+        Matplotlib figure size in inches. Default is ``(6, 4)``.
+    show : bool, optional
+        Call ``plt.show()`` when ``True``. Default is ``True``.
+    ax : bool, optional
+        Return the Matplotlib Axes if ``True``.
+    save : str or None, optional
+        Path to save the figure. When ``None`` the figure is not saved.
     """
 
-    # --- find CV columns
-    cv_cols = [c for c in adata.var.columns if c.startswith("cv_")]
-    if not cv_cols:
-        raise ValueError("No 'cv_' columns found in adata.var.")
+    check_proteodata(adata)
+
+    if group_by not in adata.obs.columns:
+        raise KeyError(f"Column '{group_by}' not found in adata.obs.")
+    if adata.n_obs == 0:
+        raise ValueError(
+            "AnnData object contains no observations; cannot compute CVs."
+        )
+
+    groups = adata.obs[group_by]
+    if groups.dropna().empty:
+        raise ValueError(
+            f"Column '{group_by}' does not contain any non-missing group labels."
+        )
+    if isinstance(groups.dtype, pd.CategoricalDtype):
+        observed_groups = groups.cat.remove_unused_categories().cat.categories
+        unique_groups = [str(cat) for cat in observed_groups]
+    else:
+        unique_groups = pd.Index(groups.astype(str)).unique().tolist()
+
+    if not unique_groups:
+        raise ValueError(
+            f"Column '{group_by}' does not contain any finite groups."
+        )
+
+    existing_cv_cols = [
+        f"cv_{grp}" for grp in unique_groups if f"cv_{grp}" in adata.var.columns
+    ]
+    if existing_cv_cols:
+        warnings.warn(
+            "Replacing existing CV columns for groups "
+            f"{', '.join(existing_cv_cols)}.",
+            stacklevel=2,
+        )
+
+    calculate_groupwise_cv(
+        adata,
+        group_by=group_by,
+        layer=layer,
+        zero_to_na=zero_to_na,
+        min_n=min_n,
+        inplace=True,
+    )
+
+    cv_cols = [f"cv_{grp}" for grp in unique_groups]
+    missing_cols = [col for col in cv_cols if col not in adata.var.columns]
+    if missing_cols:
+        raise RuntimeError(
+            "Failed to compute CV columns for groups: "
+            f"{', '.join(missing_cols)}."
+        )
+
+    check_proteodata(adata)
 
     # --- reshape data
     df = adata.var[cv_cols].copy()
@@ -1016,19 +1108,21 @@ def cv_by_category(
 
     # --- determine order
     if order is None:
-        order = df_melted["Group"].unique().tolist()
+        order = unique_groups
+    else:
+        missing = [grp for grp in order if grp not in df_melted["Group"].unique()]
+        if missing:
+            raise ValueError(
+                "Requested ordering includes groups with no CV data: "
+                f"{', '.join(missing)}."
+            )
 
     # --- build palette
-    if color_scheme is None:
-        palette = dict(zip(order, sns.color_palette("Set2", n_colors=len(order))))
-    elif isinstance(color_scheme, (list, tuple)):
-        palette = dict(zip(order, color_scheme))
-    elif isinstance(color_scheme, dict):
-        palette = color_scheme
+    resolved_colors = _resolve_color_scheme(color_scheme, order)
+    if resolved_colors is None:
+        palette = None
     else:
-        raise TypeError(
-            "color_scheme must be None, list/tuple, or dict (e.g. adata.uns['colors_area_short'])."
-        )
+        palette = dict(zip(order, resolved_colors))
 
     # --- create figure
     fig, ax_plot = plt.subplots(figsize=figsize, dpi=150)
@@ -1087,10 +1181,12 @@ def cv_by_category(
     ax_plot.set_xlabel("")
     ax_plot.set_ylabel("Coefficient of Variation (CV)")
     for label in ax_plot.get_xticklabels():  # ✅ safe label rotation
-        label.set_rotation(group_label_rotation)
+        label.set_rotation(xlabel_rotation)
     ax_plot.set_title("Distribution of CV across groups")
     sns.despine()
     plt.tight_layout()
+
+    check_proteodata(adata)
 
     # --- save figure if requested
     if save:

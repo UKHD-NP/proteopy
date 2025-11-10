@@ -1,9 +1,12 @@
 import warnings
 from functools import partial
+from typing import Any, Sequence
+
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_categorical_dtype
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Patch
 import seaborn as sns
@@ -11,113 +14,242 @@ import matplotlib as mpl
 import anndata as ad
 import math
 import os
-from scipy import sparse 
+from scipy import sparse
 
+from copro.utils.anndata import check_proteodata
 from copro.utils.matplotlib import _resolve_color_scheme
 from copro.utils.array import is_log_transformed
+from copro.utils.functools import partial_with_docsig
 
 
 def peptide_intensities(
-    adata,
-    protein_ids=None,
-    protein_id_key='protein_id', # Implement
-    group_by=None,
-    group_by_order=None,
-    color=None,
-    log_transform=None,
-    z_transform=False,
-    show_zeros=True,
-    xlab_rotation=0,
-    group_by_label_rotation=0,
-    figsize=(15,6),
-    show=True,
-    save=None,
-    ax=False,
-    color_scheme=None,
-    ):
-    '''
-    Args:
-        log_transform (float, optional): Base for log transformation of the data. 1 will
-            be added to each value before transformation.
-        z_transform (float, optional): Transform values to have 0-mean and 1-variance
-            along the peptide axis. Always uses zeros instead of NaNs if present, even
-            if show_zeros=False.
-        show_zeros (bool, optional): Don't display zeros if False.
-    Returns:
-    '''
+    adata: ad.AnnData,
+    protein_ids: str | Sequence[str] | None = None,
+    order_by: str | None = None,
+    order: Sequence[str] | None = None,
+    color: str | None = None,
+    log_transform: float | None = None,
+    fill_na: float | None = None,
+    z_transform: bool = False,
+    show_zeros: bool = True,
+    xlab_rotation: float = 0,
+    order_by_label_rotation: float = 0,
+    figsize: tuple[float, float] = (15, 6),
+    show: bool = True,
+    save: str | os.PathLike[str] | None = None,
+    ax: bool = False,
+    color_scheme: Any = None,
+) -> Axes | list[Axes] | None:
+    """
+    Plot peptide intensities across samples for the requested proteins.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Proteomics :class:`~anndata.AnnData` object validated via
+        :func:`copro.utils.anndata.check_proteodata`.
+    protein_ids : str | Sequence[str]
+        Protein identifier or iterable of identifiers to plot. Mandatory.
+    order_by : str, optional
+        Column in ``adata.obs`` used to group and order observations on the x-axis.
+        When ``None``, observations follow ``adata.obs_names``.
+    order : Sequence[str], optional
+        Explicit order of groups (when ``order_by`` is set) or observations
+        (when ``order_by`` is ``None``).
+    color : str, optional
+        ``adata.var`` column used for per-peptide coloring.
+    log_transform : float, optional
+        Logarithm base (>0 and !=1). Values are transformed as
+        ``log(value + 1, base)``.
+    fill_na : float, optional
+        Replace missing intensities before zero/log/z transformations when set.
+    z_transform : bool, optional
+        Standardize each peptide across observations after optional log transform.
+        Skips NA.
+    show_zeros : bool, optional
+        Display zero intensities when ``True``; otherwise zeros become ``NaN``.
+    xlab_rotation : float, optional
+        Rotation angle (degrees) applied to x-axis tick labels.
+    order_by_label_rotation : float, optional
+        Rotation angle for the group labels drawn above grouped sections.
+    figsize : tuple[float, float], optional
+        Size of each generated figure passed to :func:`matplotlib.pyplot.subplots`.
+    show : bool, optional
+        Display the generated figure(s) with :func:`matplotlib.pyplot.show`.
+    save : str | os.PathLike, optional
+        Path for saving the figure(s). Multi-protein selections are written to a
+        PDF stack.
+    ax : bool, optional
+        When ``True``, return the underlying Axes objects instead of closing them.
+    color_scheme : Any, optional
+        Palette specification forwarded to
+        :func:`copro.utils.matplotlib._resolve_color_scheme`.
+
+    Returns
+    -------
+    Axes | list[Axes] | None
+        Axes handle(s) when ``ax`` is ``True``; otherwise ``None``.
+    """
 
     # Check input
+    check_proteodata(adata)
+
+    if protein_ids is None:
+        raise ValueError(
+            "peptide_intensities requires at least one protein_id; "
+            "pass a string or an iterable of IDs."
+        )
+
     if isinstance(protein_ids, str):
         protein_ids = [protein_ids]
 
-    assert protein_id_key in adata.var.columns
+    if not protein_ids:
+        raise ValueError("protein_ids cannot be empty.")
 
     # Format input
-    var_cols = [protein_id_key]
+    if log_transform is not None:
+        if log_transform <= 0:
+            raise ValueError("log_transform must be positive.")
+        if log_transform == 1:
+            raise ValueError("log_transform cannot be 1.")
+        log_base = float(log_transform)
+    else:
+        log_base = None
+
+    var_cols = ['protein_id']
 
     if color:
+        if color not in adata.var.columns:
+            raise KeyError(
+                f"Column '{color}' is not present in adata.var; "
+                "peptide coloring must use a .var annotation."
+            )
         var_cols.append(color)
 
     var = adata.var[var_cols].copy()
-    var = var.reset_index().rename(columns={'index': 'var_index'})
+    var = var.reset_index(names='var_index')
+    var = var[var['protein_id'].isin(protein_ids)]
 
-    obs = adata.obs[[group_by]].copy()
-    obs = obs.reset_index().rename(columns={'index': 'obs_index'})
+    selected_vars = var['var_index'].tolist()
+    palette_map = None
 
-    if not is_categorical_dtype(obs[group_by]):
-        obs[group_by] = obs[group_by].astype('category')
+    if color:
+        hue_labels = pd.Series(pd.unique(var[color])).dropna().tolist()
+    else:
+        hue_labels = pd.Series(pd.unique(var['var_index'])).dropna().tolist()
 
-    X = adata.to_df().copy()
+    if hue_labels:
+        palette_values = _resolve_color_scheme(color_scheme, hue_labels)
+        if palette_values:
+            palette_map = dict(zip(hue_labels, palette_values))
 
-    X_zeros = X.copy()  # backup
-    if not show_zeros:
-        X = X.replace(0, np.nan)
+    obs = adata.obs.reset_index(names='obs_index')
 
-    if log_transform:
-        X = X.apply(lambda x: np.log(x+1) / np.log(log_transform))
+    if order_by:
+        if order_by not in obs.columns:
+            raise KeyError(f"'{order_by}' is not present in adata.obs")
 
-    if z_transform:
-        arr_zeros = X_zeros.to_numpy()
-        arr_z = (
-            (arr_zeros - np.mean(arr_zeros, axis=0, keepdims=True)) / 
-            np.std(arr_zeros, axis=0, keepdims=True)
-            )
+        if not is_categorical_dtype(obs[order_by]):
+            obs[order_by] = obs[order_by].astype('category')
 
-        if not show_zeros:
-            arr_z = np.where((arr_zeros == 0) & (arr_z != 0), np.nan, arr_z)
-                         
-        X = pd.DataFrame(arr_z, columns=X.columns, index=X.index)
+        obs = obs[['obs_index', order_by]]
+    else:
+        obs = obs[['obs_index']]
 
-    X = X.reset_index().rename(columns={'index': 'obs_index'})
+    if selected_vars:
+        adata_subset = adata[:, selected_vars]
+        X_matrix = adata_subset.X
+        was_sparse = sparse.issparse(X_matrix)
+        if was_sparse:
+            data_matrix = X_matrix.toarray()
+        else:
+            data_matrix = np.asarray(X_matrix)
+        data_matrix = np.array(data_matrix, dtype=float, copy=True)
+        var_names = list(adata_subset.var_names)
+    else:
+        data_matrix = np.empty((adata.n_obs, 0), dtype=float)
+        var_names = []
 
-    df = X.melt(id_vars='obs_index', var_name='var_index', value_name='intensity')
+    if fill_na is not None:
+        if not np.isfinite(fill_na):
+            raise ValueError("fill_na must be a finite float.")
+        data_matrix = data_matrix.copy()
+        data_matrix[np.isnan(data_matrix)] = float(fill_na)
+
+    zero_mask = data_matrix == 0
+    X_processed = data_matrix.copy()
+
+    if log_base is not None:
+        with np.errstate(divide='ignore', invalid='ignore'):
+            X_processed = np.log1p(X_processed) / np.log(log_base)
+
+    if z_transform and selected_vars:
+        with np.errstate(divide='ignore', invalid='ignore'):
+            arr_mean = np.nanmean(X_processed, axis=0, keepdims=True)
+            arr_std = np.nanstd(X_processed, axis=0, keepdims=True)
+        arr_std[arr_std == 0] = 1.0
+        X_processed = (X_processed - arr_mean) / arr_std
+
+    if not show_zeros and zero_mask.size:
+        X_processed[zero_mask] = np.nan
+
+    expr_df = pd.DataFrame(
+        X_processed,
+        columns=var_names,
+        index=adata.obs_names,
+    )
+
+    expr_df = expr_df.reset_index(names='obs_index')
+
+    df = expr_df.melt(
+        id_vars='obs_index',
+        var_name='var_index',
+        value_name='intensity',
+    )
     df = pd.merge(df, var, on='var_index', how='left')
     df = pd.merge(df, obs, on='obs_index', how='left')
 
-    # Explicitly order the x axis observations to group by group_by
-    if is_categorical_dtype(obs[group_by]):
-        categories = list(obs[group_by].cat.categories)
-    else:
-        categories = list(pd.unique(obs[group_by]))
+    # Explicitly order the x axis observations
+    cat_index_map = {}
+    cats_ordered = []
+    if order_by:
+        if is_categorical_dtype(obs[order_by]):
+            categories = list(obs[order_by].cat.categories)
+        else:
+            categories = list(pd.unique(obs[order_by]))
 
-    cat_index_map = {
-        cat: sorted(obs.loc[obs[group_by] == cat, 'obs_index'].to_list())
-        for cat in categories
-    }
+        cat_index_map = {
+            cat: obs.loc[obs[order_by] == cat, 'obs_index'].to_list()
+            for cat in categories
+        }
 
-    if group_by_order:
+        if order:
+            missing = set(order) - set(cat_index_map)
+            if missing:
+                raise ValueError(
+                    "Items in 'order' are not present in the selected "
+                    f"'{order_by}' categories: {sorted(missing)}"
+                )
+            cats_ordered = order
+        else:
+            cats_ordered = categories
+
         obs_index_ordered = [
             idx
-            for cat in group_by_order
+            for cat in cats_ordered
             for idx in cat_index_map[cat]
-            ]
-
+        ]
     else:
-        obs_index_ordered = [
-            idx
-            for idx_list in cat_index_map.values()
-            for idx in idx_list
-            ]
+        if order:
+            missing = set(order) - set(obs['obs_index'])
+            if missing:
+                raise ValueError(
+                    "Items in 'order' are not present in adata.obs_names: "
+                    f"{sorted(missing)}"
+                )
+            obs_index_ordered = order
+        else:
+            obs_index_ordered = obs['obs_index'].tolist()
 
     df['obs_index'] = pd.Categorical(
         df['obs_index'],
@@ -131,7 +263,7 @@ def peptide_intensities(
         pdf_pages = PdfPages(save_path)
 
     for prot_id in protein_ids:
-        sub_df = df[df[protein_id_key] == prot_id]
+        sub_df = df[df['protein_id'] == prot_id]
         fig, _ax = plt.subplots(figsize=figsize)
 
         if sub_df.empty:
@@ -151,37 +283,35 @@ def peptide_intensities(
 
         else:
 
-            #sub_df = sub_df.sort_values(by=group_by)
+            #sub_df = sub_df.sort_values(by=order_by)
+
+            lineplot_kwargs = dict(
+                data=sub_df,
+                x='obs_index',
+                y='intensity',
+                marker='o',
+                dashes=False,
+                legend='brief',
+                ax=_ax,
+            )
+
+            if palette_map:
+                lineplot_kwargs['palette'] = palette_map
+
+            if order_by:
+                lineplot_kwargs['style'] = order_by
 
             if color:
-                sns.lineplot(
-                    data=sub_df,
-                    x='obs_index',
-                    y='intensity',
+                lineplot_kwargs.update(
                     hue=color,
-                    style=group_by,
                     units='var_index',
                     estimator=None,
                     errorbar=None,
-                    marker='o',
-                    dashes=False,
-                    palette='Set2',
-                    legend='brief',
-                    ax=_ax,
-                    )
+                )
             else:
-                sns.lineplot(
-                    data=sub_df,
-                    x='obs_index',
-                    y='intensity',
-                    hue='var_index',
-                    style=group_by,
-                    marker='o',
-                    dashes=False,
-                    palette='Set2',
-                    legend='brief',
-                    ax=_ax
-                    )
+                lineplot_kwargs.update(hue='var_index')
+
+            sns.lineplot(**lineplot_kwargs)
 
             # Legend
             handles, labels = _ax.get_legend_handles_labels()
@@ -207,51 +337,51 @@ def peptide_intensities(
 
             # Add group separator lines
             obs_idxpos_map = {obs: i for i, obs in enumerate(obs_index_ordered)}
-            cats_ordered = group_by_order if group_by_order else list(cat_index_map.keys())
 
-            for cat in cats_ordered[:-1]:
-                last_obs_in_cat = cat_index_map[cat][-1]
+            if order_by:
+                for cat in cats_ordered[:-1]:
+                    last_obs_in_cat = cat_index_map[cat][-1]
 
-                _ax.axvline(
-                    x=obs_idxpos_map[last_obs_in_cat] + 0.5,
-                    ymin=0.02,
-                    ymax=0.95,
-                    color='#D8D8D8',
-                    linestyle='--'
+                    _ax.axvline(
+                        x=obs_idxpos_map[last_obs_in_cat] + 0.5,
+                        ymin=0.02,
+                        ymax=0.95,
+                        color='#D8D8D8',
+                        linestyle='--'
                     )
 
-            # Add group labels above each group section
-            for cat in cats_ordered:
-                group_obs = cat_index_map[cat]
+                # Add group labels above each group section
+                for cat in cats_ordered:
+                    group_obs = cat_index_map[cat]
 
-                if not group_obs:
-                    continue
+                    if not group_obs:
+                        continue
 
-                # Determine x-axis group regions
-                start = obs_idxpos_map[group_obs[0]]
-                end = obs_idxpos_map[group_obs[-1]]
-                mid = (start + end) / 2
+                    # Determine x-axis group regions
+                    start = obs_idxpos_map[group_obs[0]]
+                    end = obs_idxpos_map[group_obs[-1]]
+                    mid = (start + end) / 2
 
-                rot = group_by_label_rotation if group_by_label_rotation else 0
-                ha_for_rot = 'center' if (rot % 360 == 0) else 'left'
+                    rot = order_by_label_rotation if order_by_label_rotation else 0
+                    ha_for_rot = 'center' if (rot % 360 == 0) else 'left'
 
-                # Determine padded y-axis limits
-                ymax = sub_df['intensity'].max()
-                ymin = sub_df['intensity'].min()
-                ypad_top = (ymax - ymin) * 0.15
-                ypad_bottom = (ymax - ymin) * 0.10
-                _ax.set_ylim(ymin - ypad_bottom, ymax + ypad_top)
+                    # Determine padded y-axis limits
+                    ymax = sub_df['intensity'].max()
+                    ymin = sub_df['intensity'].min()
+                    ypad_top = (ymax - ymin) * 0.15
+                    ypad_bottom = (ymax - ymin) * 0.10
+                    _ax.set_ylim(ymin - ypad_bottom, ymax + ypad_top)
 
-                _ax.text(
-                    x=mid,
-                    y=ymax + ypad_top * 0.4,
-                    s=cat,
-                    ha=ha_for_rot,
-                    va='bottom',
-                    fontsize=12,
-                    fontweight='bold',
-                    rotation=rot,
-                    rotation_mode='anchor',
+                    _ax.text(
+                        x=mid,
+                        y=ymax + ypad_top * 0.4,
+                        s=cat,
+                        ha=ha_for_rot,
+                        va='bottom',
+                        fontsize=12,
+                        fontweight='bold',
+                        rotation=rot,
+                        rotation_mode='anchor',
                     )
  
         plt.xticks(rotation=xlab_rotation, ha='right')
@@ -295,7 +425,11 @@ def peptide_intensities(
     if ax:
         return axes[0] if len(axes) == 1 else axes
 
-proteoform_intensities = partial(
+docstr_header = (
+    "Plot peptide intensities colored by proteoforms across samples for the "
+    "requested proteins."
+    )
+proteoform_peptide_intensities = partial_with_docsig(
     peptide_intensities,
     color = 'proteoform_id',
     )

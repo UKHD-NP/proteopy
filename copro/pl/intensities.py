@@ -538,129 +538,365 @@ proteoform_intensities = partial_with_docsig(
 
 
 def intensity_box_per_obs(
-    adata,
-    group_by=None,
-    group_by_order=None,
-    zero_to_na=False,
-    log_transform = False,
-    z_transform = False,
-    ylabel='Intensity',
-    xlabel_rotation=90,
-    group_by_label_rotation=0,
-    show=True,
-    ax=False,
-    save=False,
-    figsize=(8,5),
-    color_scheme=None,
-    ):
-    
-    df = adata.to_df()
+    adata: ad.AnnData,
+    layer: str | None = None,
+    order_by: str | None = None,
+    order: Sequence[str] | None = None,
+    group_by: str | None = None,
+    zero_to_na: bool = False,
+    fill_na: float | int | None = None,
+    log_transform: float | None = None,
+    z_transform: bool = False,
+    ylabel: str = "Intensity",
+    xlabel_rotation: float = 90,
+    order_by_label_rotation: float = 0,
+    show: bool = True,
+    ax: Axes | None = None,
+    save: str | os.PathLike[str] | None = None,
+    figsize: tuple[float, float] = (8, 5),
+    color_scheme: Any | None = None,
+) -> Axes:
+    """
+    Plot intensity distributions as boxplots, either per observation or pooled
+    by a categorical grouping.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Proteomics :class:`~anndata.AnnData`.
+    layer : str, optional
+        Key in ``adata.layers`` providing the matrix to plot. When ``None``,
+        use ``adata.X``.
+    order_by : str, optional
+        Column in ``adata.obs`` whose categories annotate observation groups in
+        per-observation mode. Mutually exclusive with ``group_by``.
+    order : Sequence[str], optional
+        Explicit order of ``order_by`` categories. When ``group_by`` is
+        provided, these values order the grouped categories on the x-axis.
+    group_by : str, optional
+        Column in ``adata.obs`` used to pool observations into a single box per
+        category. When ``None``, each observation is shown individually.
+    zero_to_na : bool, optional
+        Convert zero intensities to ``NaN`` before other transforms.
+    fill_na : float, optional
+        Replace missing intensities with this value before transformations.
+    log_transform : float, optional
+        Logarithm base (>0 and !=1). Applies ``log(value + 1, base)``.
+    z_transform : bool, optional
+        Standardize intensities per observation after the log transform.
+    ylabel : str, optional
+        Label for the y-axis.
+    xlabel_rotation : float, optional
+        Rotation angle for observation tick labels.
+    order_by_label_rotation : float, optional
+        Rotation angle for the group labels drawn above the axis.
+    show : bool, optional
+        Display the figure when ``True`` and a new axis is created.
+    ax : Axes, optional
+        Axis to draw on. When ``None``, a new figure and axis are created.
+    save : str | os.PathLike, optional
+        Path to save the figure. ``None`` skips saving.
+    figsize : tuple of float, optional
+        Figure size used when creating a new axis.
+    color_scheme : Any, optional
+        Palette forwarded to :func:`copro.utils.matplotlib._resolve_color_scheme`
+        for either grouped categories (``group_by``) or observation-level
+        annotations (``order_by``).
+
+    Returns
+    -------
+    Axes
+        Axis containing the rendered boxplot.
+    """
+
+    check_proteodata(adata)
+
+    if order_by is not None and group_by is not None:
+        raise ValueError("`order_by` and `group_by` cannot be combined.")
+
+    # Validate save target early for clearer error messages
+    if save is not None and not isinstance(save, (str, os.PathLike)):
+        raise TypeError("`save` must be a string, PathLike, or None.")
+
+    # Select the matrix to plot (layer vs X) while preserving dense/sparse inputs
+    if layer is not None:
+        if layer not in adata.layers:
+            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+        Xsrc = adata.layers[layer]
+        X = Xsrc.toarray() if sparse.issparse(Xsrc) else np.asarray(Xsrc, dtype=float)
+        df = pd.DataFrame(X, index=adata.obs_names, columns=adata.var_names)
+    else:
+        df = adata.to_df()
+
+    if zero_to_na and fill_na is not None:
+        raise ValueError("`zero_to_na` and `fill_na` are mutually exclusive.")
+
+    # Optional NA imputation happens before any log or z transforms
+    fill_value: float | None = None
+    if fill_na is not None:
+        if isinstance(fill_na, bool):
+            raise TypeError("fill_na expects a numeric scalar, not boolean.")
+        if not np.isscalar(fill_na):
+            raise TypeError("fill_na must be a scalar numeric value.")
+        fill_value = float(fill_na)
+        df = df.fillna(fill_value)
 
     if zero_to_na:
         df = df.replace(0, np.nan)
 
-    if log_transform:
-        df = df.apply(lambda x: np.log(x+1) / np.log(log_transform))
+    # Apply log and z-scaling sequentially if requested
+    if log_transform is not None:
+        if isinstance(log_transform, bool):
+            raise TypeError("log_transform expects a numeric base, not boolean.")
+        if log_transform <= 0:
+            raise ValueError("log_transform must be positive.")
+        if log_transform == 1:
+            raise ValueError("log_transform cannot be 1.")
+        log_base = float(log_transform)
+        df = np.log1p(df) / np.log(log_base)
 
     if z_transform:
-        df = df.apply(lambda row: (row - row.mean(skipna=True)) / row.std(skipna=True), axis=1)
+        row_means = df.mean(axis=1, skipna=True)
+        row_stds = df.std(axis=1, skipna=True).replace(0, np.nan)
+        df = df.sub(row_means, axis=0).div(row_stds, axis=0)
 
-    df = pd.melt(
-        df.reset_index(names='obs'),
-        id_vars='obs',
-        var_name='var',
-        value_name='intensity'
+    # Long-form table with one row per (obs, var) intensity
+    df_long = (
+        df.assign(obs=df.index)
+        .melt(id_vars="obs", var_name="var", value_name="intensity")
+        .dropna(subset=["intensity"])
     )
-    df = df[~df['intensity'].isna()]
+    if df_long.empty:
+        raise ValueError("No intensities remain after preprocessing; nothing to plot.")
 
-    # Merge group info
-    if group_by and group_by != 'obs':
-        obs = adata.obs[[group_by]].reset_index(names='obs')
-        df = pd.merge(df, obs, on='obs')
-    if group_by == 'obs':
-        df[group_by] = df['obs']
-    if not group_by:
-        group_by = 'all'
-        df[group_by] = 'all'
+    if group_by is not None and group_by != "obs" and group_by not in adata.obs.columns:
+        raise KeyError(
+            f"Column '{group_by}' not found in adata.obs; "
+            "pass a valid metadata column or use group_by='obs'."
+        )
 
-    # Determine x-axis order
-    obs_df = adata.obs.reset_index().rename(columns={'index': 'obs'})
+    obs_index = pd.DataFrame({"obs": adata.obs_names})
 
-    if group_by not in obs_df.columns:
-        obs_df[group_by] = 'all'
+    if group_by:
+        # --- Grouped plotting branch: pool observations per category ---
+        group_df = obs_index.copy()
+        if group_by == "obs":
+            group_df[group_by] = group_df["obs"]
+        else:
+            group_df[group_by] = adata.obs[group_by].reset_index(drop=True)
+        df_long = df_long.merge(group_df, on="obs", how="left")
+        group_series = group_df[group_by]
 
-    if group_by in obs_df.columns and isinstance(obs_df[group_by].dtype, pd.CategoricalDtype):
-        obs_df[group_by] = obs_df[group_by].astype('category')
+        df_long = df_long.dropna(subset=[group_by])
+        if df_long.empty:
+            raise ValueError(
+                "No intensities remain after assigning group_by categories; nothing to plot."
+            )
 
-    if group_by_order:
-        cat_index_map = {cat: sorted(obs_df[obs_df[group_by] == cat]['obs'].to_list())
-                         for cat in group_by_order}
+        if order:
+            ordered_groups = list(dict.fromkeys(order))
+            if is_categorical_dtype(group_series):
+                default_order = list(group_series.cat.categories)
+            else:
+                default_order = group_series.dropna().drop_duplicates().tolist()
+            for cat in default_order:
+                if cat not in ordered_groups:
+                    ordered_groups.append(cat)
+        else:
+            if is_categorical_dtype(group_series):
+                ordered_groups = list(group_series.cat.categories)
+            else:
+                ordered_groups = group_series.dropna().drop_duplicates().tolist()
+
+        ordered_groups = [
+            cat for cat in ordered_groups if cat in df_long[group_by].unique()
+        ]
+        if not ordered_groups:
+            raise ValueError("No group_by categories remain after preprocessing.")
+
+        df_long[group_by] = pd.Categorical(
+            df_long[group_by],
+            categories=ordered_groups,
+            ordered=True,
+        )
+
+        palette_values = None
+        if color_scheme is not None:
+            palette_values = _resolve_color_scheme(color_scheme, ordered_groups)
+        if not palette_values:
+            cmap = mpl.colormaps["Set2"]
+            palette_values = cmap(np.linspace(0, 1, len(ordered_groups))).tolist()
+        palette = dict(zip(ordered_groups, palette_values))
+
+        created_fig = False
+        if ax is None:
+            fig, _ax = plt.subplots(figsize=figsize)
+            created_fig = True
+        else:
+            _ax = ax
+            fig = _ax.figure
+
+        sns.boxplot(
+            data=df_long,
+            x=group_by,
+            y="intensity",
+            hue=group_by,
+            order=ordered_groups,
+            hue_order=ordered_groups,
+            palette=palette,
+            legend=False,
+            flierprops=dict(marker='.', markersize=1),
+            ax=_ax,
+        )
+
+        plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha="right")
+        _ax.set_xlabel(group_by)
+        _ax.set_ylabel(ylabel)
+
+        if created_fig:
+            fig.tight_layout()
+
+        if save is not None:
+            fig.savefig(save, dpi=300, bbox_inches="tight")
+        if show and created_fig:
+            plt.show()
+        return _ax
+
+    # --- Per-observation plotting branch (default) ---
+    order_col = order_by if order_by else "all"
+    order_df = obs_index.copy()
+
+    if order_by:
+        if order_by not in adata.obs.columns:
+            raise KeyError(
+                f"Column '{order_by}' not found in adata.obs; "
+                "pass a valid metadata column."
+            )
+        order_df[order_col] = adata.obs[order_by].reset_index(drop=True)
     else:
-        cat_index_map = {cat: sorted(obs_df[obs_df[group_by] == cat]['obs'].to_list())
-                         for cat in obs_df[group_by].unique()}
+        order_df[order_col] = "all"
 
-    x_ordered = [obs for cat in cat_index_map.values() for obs in cat]
-    df['obs'] = pd.Categorical(df['obs'], categories=x_ordered, ordered=True)
+    if order_by:
+        df_long = df_long.merge(order_df, on="obs", how="left")
+    else:
+        df_long[order_col] = "all"
 
-    # Assign colors per group
-    df[group_by] = df[group_by].astype(str)
+    if df_long[order_col].isna().any():
+        missing_obs = df_long.loc[df_long[order_col].isna(), "obs"].unique()
+        preview = ", ".join(map(str, missing_obs[:5]))
+        suffix = "..." if len(missing_obs) > 5 else ""
+        raise ValueError(
+            f"Missing '{order_col}' annotations for observations: {preview}{suffix}"
+        )
+
+    group_series = order_df[order_col]
+
+    if order:
+        ordered_groups = list(dict.fromkeys(order))
+        if is_categorical_dtype(group_series):
+            default_order = list(group_series.cat.categories)
+        else:
+            default_order = group_series.drop_duplicates().tolist()
+        for cat in default_order:
+            if cat not in ordered_groups:
+                ordered_groups.append(cat)
+    else:
+        if is_categorical_dtype(group_series):
+            ordered_groups = list(group_series.cat.categories)
+        else:
+            ordered_groups = group_series.drop_duplicates().tolist()
+
+    def _obs_in_category(category):
+        mask = group_series == category
+        return order_df.loc[mask, "obs"].tolist()
+
+    cat_index_map = {cat: _obs_in_category(cat) for cat in ordered_groups}
+
+    available_obs = set(df_long["obs"])
+    filtered_map: dict[Any, list[Any]] = {}
+    for cat, obs_list in cat_index_map.items():
+        pruned = [obs for obs in obs_list if obs in available_obs]
+        if pruned:
+            filtered_map[cat] = pruned
+    cat_index_map = filtered_map
+
+    if not cat_index_map:
+        raise ValueError("No observations remain after preprocessing; nothing to plot.")
+
+    x_ordered = [obs for obs_list in cat_index_map.values() for obs in obs_list]
+    df_long["obs"] = pd.Categorical(df_long["obs"], categories=x_ordered, ordered=True)
+
     unique_groups = list(cat_index_map.keys())
-    if group_by!= 'all':
+    if order_col != "all":
+        colors = None
         if color_scheme is not None:
             colors = _resolve_color_scheme(color_scheme, unique_groups)
-        else:
-            colors = mpl.colormaps['Set2'](range(len(unique_groups))).tolist()
-        color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
+        if not colors:
+            colors = mpl.colormaps["Set2"](np.linspace(0, 1, len(unique_groups))).tolist()
+        color_map = {grp: colors[i] for i, grp in enumerate(unique_groups)}
     else:
-        color_map = {'all': 'C0'}
+        color_map = {"all": "C0"}
 
-    sample_palette = {obs: color_map[df.loc[df['obs'] == obs, group_by].iloc[0]] for obs in x_ordered}
+    sample_palette: dict[Any, Any] = {}
+    for obs in x_ordered:
+        group_val = df_long.loc[df_long["obs"] == obs, order_col]
+        if group_val.empty:
+            continue
+        color_key = group_val.iloc[0]
+        sample_palette[obs] = color_map[color_key]
 
-    fig, _ax = plt.subplots(figsize=figsize)
+    created_fig = False
+    if ax is None:
+        fig, _ax = plt.subplots(figsize=figsize)
+        created_fig = True
+    else:
+        _ax = ax
+        fig = _ax.figure
+
     sns.boxplot(
-        data=df,
-        x='obs',
-        hue='obs',
-        y='intensity',
+        data=df_long,
+        x="obs",
+        y="intensity",
+        hue="obs",
+        order=x_ordered,
+        hue_order=x_ordered,
         palette=sample_palette,
-        ax=_ax
+        flierprops=dict(marker='.', markersize=1),
+        ax=_ax,
     )
 
     if _ax.get_legend() is not None:
         _ax.get_legend().remove()
 
-    plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha='right')
-    _ax.set_xlabel('')
+    plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha="right")
+    _ax.set_xlabel("")
     _ax.set_ylabel(ylabel)
 
-    # Add group labels above groups
     obs_idx_map = {obs: i for i, obs in enumerate(x_ordered)}
-    ymax = df['intensity'].max()
+    ymax = df_long["intensity"].max()
     for cat, obs_list in cat_index_map.items():
-        if not obs_list:
-            continue
         start_idx = obs_idx_map[obs_list[0]]
         end_idx = obs_idx_map[obs_list[-1]]
         mid_idx = (start_idx + end_idx) / 2
         _ax.text(
             x=mid_idx,
             y=ymax * 1.05,
-            s=cat,
-            ha='center',
-            va='bottom',
+            s=str(cat),
+            ha="center",
+            va="bottom",
             fontsize=12,
-            fontweight='bold',
-            rotation=group_by_label_rotation
+            fontweight="bold",
+            rotation=order_by_label_rotation,
         )
 
-    plt.tight_layout()
+    if created_fig:
+        fig.tight_layout()
 
-    if save:
-        fig.savefig(save, dpi=300, bbox_inches='tight')
-    if show:
+    if save is not None:
+        fig.savefig(save, dpi=300, bbox_inches="tight")
+    if show and created_fig:
         plt.show()
-    if ax:
-        return _ax
+    return _ax
 
 
 def intensity_hist_imputed(

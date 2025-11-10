@@ -1202,28 +1202,116 @@ def cv_by_group(
 
 
 def obs_correlation_matrix(
-    adata,
-    method: str = "pearson",          # "pearson" or "spearman"
-    zero_to_na: bool = False,         # set zeros -> NaN before correlating
-    group_by: str | None = None,       # obs column for sample colors
-    color_scheme=None,                # list/tuple/dict (e.g. adata.uns['colors_area_short'])
-    figsize=(9, 7),
+    adata: ad.AnnData,
+    method: str = "pearson",
+    zero_to_na: bool = False,
+    layer: str | None = None,
+    fill_na: float | None = None,
+    margin_color: str | None = None,
+    color_scheme=None,
     cmap: str = "coolwarm",
     linkage_method: str = "average",
     xticklabels: bool = False,
     yticklabels: bool = False,
+    figsize: tuple[float, float] = (9.0, 7.0),
     show: bool = True,
     ax: bool = False,
-    save: str | None = None,
-):
+    save: str | Path | None = None,
+) -> Axes | None:
     """
-    Compute obs×obs correlations from adata.X and plot a clustered heatmap,
-    with the colormap centered at the off-diagonal mean correlation.
+    Plot a clustered correlation heatmap across observations.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` with proteomics annotations.
+    method : str
+        Correlation estimator passed to :meth:`pandas.DataFrame.corr`.
+    zero_to_na : bool
+        Replace zeros with missing values before computing correlations.
+    layer : str | None
+        Optional ``adata.layers`` key to draw quantification values from.
+        When ``None`` the primary matrix ``adata.X`` is used.
+    fill_na : float | None
+        Constant used to replace remaining ``NaN`` values prior to
+        correlation. When ``None`` (default), a :class:`ValueError` is raised
+        if missing values are detected (suggesting ``fill_na=0``).
+    margin_color : str | None
+        Optional column in ``adata.obs`` used to color dendrogram labels.
+    color_scheme : Any
+        Color palette specification understood by
+        :func:`copro.utils.matplotlib._resolve_color_scheme`.
+    cmap : str
+        Continuous colormap for the heatmap body.
+    linkage_method : str
+        Linkage criterion handed to :func:`scipy.cluster.hierarchy.linkage`.
+    xticklabels, yticklabels : bool
+        Whether to show x- and y-axis tick labels.
+    figsize : tuple[float, float]
+        Matplotlib figure size in inches.
+    show : bool
+        Display the figure with :func:`matplotlib.pyplot.show`.
+    ax : bool
+        Return the heatmap :class:`matplotlib.axes.Axes` when ``True``.
+    save : str | Path | None
+        File path for saving the Seaborn cluster map. When ``None`` nothing is
+        written.
+
+    Returns
+    -------
+    Axes or None
+        Heatmap axes when ``ax`` is ``True``; otherwise ``None``.
+
+    Raises
+    ------
+    ValueError
+        If the selected matrix still contains missing values after optional
+        zero replacement and ``fill_na`` is ``None``.
     """
-    # ---- values from adata.X (obs × var)
-    vals = adata.to_df()  # ALWAYS uses adata.X
+    check_proteodata(adata)
+    # ---- values from adata.X or a specified layer (obs × var)
+    expected_shape = (adata.n_obs, adata.n_vars)
+    if layer is None:
+        matrix = adata.X
+    else:
+        if layer not in adata.layers:
+            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+        matrix = adata.layers[layer]
+
+    if matrix is None:
+        raise ValueError("Selected matrix is empty; cannot compute correlations.")
+
+    if matrix.shape != expected_shape:
+        raise ValueError(
+            "Selected matrix shape "
+            f"{matrix.shape} does not match adata dimensions {expected_shape}."
+        )
+
+    if isinstance(matrix, pd.DataFrame):
+        vals = matrix.reindex(index=adata.obs_names, columns=adata.var_names).copy()
+    else:
+        if sparse.issparse(matrix):
+            # correlation requires dense values; convert temporarily
+            dense_matrix = matrix.toarray()
+        else:
+            dense_matrix = np.asarray(matrix)
+
+        vals = pd.DataFrame(
+            dense_matrix,
+            index=adata.obs_names,
+            columns=adata.var_names,
+        )
     if zero_to_na:
         vals = vals.replace(0, np.nan)
+
+    if fill_na is not None:
+        vals = vals.fillna(fill_na)
+
+    if vals.isna().to_numpy().any():
+        raise ValueError(
+            "Input matrix contains missing values; provide `fill_na` (e.g., "
+            "`fill_na=0`) to replace them before computing correlations."
+        )
 
     # ---- obs×obs correlation (pairwise complete)
     corr_df = vals.T.corr(method=method)  # (obs × obs)
@@ -1239,37 +1327,50 @@ def obs_correlation_matrix(
     else:
         center_val = float(np.nanmean(A))  # degenerate case
 
-    # ---- optional row/col colors from obs[group_by]
+    # ---- optional row/col colors from obs[margin_color]
     row_colors = None
     legend_handles = None
-    if group_by is not None:
-        groups = adata.obs.loc[corr_df.index, group_by]
-        cats = pd.Categorical(groups).categories
+    if margin_color is not None:
+        if margin_color not in adata.obs.columns:
+            raise KeyError(f"Column '{margin_color}' not found in adata.obs.")
+        groups = adata.obs.loc[corr_df.index, margin_color]
+        cats = pd.Categorical(groups.dropna()).categories
 
-        # normalize provided color scheme to dict keyed by string labels
-        if color_scheme is None:
-            base = sns.color_palette(n_colors=len(cats))
-            palette = {str(cat): base[i] for i, cat in enumerate(cats)}
-        elif isinstance(color_scheme, (list, tuple)):
-            if len(color_scheme) < len(cats):
-                raise ValueError(
-                    f"color_scheme has {len(color_scheme)} colors but {len(cats)} groups in '{group_by}'"
-                )
-            palette = {str(cat): color_scheme[i] for i, cat in enumerate(cats)}
-        elif isinstance(color_scheme, dict):
-            palette = {str(k): v for k, v in color_scheme.items()}
-        else:
-            raise TypeError("color_scheme must be None, list/tuple, or dict.")
+        resolved_colors = _resolve_color_scheme(color_scheme, cats)
+        if resolved_colors is None:
+            resolved_colors = (
+                sns.color_palette(n_colors=len(cats)) if len(cats) > 0 else []
+            )
 
-        groups_str = groups.astype(str)
-        row_colors = groups_str.map(palette).values
-        # build legend handles
+        palette = {str(cat): color for cat, color in zip(cats, resolved_colors)}
+
+        groups_str = groups.astype("string")
+        row_color_series = groups_str.map(palette)
+
+        missing_mask = row_color_series.isna() & groups.notna()
+        if missing_mask.any():
+            missing_cats = sorted(groups[missing_mask].astype(str).unique())
+            raise ValueError(
+                "No color provided for categories: "
+                f"{', '.join(missing_cats)} in '{margin_color}'."
+            )
+
         legend_handles = [
-            #plt.Line2D([0], [0], marker='o', color='none',
-            #           markerfacecolor=palette[str(cat)], markersize=6, label=str(cat))
-            Patch(facecolor=palette[str(cat)], edgecolor='none', label=str(cat))
+            Patch(facecolor=palette[str(cat)], edgecolor="none", label=str(cat))
             for cat in cats
         ]
+
+        if groups.isna().any():
+            na_color = mpl.colors.to_rgba("lightgray")
+            row_color_series = row_color_series.astype(object)
+            row_color_series[groups.isna()] = na_color
+            legend_handles.append(
+                Patch(facecolor=na_color, edgecolor="none", label="NA")
+            )
+
+        row_colors = (
+            row_color_series.to_numpy() if row_color_series is not None else None
+        )
 
     # ---- hierarchical clustering on (1 - r)
     dist = 1 - corr_df.values
@@ -1292,11 +1393,11 @@ def obs_correlation_matrix(
         cbar_kws={"label": f"{method.capitalize()}"},
     )
 
-    # ---- add legend for group_by colors
+    # ---- add legend for margin_color colors
     if legend_handles is not None:
         g.ax_heatmap.legend(
             handles=legend_handles,
-            title=group_by,
+            title=margin_color,
             bbox_to_anchor=(1.05, 1),
             loc='upper left',
             borderaxespad=0.,
@@ -1311,8 +1412,8 @@ def obs_correlation_matrix(
     if show:
         plt.show()
 
-    if ax:
-        return g.ax_heatmap
-
     if save:
         g.savefig(save, dpi=300, bbox_inches="tight")
+
+    if ax:
+        return g.ax_heatmap

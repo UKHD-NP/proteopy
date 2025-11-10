@@ -1,6 +1,7 @@
 import warnings
 from functools import partial
 from typing import Any, Sequence
+from collections.abc import Sequence as SequenceABC
 
 import numpy as np
 import pandas as pd
@@ -27,7 +28,9 @@ def peptide_intensities(
     protein_ids: str | Sequence[str] | None = None,
     order_by: str | None = None,
     order: Sequence[str] | None = None,
+    groups: str | Sequence[str] | None = None,
     color: str | None = None,
+    group_by: str | None = None,
     log_transform: float | None = None,
     fill_na: float | None = None,
     z_transform: bool = False,
@@ -46,18 +49,25 @@ def peptide_intensities(
     Parameters
     ----------
     adata : AnnData
-        Proteomics :class:`~anndata.AnnData` object validated via
-        :func:`copro.utils.anndata.check_proteodata`.
+        Proteomics :class:`~anndata.AnnData`.
     protein_ids : str | Sequence[str]
-        Protein identifier or iterable of identifiers to plot. Mandatory.
+        Show peptides mapping to this protein_id.
     order_by : str, optional
         Column in ``adata.obs`` used to group and order observations on the x-axis.
         When ``None``, observations follow ``adata.obs_names``.
     order : Sequence[str], optional
         Explicit order of groups (when ``order_by`` is set) or observations
         (when ``order_by`` is ``None``).
+    groups : str | Sequence[str], optional
+        Restrict ``order_by`` to selected categorical levels (requires
+        ``order_by``). The provided order determines the plotting order unless
+        ``order`` is supplied.
     color : str, optional
         ``adata.var`` column used for per-peptide coloring.
+    group_by : str, optional
+        ``adata.var`` column whose categories are aggregated into a single line.
+        Mutually exclusive with ``color``; each group is colored via
+        ``color_scheme``.
     log_transform : float, optional
         Logarithm base (>0 and !=1). Values are transformed as
         ``log(value + 1, base)``.
@@ -74,6 +84,10 @@ def peptide_intensities(
         Rotation angle for the group labels drawn above grouped sections.
     figsize : tuple[float, float], optional
         Size of each generated figure passed to :func:`matplotlib.pyplot.subplots`.
+    color_scheme : Any, optional
+        Palette specification forwarded to
+        :func:`copro.utils.matplotlib._resolve_color_scheme` for either the
+        per-peptide ``color`` or aggregated ``group_by`` categories.
     show : bool, optional
         Display the generated figure(s) with :func:`matplotlib.pyplot.show`.
     save : str | os.PathLike, optional
@@ -81,9 +95,6 @@ def peptide_intensities(
         PDF stack.
     ax : bool, optional
         When ``True``, return the underlying Axes objects instead of closing them.
-    color_scheme : Any, optional
-        Palette specification forwarded to
-        :func:`copro.utils.matplotlib._resolve_color_scheme`.
 
     Returns
     -------
@@ -106,6 +117,33 @@ def peptide_intensities(
     if not protein_ids:
         raise ValueError("protein_ids cannot be empty.")
 
+    if color and group_by:
+        raise ValueError("`color` and `group_by` are mutually exclusive.")
+
+    if groups is not None and order_by is None:
+        raise ValueError("`groups` can only be used when `order_by` is provided.")
+
+    if groups is None:
+        group_levels = None
+    elif isinstance(groups, str):
+        group_levels = [groups]
+    elif isinstance(groups, SequenceABC):
+        group_levels = list(groups)
+    else:
+        raise TypeError("`groups` must be a string or a sequence of strings.")
+
+    if group_levels is not None:
+        if not group_levels:
+            raise ValueError("`groups` cannot be empty.")
+        seen_groups: set[Any] = set()
+        deduped_groups: list[Any] = []
+        for grp in group_levels:
+            if grp in seen_groups:
+                continue
+            seen_groups.add(grp)
+            deduped_groups.append(grp)
+        group_levels = deduped_groups
+
     # Format input
     if log_transform is not None:
         if log_transform <= 0:
@@ -125,15 +163,33 @@ def peptide_intensities(
                 "peptide coloring must use a .var annotation."
             )
         var_cols.append(color)
+    if group_by:
+        if group_by not in adata.var.columns:
+            raise KeyError(
+                f"Column '{group_by}' is not present in adata.var; "
+                "grouping requires a .var annotation."
+            )
+        if group_by not in var_cols:
+            var_cols.append(group_by)
 
     var = adata.var[var_cols].copy()
     var = var.reset_index(names='var_index')
     var = var[var['protein_id'].isin(protein_ids)]
+    if color and color in var and is_categorical_dtype(var[color]):
+        var[color] = var[color].cat.remove_unused_categories()
+    if group_by and group_by in var and is_categorical_dtype(var[group_by]):
+        var[group_by] = var[group_by].cat.remove_unused_categories()
 
     selected_vars = var['var_index'].tolist()
     palette_map = None
 
-    if color:
+    if group_by:
+        hue_labels = (
+            pd.Series(pd.unique(var[group_by]))
+            .dropna()
+            .tolist()
+        )
+    elif color:
         hue_labels = pd.Series(pd.unique(var[color])).dropna().tolist()
     else:
         hue_labels = pd.Series(pd.unique(var['var_index'])).dropna().tolist()
@@ -153,6 +209,22 @@ def peptide_intensities(
             obs[order_by] = obs[order_by].astype('category')
 
         obs = obs[['obs_index', order_by]]
+
+        if group_levels is not None:
+            available_groups = set(obs[order_by].dropna().unique())
+            missing_groups = [grp for grp in group_levels if grp not in available_groups]
+            if missing_groups:
+                raise ValueError(
+                    "Items in 'groups' are not present in the selected "
+                    f"'{order_by}' categories: {sorted(missing_groups)}"
+                )
+            obs = obs[obs[order_by].isin(group_levels)].copy()
+            if obs.empty:
+                raise ValueError(
+                    "No observations remain after filtering with `groups`."
+                )
+            if is_categorical_dtype(obs[order_by]):
+                obs[order_by] = obs[order_by].cat.remove_unused_categories()
     else:
         obs = obs[['obs_index']]
 
@@ -214,9 +286,18 @@ def peptide_intensities(
     cats_ordered = []
     if order_by:
         if is_categorical_dtype(obs[order_by]):
-            categories = list(obs[order_by].cat.categories)
+            base_categories = list(obs[order_by].cat.categories)
         else:
-            categories = list(pd.unique(obs[order_by]))
+            base_categories = list(pd.unique(obs[order_by]))
+        base_categories_set = set(base_categories)
+
+        if group_levels is not None:
+            categories = [
+                cat for cat in group_levels
+                if cat in base_categories_set
+            ]
+        else:
+            categories = base_categories
 
         cat_index_map = {
             cat: obs.loc[obs[order_by] == cat, 'obs_index'].to_list()
@@ -230,7 +311,11 @@ def peptide_intensities(
                     "Items in 'order' are not present in the selected "
                     f"'{order_by}' categories: {sorted(missing)}"
                 )
-            cats_ordered = order
+            cats_ordered = list(order)
+            seen_order = set(cats_ordered)
+            cats_ordered.extend(
+                cat for cat in categories if cat not in seen_order
+            )
         else:
             cats_ordered = categories
 
@@ -247,7 +332,11 @@ def peptide_intensities(
                     "Items in 'order' are not present in adata.obs_names: "
                     f"{sorted(missing)}"
                 )
-            obs_index_ordered = order
+            obs_index_base = obs['obs_index'].tolist()
+            seen_order = set(order)
+            obs_index_ordered = list(order) + [
+                idx for idx in obs_index_base if idx not in seen_order
+            ]
         else:
             obs_index_ordered = obs['obs_index'].tolist()
 
@@ -301,7 +390,11 @@ def peptide_intensities(
             if order_by:
                 lineplot_kwargs['style'] = order_by
 
-            if color:
+            if group_by:
+                lineplot_kwargs.update(
+                    hue=group_by,
+                )
+            elif color:
                 lineplot_kwargs.update(
                     hue=color,
                     units='var_index',
@@ -317,7 +410,9 @@ def peptide_intensities(
             handles, labels = _ax.get_legend_handles_labels()
 
             # Determine which labels correspond to the hue only (ignore style)
-            if color:
+            if group_by:
+                hue_values = sub_df[group_by].dropna().unique().astype(str)
+            elif color:
                 hue_values = sub_df[color].unique().astype(str)
             else:
                 hue_values = sub_df['var_index'].unique().astype(str)
@@ -327,13 +422,20 @@ def peptide_intensities(
 
             if new_handles_labels:
                 handles, labels = zip(*new_handles_labels)  # unzip back into separate lists
+                legend_title = (
+                    group_by
+                    if group_by
+                    else color
+                    if color
+                    else 'Peptide'
+                )
                 _ax.legend(
                     handles,
                     labels,
                     bbox_to_anchor=(1.01, 1),
                     loc='upper left',
-                    title=color if color else 'Peptide',
-                    )
+                    title=legend_title,
+                )
 
             # Add group separator lines
             obs_idxpos_map = {obs: i for i, obs in enumerate(obs_index_ordered)}
@@ -429,7 +531,7 @@ docstr_header = (
     "Plot peptide intensities colored by proteoforms across samples for the "
     "requested proteins."
     )
-proteoform_peptide_intensities = partial_with_docsig(
+proteoform_intensities = partial_with_docsig(
     peptide_intensities,
     color = 'proteoform_id',
     )

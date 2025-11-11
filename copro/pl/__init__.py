@@ -2,7 +2,7 @@ from .intensities import (
     peptide_intensities,
     proteoform_intensities,
     intensity_box_per_obs,
-    intensity_hist_imputed,
+    intensity_hist,
     )
 
 from .stats import (

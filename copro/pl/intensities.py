@@ -900,63 +900,193 @@ def intensity_box_per_obs(
     return _ax
 
 
-def intensity_hist_imputed(
+def intensity_hist(
     adata,
     layer: str | None = None,
-    bool_layer: str = "bool_imputed",
+    color_imputed: bool = False,
+    bool_layer: str | None = None,
+    log_transform: float | int | None = None,
+    ignore_warning: bool = False,
+    fill_na: float | int | None = None,
+    zero_to_nan: bool = False,
     bins: int = 60,
     density: bool = True,
     kde: bool = False,
-    figsize=(7, 4),
-    palette: dict | None = None,      # {'Measured': '#4C78A8', 'Imputed': '#F58518'}
+    color_scheme: Any = None,
+    xlim: tuple[float | int, float | int] | None = None,
     alpha: float = 0.6,
     title: str | None = None,
     legend_loc: str = "upper right",
-    per_sample: bool = False,
-    samples: list | None = None,      # list of obs names or integer indices (subset/order)
+    figsize=(7, 4),
+    per_obs: bool = False,
+    samples: list | None = None,
     ncols: int = 4,
     sharex: bool = True,
     sharey: bool = True,
     show: bool = True,
-    save: bool | str | os.PathLike = False,
-    log_transform: float | int | None = 2,
-    ignore_warning: bool = False,
-):
+    ax: bool = False,
+    save: str | os.PathLike[str] | None = None,
+) -> Axes | None:
     """
-    Plot histogram(s) of intensities colored by imputation status.
-
-    - Log-transform via ``log(value + 1, base)`` when ``log_transform`` is set.
-      Raises if data appear already log-transformed unless ``ignore_warning``.
-    - Colors: 'Measured' vs 'Imputed' from layers[bool_layer].
-    - If per_sample=False: one combined histogram.
-      per_sample=True : grid of per-sample subplots (shared bins & one legend).
+    Plot histogram(s) of var intensities, optionally colored by imputation status.
 
     Parameters
     ----------
-    show : bool
-        If True, call plt.show() at the end.
-    save : bool | str | Path
-        If True, save to a default filename.
-        If str/Path, save to that path. If False, do not save.
+    adata : AnnData
+        Proteomics :class:`~anndata.AnnData` containing the intensity matrix.
+    layer : str | None, optional
+        Layer to use for intensities; defaults to ``adata.X`` when ``None``.
+    color_imputed : bool, optional
+        When ``True``, overlay imputed values using the layer-specific mask;
+        otherwise plot a single distribution of all intensities.
+    bool_layer : str | None, optional
+        Layer key containing the imputation mask. When ``None`` and
+        ``color_imputed`` is ``True``, use ``imputation_mask_<layer>`` (with
+        ``layer="X"`` for the main matrix).
     log_transform : float | int | None, optional
         Logarithm base (>0 and !=1). When ``None`` skip log-transforming;
-        otherwise apply ``log(value + 1, base)`` after validating the input.
+        otherwise apply ``log(value + 1, base)`` after validating the input 
+        (Defaut = None).
     ignore_warning : bool, optional
         When ``True``, force the log transform even if the data already appear
         log-transformed according to :func:`copro.utils.array.is_log_transformed`.
+    fill_na : float | int | None, optional
+        Replace missing values with this constant before log transformation.
+    zero_to_nan : bool, optional
+        When True, replace exact zeros with ``NaN`` before plotting.
+    bins : int, optional
+        Number of histogram bins passed to ``numpy.histogram_bin_edges``.
+    density : bool, optional
+        Plot density instead of counts.
+    kde : bool, optional
+        Overlay kernel density estimate curves.
+    color_scheme : Any, optional
+        Palette specification forwarded to
+        :func:`copro.utils.matplotlib._resolve_color_scheme`.
+    xlim : tuple[float | int, float | int] | None, optional
+        Explicit x-axis limits ``(xmin, xmax)`` applied to all histograms.
+    alpha : float, optional
+        Histogram transparency (0-1 range).
+    title : str | None, optional
+        Custom title for the plot; defaults are auto-generated.
+    legend_loc : str, optional
+        Location argument forwarded to :func:`matplotlib.axes.Axes.legend`.
+    figsize : tuple[float, float], optional
+        Figure size passed to :func:`matplotlib.pyplot.subplots`.
+    per_obs : bool, optional
+        When ``True``, draw per-observation facets; otherwise aggregate all values.
+    samples : list | None, optional
+        Optional ordered subset of observations (by index or name) for
+        ``per_obs`` plots.
+    ncols : int, optional
+        Number of columns in the per-observation facet grid.
+    sharex, sharey : bool, optional
+        Whether subplots share their x- or y-axes in per-observation mode.
+    show : bool, optional
+        If True, call plt.show() at the end.
+    ax : bool, optional
+        When ``True`` and ``per_obs`` is ``False``, return the Axes handle and
+        skip automatic plotting even if ``show`` is ``True``.
+    save : str | Path | None, optional
+        Path where the figure should be written. When ``None``, no file is saved.
+
+    Returns
+    -------
+    Axes | None
+        Axes handle when ``ax`` is ``True`` (single histogram mode); otherwise
+        ``None``.
     """
+    # Basic parameter validation to fail fast on misconfigured inputs
+    bool_params = {
+        "color_imputed": color_imputed,
+        "ignore_warning": ignore_warning,
+        "zero_to_nan": zero_to_nan,
+        "density": density,
+        "kde": kde,
+        "per_obs": per_obs,
+        "sharex": sharex,
+        "sharey": sharey,
+        "show": show,
+        "ax": ax,
+    }
+    for name, value in bool_params.items():
+        if not isinstance(value, bool):
+            raise TypeError(f"`{name}` must be a boolean.")
+
+    if layer is not None and not isinstance(layer, str):
+        raise TypeError("`layer` must be a string or None.")
+    if bool_layer is not None and not isinstance(bool_layer, str):
+        raise TypeError("`bool_layer` must be a string or None.")
+    if not isinstance(bins, int) or bins <= 0:
+        raise ValueError("`bins` must be a positive integer.")
+    if not isinstance(ncols, int) or ncols <= 0:
+        raise ValueError("`ncols` must be a positive integer.")
+    if not isinstance(alpha, Real):
+        raise TypeError("`alpha` must be numeric.")
+    if not 0 <= float(alpha) <= 1:
+        raise ValueError("`alpha` must be between 0 and 1.")
+    if title is not None and not isinstance(title, str):
+        raise TypeError("`title` must be a string or None.")
+    if not isinstance(legend_loc, str):
+        raise TypeError("`legend_loc` must be a string.")
+    if figsize is None or not isinstance(figsize, SequenceABC) or len(figsize) != 2:
+        raise TypeError("`figsize` must be a length-2 sequence of numbers.")
+    try:
+        figsize = (float(figsize[0]), float(figsize[1]))
+    except (TypeError, ValueError):
+        raise TypeError("`figsize` entries must be numeric.")
+    if samples is not None:
+        if (
+            not isinstance(samples, SequenceABC)
+            or isinstance(samples, (str, bytes))
+        ):
+            raise TypeError("`samples` must be a sequence of indices or names.")
+    if save is not None and not isinstance(save, (str, os.PathLike)):
+        raise TypeError("`save` must be a path-like object or None.")
+    if xlim is not None:
+        if not isinstance(xlim, SequenceABC) or len(xlim) != 2:
+            raise TypeError("`xlim` must be a tuple (xmin, xmax).")
+        xmin, xmax = xlim
+        if not isinstance(xmin, Real) or not isinstance(xmax, Real):
+            raise TypeError("`xlim` values must be numeric.")
+        xmin = float(xmin)
+        xmax = float(xmax)
+        if not np.isfinite(xmin) or not np.isfinite(xmax):
+            raise ValueError("`xlim` values must be finite.")
+        if xmin >= xmax:
+            raise ValueError("`xlim` must satisfy xmin < xmax.")
+        x_limits = (xmin, xmax)
+    else:
+        x_limits = None
+    if ax and per_obs:
+        raise ValueError("`ax` can only be used when per_obs is False.")
+
+    check_proteodata(adata)
+
     # --- pull data ---
     Xsrc = adata.layers[layer] if layer is not None else adata.X
     X = Xsrc.toarray() if sparse.issparse(Xsrc) else np.asarray(Xsrc, dtype=float)
 
-    if bool_layer not in adata.layers:
-        raise KeyError(f"'{bool_layer}' not found in adata.layers")
-    Bsrc = adata.layers[bool_layer]
-    B = Bsrc.toarray() if sparse.issparse(Bsrc) else np.asarray(Bsrc)
-    if B.shape != X.shape:
-        raise ValueError(f"Shape mismatch: data {X.shape} vs {bool_layer} {B.shape}")
+    # Resolve the imputation mask layer if coloring measured vs imputed
+    mask_layer_key: str | None = None
+    if color_imputed:
+        mask_layer_key = bool_layer
+        if mask_layer_key is None:
+            mask_target = str(layer) if layer is not None else "X"
+            mask_layer_key = f"imputation_mask_{mask_target}"
+        if mask_layer_key not in adata.layers:
+            raise KeyError(
+                f"'{mask_layer_key}' not found in adata.layers. "
+                "Set color_imputed=False or provide `bool_layer` explicitly."
+            )
+        Bsrc = adata.layers[mask_layer_key]
+        B = Bsrc.toarray() if sparse.issparse(Bsrc) else np.asarray(Bsrc)
+        if B.shape != X.shape:
+            raise ValueError(f"Shape mismatch: data {X.shape} vs {mask_layer_key} {B.shape}")
+    else:
+        B = None
 
-    # configure log transformation
+    # Determine log transform base and guard against double-logging
     if log_transform is None:
         log_base = None
     else:
@@ -974,84 +1104,130 @@ def intensity_hist_imputed(
                 "Input appears already log-transformed. Stats: "
                 f"{stats}. Pass ignore_warning=True to force another log."
             )
+
     Y = X.copy()
+    Y = Y.astype(float, copy=False)
     Y[~np.isfinite(Y)] = np.nan
+
+    if fill_na is not None and zero_to_nan:
+        raise ValueError("fill_na and zero_to_nan cannot be used together.")
+
+    if fill_na is not None:
+        if not isinstance(fill_na, Real):
+            raise TypeError("fill_na must be a numeric value or None.")
+        fill_value = float(fill_na)
+        if not np.isfinite(fill_value):
+            raise ValueError("fill_na must be a finite numeric value.")
+        np.nan_to_num(Y, copy=False, nan=fill_value)
+
+    if zero_to_nan:
+        Y[Y == 0] = np.nan
+
     if log_base is not None:
         Y[Y <= -1] = np.nan
         Y = np.log1p(Y) / math.log(log_base)
 
     # palette & order
-    if palette is None:
-        palette = {"Measured": "#4C78A8", "Imputed": "#F58518"}
-    hue_order = ["Measured", "Imputed"]
+    # Resolve colors for the measured/imputed legend
+    default_palette = {"Measured": "#4C78A8", "Imputed": "#F58518"}
+    status_labels = ["Measured", "Imputed"] if color_imputed else ["Measured"]
+    resolved_colors = _resolve_color_scheme(color_scheme, status_labels)
+    if not resolved_colors:
+        resolved_colors = [default_palette[label] for label in status_labels]
+    palette_map = dict(zip(status_labels, resolved_colors))
+    hue_order = status_labels if color_imputed else None
+    measured_color = palette_map.get("Measured", default_palette["Measured"])
 
     value_col = "intensity_value"
     if log_base is None:
         xlabel = "Intensity"
-        base_label = "raw"
+        descriptor = ""
     else:
         base_str = f"{log_base:g}"
         xlabel = f"Intensity (log{base_str}(x + 1))"
-        base_label = f"log{base_str}(x + 1)"
+        descriptor = f"log{base_str}(x + 1)"
 
     # ------- Single (combined) histogram -------
-    if not per_sample:
+    if not per_obs:
+        # Flatten matrix for a single overall histogram
         vals = Y.ravel()
-        flags = B.astype(bool).ravel()
         m = np.isfinite(vals)
         vals = vals[m]
-        flags = flags[m]
         if vals.size == 0:
             raise ValueError("No finite values to plot after preprocessing.")
 
-        status = np.where(flags, "Imputed", "Measured")
-        df = pd.DataFrame({value_col: vals, "status": status})
+        bin_edges = np.histogram_bin_edges(vals, bins=bins)
 
-        bin_edges = np.histogram_bin_edges(df[value_col].to_numpy(), bins=bins)
+        fig, _ax = plt.subplots(figsize=figsize)
+        if B is not None:
+            flags = B.astype(bool).ravel()[m]
+            status = np.where(flags, "Imputed", "Measured")
+            df = pd.DataFrame({value_col: vals, "status": status})
+            present = [h for h in hue_order if (df["status"] == h).any()]
+            sns.histplot(
+                data=df,
+                x=value_col,
+                hue="status",
+                hue_order=present,
+                bins=bin_edges,
+                stat=("density" if density else "count"),
+                multiple="layer",
+                common_norm=False,
+                palette=palette_map,
+                alpha=alpha,
+                edgecolor=None,
+                ax=_ax,
+                legend=False,
+            )
 
-        fig, ax = plt.subplots(figsize=figsize)
-        sns.histplot(
-            data=df,
-            x=value_col,
-            hue="status",
-            hue_order=[h for h in hue_order if (df["status"] == h).any()],
-            bins=bin_edges,
-            stat=("density" if density else "count"),
-            multiple="layer",
-            common_norm=False,
-            palette=palette,
-            alpha=alpha,
-            edgecolor=None,
-            ax=ax,
-            legend=False,
-        )
+            if kde:
+                for k, g in df.groupby("status"):
+                    if len(g) > 1:
+                        sns.kdeplot(g[value_col], ax=_ax, color=palette_map.get(k), lw=1.5)
 
-        if kde:
-            for k, g in df.groupby("status"):
-                if len(g) > 1:
-                    sns.kdeplot(g[value_col], ax=ax, color=palette.get(k), lw=1.5)
+            handles = [
+                Patch(
+                    facecolor=palette_map[h],
+                    edgecolor="none",
+                    alpha=alpha,
+                    label=h,
+                )
+                for h in present
+            ]
+            _ax.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
+        else:
+            df = pd.DataFrame({value_col: vals})
+            sns.histplot(
+                data=df,
+                x=value_col,
+                bins=bin_edges,
+                stat=("density" if density else "count"),
+                color=measured_color,
+                alpha=alpha,
+                edgecolor=None,
+                ax=_ax,
+            )
+            if kde and len(df) > 1:
+                sns.kdeplot(df[value_col], ax=_ax, color=measured_color, lw=1.5)
 
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel("Density" if density else "Count")
-        default_title = (
-            f"Intensity histogram ({base_label}; colored by imputation)"
-        )
-        ax.set_title(title or default_title)
-
-        present = [h for h in hue_order if (df["status"] == h).any()]
-        handles = [Patch(facecolor=palette[h], edgecolor="none", alpha=alpha, label=h) for h in present]
-        ax.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
+        _ax.set_xlabel(xlabel)
+        _ax.set_ylabel("Density" if density else "Count")
+        default_title = f"Intensity histogram ({descriptor})"
+        _ax.set_title(title or default_title)
+        if x_limits is not None:
+            _ax.set_xlim(x_limits)
 
         # save/show
-        if save:
-            path = save if isinstance(save, (str, os.PathLike)) else "intensity_hist_imputed.png"
-            fig.savefig(path, dpi=300, bbox_inches='tight')
-        if show:
+        if save is not None:
+            fig.savefig(save, dpi=300, bbox_inches='tight')
+        if show and not ax:
             plt.show()
-        return  # nothing else returned
+        if ax:
+            return _ax
+        return None
 
-    # ------- Per-sample small multiples -------
-    # select samples
+    # ------- Per-observation small multiples -------
+    # select observations
     if samples is None:
         idx = np.arange(adata.n_obs)
         labels = adata.obs_names.to_numpy()
@@ -1076,66 +1252,92 @@ def intensity_hist_imputed(
         if m.any():
             all_vals.append(vi[m])
     if len(all_vals) == 0:
-        raise ValueError("No finite values to plot after preprocessing across selected samples.")
+        raise ValueError("No finite values to plot after preprocessing across selected observations.")
     bin_edges = np.histogram_bin_edges(np.concatenate(all_vals), bins=bins)
 
     n = len(idx)
     ncols = max(1, int(ncols))
     nrows = int(math.ceil(n / ncols))
 
-    fig, axes = plt.subplots(nrows, ncols, figsize=figsize, squeeze=False, sharex=sharex, sharey=sharey)
+    fig, axes = plt.subplots(
+        nrows,
+        ncols,
+        figsize=figsize,
+        squeeze=False,
+        sharex=sharex,
+        sharey=sharey,
+    )
 
-    present_any = set()
+    present_any = set() if B is not None else None
     for k, i in enumerate(idx):
         r, c = divmod(k, ncols)
-        ax = axes[r, c]
+        _ax = axes[r, c]
 
         vi = Y[i, :]
-        bi = B[i, :].astype(bool)
+        bi = B[i, :].astype(bool) if B is not None else None
 
         m = np.isfinite(vi)
         vi = vi[m]
-        bi = bi[m]
+        if bi is not None:
+            bi = bi[m]
         if vi.size == 0:
-            ax.set_visible(False)
+            _ax.set_visible(False)
             continue
 
-        status = np.where(bi, "Imputed", "Measured")
-        df_i = pd.DataFrame({value_col: vi, "status": status})
-        present = [h for h in hue_order if (df_i["status"] == h).any()]
-        present_any.update(present)
+        if bi is not None:
+            status = np.where(bi, "Imputed", "Measured")
+            df_i = pd.DataFrame({value_col: vi, "status": status})
+            present = [h for h in hue_order if (df_i["status"] == h).any()]
+            present_any.update(present)
 
-        sns.histplot(
-            data=df_i,
-            x=value_col,
-            hue="status",
-            hue_order=present,
-            bins=bin_edges,
-            stat=("density" if density else "count"),
-            multiple="layer",
-            common_norm=False,
-            palette=palette,
-            alpha=alpha,
-            edgecolor=None,
-            ax=ax,
-            legend=False,
-        )
+            sns.histplot(
+                data=df_i,
+                x=value_col,
+                hue="status",
+                hue_order=present,
+                bins=bin_edges,
+                stat=("density" if density else "count"),
+                multiple="layer",
+                common_norm=False,
+                palette=palette_map,
+                alpha=alpha,
+                edgecolor=None,
+                ax=_ax,
+                legend=False,
+            )
 
-        if kde:
-            for lab in present:
-                g = df_i[df_i["status"] == lab]
-                if len(g) > 1:
-                    sns.kdeplot(g[value_col], ax=ax, color=palette.get(lab), lw=1.2)
+            if kde:
+                for lab in present:
+                    g = df_i[df_i["status"] == lab]
+                    if len(g) > 1:
+                        sns.kdeplot(g[value_col], ax=_ax, color=palette_map.get(lab), lw=1.2)
+        else:
+            df_i = pd.DataFrame({value_col: vi})
+            sns.histplot(
+                data=df_i,
+                x=value_col,
+                bins=bin_edges,
+                stat=("density" if density else "count"),
+                color=measured_color,
+                alpha=alpha,
+                edgecolor=None,
+                ax=_ax,
+                legend=False,
+            )
+            if kde and len(df_i) > 1:
+                sns.kdeplot(df_i[value_col], ax=_ax, color=measured_color, lw=1.2)
 
-        ax.set_title(str(labels[k]))
+        _ax.set_title(str(labels[k]))
         if r == nrows - 1:
-            ax.set_xlabel(xlabel)
+            _ax.set_xlabel(xlabel)
         else:
-            ax.set_xlabel("")
+            _ax.set_xlabel("")
         if c == 0:
-            ax.set_ylabel("Density" if density else "Count")
+            _ax.set_ylabel("Density" if density else "Count")
         else:
-            ax.set_ylabel("")
+            _ax.set_ylabel("")
+        if x_limits is not None:
+            _ax.set_xlim(x_limits)
 
     # hide any extra axes
     for k in range(n, nrows * ncols):
@@ -1143,25 +1345,34 @@ def intensity_hist_imputed(
         axes[r, c].set_visible(False)
 
     # global legend (figure-level unless user asked for 'best')
-    present_any = [h for h in hue_order if h in present_any]
-    handles = [Patch(facecolor=palette[h], edgecolor="none", alpha=alpha, label=h) for h in present_any]
-    if legend_loc == "best":
-        axes[0, 0].legend(handles=handles, title="Status", loc="best", frameon=False)
-    else:
-        fig.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
+    if present_any is not None and present_any:
+        present_any = [h for h in hue_order if h in present_any]
+        handles = [
+            Patch(facecolor=palette_map[h], edgecolor="none", alpha=alpha, label=h)
+            for h in present_any
+        ]
+        if legend_loc == "best":
+            axes[0, 0].legend(handles=handles, title="Status", loc="best", frameon=False)
+        else:
+            fig.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
 
-    per_sample_title = (
-        f"Intensity histograms per sample ({base_label}; colored by imputation)"
-        if log_base is not None
-        else "Intensity histograms per sample (colored by imputation)"
-    )
-    plt.suptitle(title or per_sample_title, y=0.995, fontsize=12)
+    per_obs_title = f"Intensity histograms per observation ({descriptor})"
+    plt.suptitle(title or per_obs_title, y=0.995, fontsize=12)
     plt.tight_layout(rect=[0, 0, 1, 0.98])
 
     # save/show
-    if save:
-        path = save if isinstance(save, (str, os.PathLike)) else "intensity_hist_imputed-per-sample.png"
-        fig.savefig(path, dpi=300, bbox_inches='tight')
+    if save is not None:
+        fig.savefig(save, dpi=300, bbox_inches='tight')
     if show:
         plt.show()
-    return  # nothing returned
+    return None
+
+docstr_header = (
+    "Plot a histogram of var intensities per observation, optionally colored "
+    "by imputation status."
+    )
+intensity_hist_per_obs = partial_with_docsig(
+    intensity_hist,
+    per_obs=True,
+    docstr_header=docstr_header,
+    )

@@ -1,6 +1,8 @@
 import numpy as np
 from scipy import sparse
 
+from copro.utils.array import is_log_transformed
+
 
 def impute_downshift(
     adata,
@@ -13,7 +15,8 @@ def impute_downshift(
 ):
     """
     Left-censored imputation in log2 space with downshifted normal sampling.
-    Adds `adata.layers["bool_imputed"]` marking imputed positions (True).
+    Adds `adata.layers["imputation_mask_<layer>"]` marking imputed positions
+    (True) for the targeted layer/X matrix.
     """
     # --- pull matrix ---
     Xsrc = adata.layers[layer] if layer is not None else adata.X
@@ -83,8 +86,10 @@ def impute_downshift(
     else:
         adata.layers[layer] = Z
 
-    # store boolean mask (dense bool array)
-    adata.layers["bool_imputed"] = miss_mask.astype(bool)
+    # store boolean mask (dense bool array) with layer-specific name
+    mask_layer = str(layer) if layer is not None else "X"
+    mask_name = f"imputation_mask_{mask_layer}"
+    adata.layers[mask_name] = miss_mask.astype(bool)
 
     # bookkeeping
     adata.uns.setdefault("imputation", {})

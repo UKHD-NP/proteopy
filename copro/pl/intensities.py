@@ -2,6 +2,7 @@ import warnings
 from functools import partial
 from typing import Any, Sequence
 from collections.abc import Sequence as SequenceABC
+from numbers import Real
 
 import numpy as np
 import pandas as pd
@@ -918,11 +919,14 @@ def intensity_hist_imputed(
     sharey: bool = True,
     show: bool = True,
     save: bool | str | os.PathLike = False,
+    log_transform: float | int | None = 2,
+    ignore_warning: bool = False,
 ):
     """
-    Plot histogram(s) of intensities in log2 scale colored by imputation status.
+    Plot histogram(s) of intensities colored by imputation status.
 
-    - Auto-detects log; if raw, plots in log2 (<=0 -> NA).
+    - Log-transform via ``log(value + 1, base)`` when ``log_transform`` is set.
+      Raises if data appear already log-transformed unless ``ignore_warning``.
     - Colors: 'Measured' vs 'Imputed' from layers[bool_layer].
     - If per_sample=False: one combined histogram.
       per_sample=True : grid of per-sample subplots (shared bins & one legend).
@@ -934,6 +938,12 @@ def intensity_hist_imputed(
     save : bool | str | Path
         If True, save to a default filename.
         If str/Path, save to that path. If False, do not save.
+    log_transform : float | int | None, optional
+        Logarithm base (>0 and !=1). When ``None`` skip log-transforming;
+        otherwise apply ``log(value + 1, base)`` after validating the input.
+    ignore_warning : bool, optional
+        When ``True``, force the log transform even if the data already appear
+        log-transformed according to :func:`copro.utils.array.is_log_transformed`.
     """
     # --- pull data ---
     Xsrc = adata.layers[layer] if layer is not None else adata.X
@@ -946,19 +956,43 @@ def intensity_hist_imputed(
     if B.shape != X.shape:
         raise ValueError(f"Shape mismatch: data {X.shape} vs {bool_layer} {B.shape}")
 
-    # log2 for plotting (if needed)
-    is_log, _ = is_log_transformed(adata, layer=layer)
-    Y = X.copy()
-    if not is_log:
-        Y[~np.isfinite(Y) | (Y <= 0)] = np.nan
-        Y = np.log2(Y)
+    # configure log transformation
+    if log_transform is None:
+        log_base = None
     else:
-        Y[~np.isfinite(Y)] = np.nan
+        if not isinstance(log_transform, Real):
+            raise TypeError("log_transform must be a numeric value or None.")
+        log_base = float(log_transform)
+        if log_base <= 0:
+            raise ValueError("log_transform must be positive.")
+        if math.isclose(log_base, 1.0):
+            raise ValueError("log_transform cannot be 1.")
+
+        is_log, stats = is_log_transformed(adata, layer=layer)
+        if is_log and not ignore_warning:
+            raise ValueError(
+                "Input appears already log-transformed. Stats: "
+                f"{stats}. Pass ignore_warning=True to force another log."
+            )
+    Y = X.copy()
+    Y[~np.isfinite(Y)] = np.nan
+    if log_base is not None:
+        Y[Y <= -1] = np.nan
+        Y = np.log1p(Y) / math.log(log_base)
 
     # palette & order
     if palette is None:
         palette = {"Measured": "#4C78A8", "Imputed": "#F58518"}
     hue_order = ["Measured", "Imputed"]
+
+    value_col = "intensity_value"
+    if log_base is None:
+        xlabel = "Intensity"
+        base_label = "raw"
+    else:
+        base_str = f"{log_base:g}"
+        xlabel = f"Intensity (log{base_str}(x + 1))"
+        base_label = f"log{base_str}(x + 1)"
 
     # ------- Single (combined) histogram -------
     if not per_sample:
@@ -971,14 +1005,14 @@ def intensity_hist_imputed(
             raise ValueError("No finite values to plot after preprocessing.")
 
         status = np.where(flags, "Imputed", "Measured")
-        df = pd.DataFrame({"intensity_log2": vals, "status": status})
+        df = pd.DataFrame({value_col: vals, "status": status})
 
-        bin_edges = np.histogram_bin_edges(df["intensity_log2"].to_numpy(), bins=bins)
+        bin_edges = np.histogram_bin_edges(df[value_col].to_numpy(), bins=bins)
 
         fig, ax = plt.subplots(figsize=figsize)
         sns.histplot(
             data=df,
-            x="intensity_log2",
+            x=value_col,
             hue="status",
             hue_order=[h for h in hue_order if (df["status"] == h).any()],
             bins=bin_edges,
@@ -995,11 +1029,14 @@ def intensity_hist_imputed(
         if kde:
             for k, g in df.groupby("status"):
                 if len(g) > 1:
-                    sns.kdeplot(g["intensity_log2"], ax=ax, color=palette.get(k), lw=1.5)
+                    sns.kdeplot(g[value_col], ax=ax, color=palette.get(k), lw=1.5)
 
-        ax.set_xlabel("Intensity (log2)")
+        ax.set_xlabel(xlabel)
         ax.set_ylabel("Density" if density else "Count")
-        ax.set_title(title or "Intensity histogram (log2; colored by imputation)")
+        default_title = (
+            f"Intensity histogram ({base_label}; colored by imputation)"
+        )
+        ax.set_title(title or default_title)
 
         present = [h for h in hue_order if (df["status"] == h).any()]
         handles = [Patch(facecolor=palette[h], edgecolor="none", alpha=alpha, label=h) for h in present]
@@ -1064,13 +1101,13 @@ def intensity_hist_imputed(
             continue
 
         status = np.where(bi, "Imputed", "Measured")
-        df_i = pd.DataFrame({"intensity_log2": vi, "status": status})
+        df_i = pd.DataFrame({value_col: vi, "status": status})
         present = [h for h in hue_order if (df_i["status"] == h).any()]
         present_any.update(present)
 
         sns.histplot(
             data=df_i,
-            x="intensity_log2",
+            x=value_col,
             hue="status",
             hue_order=present,
             bins=bin_edges,
@@ -1088,11 +1125,11 @@ def intensity_hist_imputed(
             for lab in present:
                 g = df_i[df_i["status"] == lab]
                 if len(g) > 1:
-                    sns.kdeplot(g["intensity_log2"], ax=ax, color=palette.get(lab), lw=1.2)
+                    sns.kdeplot(g[value_col], ax=ax, color=palette.get(lab), lw=1.2)
 
         ax.set_title(str(labels[k]))
         if r == nrows - 1:
-            ax.set_xlabel("Intensity (log2)")
+            ax.set_xlabel(xlabel)
         else:
             ax.set_xlabel("")
         if c == 0:
@@ -1113,7 +1150,12 @@ def intensity_hist_imputed(
     else:
         fig.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
 
-    plt.suptitle(title or "Intensity histograms per sample (log2; colored by imputation)", y=0.995, fontsize=12)
+    per_sample_title = (
+        f"Intensity histograms per sample ({base_label}; colored by imputation)"
+        if log_base is not None
+        else "Intensity histograms per sample (colored by imputation)"
+    )
+    plt.suptitle(title or per_sample_title, y=0.995, fontsize=12)
     plt.tight_layout(rect=[0, 0, 1, 0.98])
 
     # save/show

@@ -1,3 +1,4 @@
+**Beginning of AGENTS.md**
 # Repository Guidelines
 Package name: `CoPro` — Correlation Proteomics
 
@@ -60,7 +61,7 @@ New assets must remain lightweight and include provenance notes.
   - Use `black` for auto-formatting
 
 ### Style Notes
-Prefer f-strings for string interpolation. Use type hints in function signatures and docstrings but avoid verbose variable-level type checking.
+Prefer f-strings for string interpolation. Use type hints in function signatures and docstrings but avoid verbose variable-level type checking. Perform input type checking at the beginning of the function when possible for good readability.
 
 **Example of type hints**
 ```python
@@ -109,18 +110,18 @@ some_function(
     arg1=arg1,
     arg2=arg2,
     arg3=arg3,
-)
+    )
 
 def my_function(
     arg1,
     arg2,
     arg3,
-):
+    ):
     raise ValueError(
         "Line one\n"
         "Line two\n"
         "Line three"
-    )
+        )
 ```
 
 ---

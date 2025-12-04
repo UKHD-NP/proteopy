@@ -1,149 +1,212 @@
 import warnings
-from functools import partial
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+
+from copro.utils.functools import partial_with_docsig
+from copro.utils.anndata import check_proteodata
 
 
 def filter_axis(
     adata,
     axis,
-    min_fraction = None,
-    min_nr = None,
-    group_by = None,
-    zero_to_na = False,
-    inplace = True,
-    ):
-    '''
-    Filter obs or var by completeness.
-    Args:
-        axis (int, [0,1]): 0 = obs and 1 = var
-        group_by (str|None): Column used to compute completeness/counts within
-            groups; takes the maximum across groups.
-    '''
-    # Check input
-    if not min_fraction and not min_nr:
+    min_fraction=None,
+    min_count=None,
+    group_by=None,
+    zero_to_na=False,
+    inplace=True,
+):
+    """
+    Filter observations or variables based on non-missing value content.
+
+    This function filters the AnnData object along a specified axis (observations
+    or variables) based on the fraction or number of non-missing (np.nan) values.
+    Filtering can be performed globally or within groups defined by the `group_by`
+    parameter.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        The annotated data matrix to filter.
+    axis : int
+        The axis to filter on. `0` for observations, `1` for variables.
+    min_fraction : float, optional
+        The minimum fraction of non-missing values required to keep an observation
+        or variable. If `group_by` is provided, this threshold is applied to the
+        maximum completeness across all groups.
+    min_count : int, optional
+        The minimum number of non-missing values required to keep an observation
+        or variable. If `group_by` is provided, this threshold is applied to the
+        maximum count across all groups.
+    group_by : str, optional
+        A column key in `adata.obs` (if `axis=1`) or `adata.var` (if `axis=0`)
+        used for grouping before applying the filter. The maximum completeness or
+        count across the groups is used for filtering.
+    zero_to_na : bool, optional
+        If True, zeros in the data matrix are treated as missing values (NaN).
+    inplace : bool, optional
+        If True, modifies the `adata` object in place. Otherwise, returns a
+        filtered copy.
+
+    Returns
+    -------
+    anndata.AnnData or None
+        If `inplace=False`, returns a new filtered AnnData object. Otherwise,
+        returns `None`.
+
+    Raises
+    ------
+    KeyError
+        If the `group_by` key is not found in the corresponding annotation
+        DataFrame.
+    """
+    check_proteodata(adata)
+
+    if min_fraction is None and min_count is None:
         warnings.warn(
-            'Neither min_fraction nor min_nr were provided so '
-            'function does nothing.'
-            )
+            "Neither `min_fraction` nor `min_count` were provided, so "
+            "the function does nothing."
+        )
+        return None if inplace else adata.copy()
 
-    vals = adata.to_df().copy()
+    X = adata.X.copy()
     if zero_to_na:
-        vals = vals.replace(0, np.nan)
+        if sp.issparse(X):
+            X.data[X.data == 0] = np.nan
+        else:
+            X[X == 0] = np.nan
 
-    axes_i = [1, 0]
-    axis_i = axes_i[axis]
-    axis_labels = [vals.index, vals.columns][axis]
+    if sp.issparse(X):
+        X.eliminate_zeros()
 
-    counts = None
-    completeness = None
+    axis_i = 1 - axis
+    axis_labels = adata.obs_names if axis == 0 else adata.var_names
 
     if group_by is not None:
         metadata = adata.obs if axis == 1 else adata.var
         if group_by not in metadata.columns:
             raise KeyError(
-                f'group_by "{group_by}" not present in '
+                f'`group_by`="{group_by}" not present in '
                 f'adata.{"obs" if axis == 1 else "var"}'
-                )
+            )
         grouping = metadata[group_by]
-        group_labels = grouping.dropna().unique().tolist()
-        counts_by_group = []
-        fractions_by_group = []
+        unique_groups = grouping.dropna().unique()
 
-        for label in group_labels:
-            if axis == 1:
-                subset = vals.loc[grouping == label, :]
-            else:
-                subset = vals.loc[:, grouping == label]
+        counts_by_group = []
+        completeness_by_group = []
+        for label in unique_groups:
+            mask = (grouping == label).values
+            subset = X[mask, :] if axis == 1 else X[:, mask]
+
             if subset.shape[axis_i] == 0:
                 continue
 
-            group_counts = subset.count(axis_i)
-            counts_by_group.append(group_counts)
+            group_size = subset.shape[axis_i]
 
-            if min_fraction:
-                fractions_by_group.append( group_counts / subset.shape[axis_i])
-
-        if counts_by_group:
-            counts = pd.concat(counts_by_group, axis=1).max(axis=1)
-        else:
-            counts = pd.Series(0, index=axis_labels, dtype=float)
-
-        if min_fraction:
-            if fractions_by_group:
-                completeness = pd.concat(fractions_by_group, axis=1).max(axis=1)
+            if sp.issparse(subset):
+                group_counts = subset.getnnz(axis=axis_i)
             else:
+                group_counts = np.count_nonzero(~np.isnan(subset), axis=axis_i)
+
+            df_counts = pd.DataFrame(group_counts, index=axis_labels)
+            counts_by_group.append(df_counts)
+            if min_fraction is not None:
+                df_completeness = df_counts / group_size
+                completeness_by_group.append(df_completeness)
+
+        if not counts_by_group:
+            counts = pd.Series(0, index=axis_labels, dtype=float)
+        else:
+            counts = pd.concat(counts_by_group, axis=1).max(axis=1)
+        if min_fraction is not None:
+            if not completeness_by_group:
                 completeness = pd.Series(0, index=axis_labels, dtype=float)
+            else:
+                completeness = pd.concat(completeness_by_group, axis=1).max(axis=1)
     else:
-        counts = vals.count(axis_i)
-        if min_fraction:
-            completeness = counts / adata.shape[axis_i]
+        if sp.issparse(X):
+            counts = pd.Series(X.getnnz(axis=axis_i), index=axis_labels)
+        else:
+            counts = pd.Series(
+                np.count_nonzero(~np.isnan(X), axis=axis_i), index=axis_labels
+            )
+        if min_fraction is not None:
+            num_total = adata.shape[axis_i]
+            completeness = counts / num_total
 
-    if min_fraction:
-        mask_fraction = completeness >= min_fraction
-    else:
-        mask_fraction = pd.Series(True, index=axis_labels)
+    mask_filt = pd.Series(True, index=axis_labels)
+    if min_fraction is not None:
+        mask_filt &= completeness >= min_fraction
 
-    if min_nr:
-        mask_nr = counts >= min_nr
-    else:
-        mask_nr = pd.Series(True, index=axis_labels)
-
-    mask_filt = mask_fraction & mask_nr
+    if min_count is not None:
+        mask_filt &= counts >= min_count
 
     n_removed = (~mask_filt).sum()
-    axes_names = ['obs', 'var']
-    axis_name = axes_names[axis]
-    print(f'{n_removed} {axis_name} removed')
-
-    var_mask = [True] * adata.n_vars
-    obs_mask = [True] * adata.n_obs
-
-    if axis == 0:
-        obs_mask = mask_filt.tolist()
-    elif axis == 1:
-        var_mask = mask_filt.tolist()
+    axis_name = ["obs", "var"][axis]
+    print(f"{n_removed} {axis_name} removed")
 
     if inplace:
-        adata._inplace_subset_var(var_mask)
-        adata._inplace_subset_obs(obs_mask)
+        if axis == 0:
+            adata._inplace_subset_obs(mask_filt.values)
+        else:
+            adata._inplace_subset_var(mask_filt.values)
+        check_proteodata(adata)
+        return None
     else:
-        adata = adata[obs_mask:,var_mask].copy()
-        return adata
+        adata_filtered = adata[mask_filt, :] if axis == 0 else adata[:, mask_filt]
+        check_proteodata(adata_filtered)
+        return adata_filtered
 
-filter_obs = partial(
+
+docstr_header = """
+Filter observations based on non-missing value content.
+
+This function filters the AnnData object along the `obs` axis based on the
+fraction or number of non-missing values (np.nan). Filtering can be performed
+globally or within groups defined by the `group_by` parameter.
+"""
+filter_obs = partial_with_docsig(
     filter_axis,
     axis=0,
+    docstr_header=docstr_header,
     )
 
-filter_var = partial(
+docstr_header = """
+Filter observations based on data completeness.
+
+This function filters the AnnData object along a the obs axis based on the
+fraction of non-missing values (np.nan). Filtering can be performed globally
+or within groups defined by the `group_by` parameter.
+"""
+filter_obs_completeness = partial_with_docsig(
+    filter_axis,
+    axis=0,
+    min_count=None,
+    )
+
+docstr_header = """
+Filter variables based on non-missing value content.
+
+This function filters the AnnData object along the `var` axis based on the
+fraction or number of non-missing values (np.nan). Filtering can be performed
+globally or within groups defined by the `group_by` parameter.
+"""
+filter_var = partial_with_docsig(
     filter_axis,
     axis=1,
     )
 
-filter_obs_completeness = partial(
-    filter_axis,
-    axis=0,
-    min_nr=None,
-    )
+docstr_header = """
+Filter variables based on data completeness.
 
-filter_var_completeness = partial(
+This function filters the AnnData object along a the var axis based on the
+fraction of non-missing values (np.nan). Filtering can be performed globally
+or within groups defined by the `group_by` parameter.
+"""
+filter_var_completeness = partial_with_docsig(
     filter_axis,
     axis=1,
-    min_nr=None,
-    )
-
-filter_obs_by_min_nr_var = partial(
-    filter_axis,
-    axis=0,
-    min_fraction=None,
-    )
-
-filter_var_by_min_nr_obs = partial(
-    filter_axis,
-    axis=1,
-    min_fraction=None,
+    min_count=None,
     )
 
 

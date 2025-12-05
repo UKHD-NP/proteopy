@@ -1,8 +1,12 @@
+import pytest
 import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from copro.pp.filtering import filter_axis
+from copro.pp.filtering import (
+    filter_axis,
+    filter_proteins_by_peptide_count,
+    )
 
 
 def _make_adata_filter_obs_base() -> AnnData:
@@ -737,3 +741,128 @@ def test_filter_axis_var_groupby_with_nan_group():
         )
         assert returned is None
         assert list(adata_inplace.var_names) == expected
+
+
+def _make_peptide_adata() -> AnnData:
+    X = np.zeros((3, 6))
+    var_names = [f"pep{i}" for i in range(6)]
+    var = pd.DataFrame(
+        {
+            "peptide_id": var_names,
+            "protein_id": ["P1", "P2", "P2", "P3", "P3", "P3"],
+        },
+        index=var_names,
+    )
+    obs = pd.DataFrame(index=[f"obs{i}" for i in range(3)])
+    return AnnData(X=X, obs=obs, var=var)
+
+
+def test_filter_proteins_by_peptide_count_min():
+    io = {
+        0: ["pep0", "pep1", "pep2", "pep3", "pep4", "pep5"],
+        2: ["pep1", "pep2", "pep3", "pep4", "pep5"],
+        4: [],
+    }
+
+    for min_count, expected in io.items():
+        adata = _make_peptide_adata()
+        filtered = filter_proteins_by_peptide_count(
+            adata,
+            min_count=min_count,
+            inplace=False,
+        )
+
+        assert list(filtered.var_names) == expected
+        assert list(adata.var_names) == [f"pep{i}" for i in range(6)]
+
+        adata_inplace = _make_peptide_adata()
+        returned = filter_proteins_by_peptide_count(
+            adata_inplace,
+            min_count=min_count,
+            inplace=True,
+        )
+
+        assert returned is None
+        assert list(adata_inplace.var_names) == expected
+
+
+def test_filter_proteins_by_peptide_count_max():
+    io = {
+        0: [],
+        1: ["pep0"],
+        2: ["pep0", "pep1", "pep2"],
+    }
+
+    for max_count, expected in io.items():
+        adata = _make_peptide_adata()
+        filtered = filter_proteins_by_peptide_count(
+            adata,
+            max_count=max_count,
+            inplace=False,
+        )
+
+        assert list(filtered.var_names) == expected
+        assert list(adata.var_names) == [f"pep{i}" for i in range(6)]
+
+        adata_inplace = _make_peptide_adata()
+        returned = filter_proteins_by_peptide_count(
+            adata_inplace,
+            max_count=max_count,
+            inplace=True,
+        )
+
+        assert returned is None
+        assert list(adata_inplace.var_names) == expected
+
+
+def test_filter_proteins_by_peptide_count_min_and_max():
+    io = {
+        (2,2): ["pep1", "pep2"],
+        (2,3): ["pep1", "pep2", "pep3", "pep4", "pep5"],
+    }
+
+    for (min_count,max_count), expected in io.items():
+        adata = _make_peptide_adata()
+        filtered = filter_proteins_by_peptide_count(
+            adata,
+            min_count=min_count,
+            max_count=max_count,
+            inplace=False,
+        )
+
+        assert list(filtered.var_names) == expected
+        assert list(adata.var_names) == [f"pep{i}" for i in range(6)]
+
+        adata_inplace = _make_peptide_adata()
+        returned = filter_proteins_by_peptide_count(
+            adata_inplace,
+            min_count=min_count,
+            max_count=max_count,
+            inplace=True,
+        )
+
+        assert returned is None
+        assert list(adata_inplace.var_names) == expected
+
+
+def test_filter_proteins_by_peptide_count_min_gt_max_raises():
+    adata = _make_peptide_adata()
+
+    with pytest.raises(ValueError):
+        filter_proteins_by_peptide_count(
+            adata,
+            min_count=3,
+            max_count=2,
+            inplace=False,
+        )
+
+
+def test_filter_proteins_by_peptide_count_requires_peptide_level():
+    X = np.zeros((2, 2))
+    var_names = ["prot1", "prot2"]
+    var = pd.DataFrame({"protein_id": var_names}, index=var_names)
+    obs = pd.DataFrame(index=["obs0", "obs1"])
+    adata = AnnData(X=X, obs=obs, var=var)
+
+    with pytest.raises(ValueError):
+        filter_proteins_by_peptide_count(adata, min_count=1)

@@ -3,7 +3,7 @@ from .filtering import (
     filter_obs_completeness,
     filter_var,
     filter_var_completeness,
-    filter_genes_by_peptide_count,
+    filter_proteins_by_peptide_count,
     filter_obs_by_category_count,
     remove_zero_variance_variables,
     )

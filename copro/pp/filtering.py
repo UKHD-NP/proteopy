@@ -4,7 +4,7 @@ import pandas as pd
 import scipy.sparse as sp
 
 from copro.utils.functools import partial_with_docsig
-from copro.utils.anndata import check_proteodata
+from copro.utils.anndata import check_proteodata, is_proteodata
 
 
 def filter_axis(
@@ -210,35 +210,92 @@ filter_var_completeness = partial_with_docsig(
     )
 
 
-def filter_genes_by_peptide_count(
+def filter_proteins_by_peptide_count(
     adata,
-    min = None,
-    max = None,
-    gene_col = 'protein_id',
+    min_count=None,
+    max_count=None,
+    protein_col="protein_id",
+    inplace=True,
     ):
-    if not min and not max:
-        raise ValueError('Must pass either min or max arguments.')
+    """
+    Filter proteins by their peptide count.
 
-    genes = adata.var[gene_col]
-    counts = genes.value_counts()
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        Annotated data matrix with a protein identifier column in ``adata.var``.
+    min_count : int or None, optional
+        Keep peptides whose proteins have at least this many peptides.
+    max_count : int or None, optional
+        Keep peptides whose proteins have at most this many peptides.
+    protein_col : str, optional (default: "protein_id")
+        Column in ``adata.var`` containing protein identifiers.
+    inplace : bool, optional (default: True)
+        If True, modify ``adata`` in place. Otherwise, return a filtered view.
 
-    if min:
-        gene_ids_filt = counts[counts >= min].index
-    elif max:
-        gene_ids_filt = counts[counts <= max].index
-    elif min and max:
-        gene_ids_filt = counts[(counts >= min) & (counts <= max)]
+    Returns
+    -------
+    None or anndata.AnnData
+        ``None`` if ``inplace=True``; otherwise the filtered AnnData view.
+    """
+    check_proteodata(adata)
+    if is_proteodata(adata)[1] != "peptide":
+        raise ValueError((
+            "`AnnData` object must be in ProteoData peptide format."
+            ))
+
+    if min_count is None and max_count is None:
+        warnings.warn("Pass at least one argument: min_count | max_count")
+        adata_copy = None if inplace else adata.copy()
+        if adata_copy is not None:
+            check_proteodata(adata_copy)
+        return adata_copy
+
+    if min_count is not None:
+        if min_count < 0:
+            raise ValueError("`min_count` must be non-negative.")
+    if max_count is not None:
+        if max_count < 0:
+            raise ValueError("`max_count` must be non-negative.")
+    if (min_count is not None and max_count is not None) and (min_count > max_count):
+        raise ValueError("`min_count` cannot be greater than `max_count`.")
+
+    if protein_col not in adata.var.columns:
+        raise KeyError(f"`protein_col`='{protein_col}' not found in adata.var")
+
+    proteins = adata.var[protein_col]
+    counts = proteins.value_counts()
+
+    keep_mask = pd.Series(True, index=counts.index)
+    if min_count is not None:
+        keep_mask &= counts >= min_count
+    if max_count is not None:
+        keep_mask &= counts <= max_count
+    protein_ids_keep = counts.index[keep_mask]
+
+    var_keep_mask = proteins.isin(protein_ids_keep)
+
+    if inplace:
+        adata._inplace_subset_var(var_keep_mask.values)
+        check_proteodata(adata)
+        n_proteins_removed = len(counts.index) - len(protein_ids_keep)
+        n_peptides_removed = int((~var_keep_mask).sum())
+        print(
+            f"Removed {n_proteins_removed} proteins and "
+            f"{n_peptides_removed} peptides."
+        )
+        return None
+
     else:
-        raise ValueError('Pass at least one argument: min | max')
-    
-    var_filt = adata.var[genes.isin(gene_ids_filt)].index
-    new_adata = adata[:,var_filt]
-
-    n_genes_removed = len(set(genes.unique()) - set(gene_ids_filt.unique()))
-    n_peptides_removed = sum(~genes.isin(gene_ids_filt))
-    print(f'Removed {str(n_genes_removed)} genes and {str(n_peptides_removed)} peptides.')
-
-    return new_adata
+        new_adata = adata[:, var_keep_mask]
+        check_proteodata(new_adata)
+        n_proteins_removed = len(counts.index) - len(protein_ids_keep)
+        n_peptides_removed = int((~var_keep_mask).sum())
+        print(
+            f"Removed {n_proteins_removed} proteins and "
+            f"{n_peptides_removed} peptides."
+        )
+        return new_adata
 
 
 def filter_obs_by_category_count(

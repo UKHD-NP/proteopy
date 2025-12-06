@@ -5,7 +5,7 @@ from .filtering import (
     filter_var_completeness,
     filter_proteins_by_peptide_count,
     filter_obs_by_category_count,
-    remove_zero_variance_variables,
+    remove_zero_variance_vars,
     )
 
 from .imputation import (

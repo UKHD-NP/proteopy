@@ -301,27 +301,73 @@ def filter_proteins_by_peptide_count(
 def filter_obs_by_category_count(
     adata,
     category_col,
-    min=None,
-    max=None,
+    min_count=None,
+    max_count=None,
+    inplace=True,
     ):
-    obs = adata.obs[category_col].copy()
-    counts = obs.value_counts()
+    """
+    Filter observations by the frequency of their category value.
 
-    if min is None and max is None:
-        raise ValueError('At least one argument must be passed: min | max')
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        Annotated data matrix.
+    category_col : str
+        Column in ``adata.obs`` containing the categories to count.
+    min_count : int or None, optional
+        Keep categories with at least this many observations.
+    max_count : int or None, optional
+        Keep categories with at most this many observations.
+    inplace : bool, optional (default: True)
+        If True, modify ``adata`` in place. Otherwise, return a filtered copy.
 
-    counts_filt = counts.copy()
+    Returns
+    -------
+    None or anndata.AnnData
+        ``None`` if ``inplace=True``; otherwise the filtered AnnData.
+    """
+    check_proteodata(adata)
 
-    if min:
-        counts_filt = counts_filt[counts_filt >= min]
-    if max:
-        counts_filt = counts_filt[counts_filt <= max]
+    if min_count is None and max_count is None:
+        raise ValueError(
+            "At least one argument must be passed: min_count | max_count"
+        )
 
+    if min_count is not None and min_count < 0:
+        raise ValueError("`min_count` must be non-negative.")
+    if max_count is not None and max_count < 0:
+        raise ValueError("`max_count` must be non-negative.")
+    if (
+        min_count is not None
+        and max_count is not None
+        and min_count > max_count
+    ):
+        raise ValueError("`min_count` cannot be greater than `max_count`.")
 
-    obs_filt = obs[obs.isin(counts_filt.index)].index
-    new_adata = adata[obs_filt,:].copy()
-    
-    return new_adata 
+    if category_col not in adata.obs.columns:
+        raise KeyError(f"`category_col`='{category_col}' not found in adata.obs")
+
+    obs_series = adata.obs[category_col]
+    counts = obs_series.value_counts(dropna=False)
+
+    counts_filt = counts
+    if min_count is not None:
+        counts_filt = counts_filt[counts_filt >= min_count]
+    if max_count is not None:
+        counts_filt = counts_filt[counts_filt <= max_count]
+
+    obs_keep_mask = obs_series.isin(counts_filt.index)
+    removed = int((~obs_keep_mask).sum())
+    print(f"Removed {removed} observations.")
+
+    if inplace:
+        adata._inplace_subset_obs(obs_keep_mask.values)
+        check_proteodata(adata)
+        return None
+
+    new_adata = adata[obs_keep_mask, :].copy()
+    check_proteodata(new_adata)
+    return new_adata
 
 
 def remove_zero_variance_vars(

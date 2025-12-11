@@ -13,8 +13,7 @@ from .imputation import (
     )
 
 from .normalization import (
-    normalize_bulk,
-    median_normalize,
+    normalize_median,
     )
 
 from .quantification import (

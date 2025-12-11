@@ -1,120 +1,141 @@
 import numpy as np
 import pandas as pd
-from scipy import sparse 
+from scipy import sparse
 
-def normalize_bulk(
+from copro.utils.anndata import check_proteodata
+from copro.utils.array import is_log_transformed
+
+
+def normalize_median(
     adata,
-    method,
-    log_space,
-    fill_na = None,
-    zeros_to_na = False,
-    batch_id = None,
-    inplace = True,
-    force = False,
-    ):
-    '''
-    Normalize intensity values stored in adata.X.
+    method: str,
+    log_space: bool,
+    fill_na: float | None = None,
+    zeros_to_na: bool = False,
+    batch_id: str | None = None,
+    inplace: bool = True,
+    force: bool = False,
+):
+    """
+    Median normalization of intensities.
 
-    Args
-    ----
-    method : {'median_max','median_median'}
+    Parameters
+    ----------
+    adata : AnnData
+        Input AnnData.
+    method : {'max_ref', 'median_ref'}
+        How to choose the reference across sample medians. ``'max_ref'`` uses
+        the maximum sample median, ``'median_ref'`` uses the median of sample
+        medians.
     log_space : bool
+        Whether the input intensities are log-transformed. Mismatches with
+        automatic detection raise unless ``force=True``.
     fill_na : float, optional
-        If provided, temporarily replace NaS with this value *for the median computation only*.
-        Original NAs are restored after normalization.
+        Temporarily replace non-finite entries with this value for the median
+        computation only; original values are restored afterward.
     zeros_to_na : bool, default False
-        Temporarily treat zeros as NaN *for the median computation only*.
-        Original zeros are restored after normalization.
+        Treat zeros as missing for the median computation only; original zeros
+        are restored afterward.
     batch_id : str, optional
-        Column name in adata.obs containing batch IDs.
-        If provided, normalization is computed within each batch.
+        Column in ``adata.obs`` to perform normalization within batches.
     inplace : bool, default True
+        Modify ``adata`` in place. If False, return a copy.
     force : bool, default False
-        Avoid warning when log_space=False but X contains <= 0 values
+        Proceed even if ``log_space`` disagrees with automatic log detection.
 
-    Notes:
-        Median normalization:
-            - log_space=True: intensity + ref - sample_median
-            - log_space=True: intensity * ref / sample_median
-            - 'median_max': reference = max of sample medians (within batch if per_batch)
-            - 'median_median': reference = median of sample medians (within batch if per_batch)
+    Notes
+    -----
+    Median normalization:
+        - ``log_space=True``: ``X + ref - sample_median``
+        - ``log_space=False``: ``X * ref / sample_median``
+        - ``'max_ref'``: reference = max of sample medians (within batch if per_batch)
+        - ``'median_ref'``: reference = median of sample medians (within batch if per_batch)
 
     Returns
     -------
-    If inplace is False, returns a new AnnData with normalized X.
-    Also returns a DataFrame of per-sample factors when inplace is False.
-    When inplace is True, factors are stored in adata.uns['normalize_factors'] and the function returns None.
-    '''
+    AnnData or None
+        Normalized AnnData when ``inplace`` is False; otherwise None.
+    pandas.DataFrame, optional
+        Per-sample factors when ``inplace`` is False.
+    """
+    check_proteodata(adata)
     per_batch = batch_id
 
-    if fill_na and zeros_to_na:
+    method = method.lower()
+    allowed_methods = {"max_ref", "median_ref"}
+    if method not in allowed_methods:
+        raise ValueError(f"method must be one of {allowed_methods!r}")
+
+    if fill_na is not None and zeros_to_na:
         raise ValueError('Cannot set both zeros_to_na and fill_na to True.')
 
-    def _is_log_like(x):
-        return np.nanmin(x) <= 0
+    Xsrc = adata.X
+    was_sparse = sparse.issparse(Xsrc)
+    X = Xsrc.toarray() if was_sparse else np.asarray(Xsrc)
+    X = X.astype(float, copy=True)
 
-    X = adata.X
+    is_log, _ = is_log_transformed(adata)
+    mismatch = (log_space != is_log)
+    if mismatch and not force:
+        if log_space:
+            raise ValueError(
+                "You passed log_space=True but the data do not look log-transformed. "
+                "Set force=True to override the automatic detection."
+            )
+        else:
+            raise ValueError(
+                "You passed log_space=False but the data look log-transformed. "
+                "Set force=True to override the automatic detection."
+            )
 
-    n_samples, n_features = X.shape
+    n_samples, _ = X.shape
 
-    X_new = X.copy()
+    X_new = X.copy()  # X with replaces values as per user parameters
 
-    na_mask = np.isnan(X_new)
-    zero_mask = (X_new == 0)
+    # Track original missingness/zeros to restore later
+    na_mask = ~np.isfinite(X)
+    zero_mask = (X == 0)
 
     if zeros_to_na:
         X_new[zero_mask] = np.nan
     else:
         if fill_na is not None:
-            X_new = np.where(np.isnan(X_new), fill_na, X_new)
-
-        is_log_like = _is_log_like(X)
-        if (not log_space) and is_log_like and not force:
-            raise ValueError(
-                "You passed log_space=False but X contains values <= 0, which often indicates log space. "
-                "If you are sure your data are linear, set force=True."
-            )
+            X_new = np.where(~np.isfinite(X_new), fill_na, X_new)
 
 
-    def _normalize_sample_indices(
-        sample_idx,
+    def _normalize_samples(
+        X_work,
         method,
         log_space,
         ):
-        '''
-        Returns (norm_values, factors, pre_medians) for the given sample rows.
-
-        - norm_values: normalized X for sample_idx
-        - factors: per-sample shifts (log) or scales (linear) length = len(sample_idx)
-        '''
-        sub = X_new[sample_idx, :]
-
+        """Normalize a subset of samples and return normalized values and factors."""
         with np.errstate(invalid='ignore'):
-            sample_medians = np.nanmedian(sub, axis=1)
+            sample_medians = np.nanmedian(X_work, axis=1)
 
-        if method == 'median_median':
+        if method == 'median_ref':
             ref = float(np.nanmedian(sample_medians))
-        elif method == 'median_max':
+        elif method == 'max_ref':
             ref = float(np.nanmax(sample_medians))
         else:
-            raise ValueError("method must be one of {'median_median','median_max'}")
+            raise ValueError("method must be one of {'median_ref','max_ref'}")
 
         if log_space:
             factors = (ref - sample_medians)[:, None]
-            sub_norm = X[sample_idx, :] + factors
+            sub_norm = X_work + factors
         else:
             with np.errstate(divide='ignore', invalid='ignore'):
                 factors = (ref / sample_medians)[:, None]
-            sub_norm = X[sample_idx, :] * factors
+            sub_norm = X_work * factors
 
         return sub_norm, np.squeeze(factors)
 
-    all_norm = np.empty_like(X)
+    all_norm = np.empty_like(X, dtype=float)
     all_factors = np.empty((n_samples,), dtype=float)
 
     if per_batch is None:
         idx = np.arange(n_samples)
-        sub_norm, sub_fac = _normalize_sample_indices(idx, method.lower(), log_space)
+        X_work = X_new[idx, :]
+        sub_norm, sub_fac = _normalize_samples(X_work, method, log_space)
         all_norm[idx, :] = sub_norm
         all_factors[idx] = sub_fac if log_space else np.squeeze(sub_fac)
     else:
@@ -125,24 +146,16 @@ def normalize_bulk(
             idx = np.where(batches.values == b)[0]
             if idx.size == 0:
                 continue
-            sub_norm, sub_fac, sub_med = _normalize_sample_indices(idx, method.lower(), log_space)
+            X_work = X_new[idx, :]
+            sub_norm, sub_fac = _normalize_samples(X_work, method, log_space)
             all_norm[idx, :] = sub_norm
             all_factors[idx] = sub_fac if log_space else np.squeeze(sub_fac)
 
-    # --------------------------
-    # 4) Restore original NaNs and zeros (only if we changed them)
-    # --------------------------
-    # We always respect user's original missingness and zeros in the *output* matrix.
-    # If a value was originally NaN, keep it NaN after normalization.
+    # Restore original NaNs and zeros in the output
     all_norm[na_mask] = np.nan
-    # If a value was originally zero and user asked zeros_to_na for computation only,
-    # restore zeros in the output.
     if zeros_to_na:
         all_norm[zero_mask] = 0.0
 
-    # --------------------------
-    # 5) Build factors frame
-    # --------------------------
     if log_space:
         factor_name = "shift_log"
     else:
@@ -156,103 +169,23 @@ def normalize_bulk(
     if per_batch is not None:
         factors_df[per_batch] = adata.obs[per_batch].values
 
-    # Warn if any sample median was 0/NaN leading to NaN factor
+    # Surface problematic medians via warnings
     if np.isnan(all_factors).any():
         bad = np.where(np.isnan(all_factors))[0]
         print(f"Warning: {bad.size} sample(s) had undefined median; factors are NaN for indices {bad.tolist()}.")
+    if np.isinf(all_factors).any():
+        bad = np.where(np.isinf(all_factors))[0]
+        print(f"Warning: {bad.size} sample(s) had zero median; factors are inf for indices {bad.tolist()}.")
+
+    out = sparse.csr_matrix(all_norm) if was_sparse else all_norm
 
     if inplace:
-        adata.X = all_norm
-        adata.uns["normalization_factors"] = factors_df
-    else:
-        adata = adata.copy()
-        adata.X = all_norm
-        return adata, factors_df
-
-
-def median_normalize(
-    adata,
-    layer=None,
-    inplace: bool = True,
-):
-    """
-    Row-wise median normalization via log2-wrap.
-
-    - If input looks RAW: log2-transform (zeros -> NA), median-center per sample in log space, exp2 back.
-    - If input looks LOG: median-center per sample in log space (no back-transform).
-    - Zeros are ALWAYS treated as missing (NA). No pseudocount is used.
-
-    Writes per-sample effect to:
-      - RAW path:  adata.obs['median_scale']      (multiplicative factor on raw scale)
-      - LOG path:  adata.obs['log_median_shift']  (additive shift in log2 space)
-    """
-    # pull matrix
-    Xsrc = adata.layers[layer] if layer is not None else adata.X
-    was_sparse = sparse.issparse(Xsrc)
-    X = Xsrc.toarray() if was_sparse else np.asarray(Xsrc)
-    X = X.astype(float, copy=True)
-
-    # detect raw/log
-    is_log, stats = is_log_transformed(adata, layer=layer)
-
-    # masks
-    nan_mask  = ~np.isfinite(X)
-    zero_mask = (X == 0)
-
-    # treat zeros as NA for normalization (always)
-    M = X.copy()
-    M[zero_mask] = np.nan
-    M[nan_mask]  = np.nan
-
-    # log2 space
-    if is_log:
-        Y = M  # already log; zeros now NaN
-    else:
-        # raw -> log2; negative values (if any) become NaN automatically
-        Y = np.log2(M)
-
-    # row-wise medians (ignore NaNs)
-    row_meds = np.nanmedian(Y, axis=1)
-    # rows with all-NaN -> no shift
-    row_meds[~np.isfinite(row_meds)] = 0.0
-    target = np.nanmedian(row_meds)
-    if not np.isfinite(target):
-        raise ValueError("Global median undefined (no finite values after masking).")
-
-    shifts = target - row_meds
-    Y_norm = Y + shifts[:, None]
-
-    # back to output scale
-    if is_log:
-        Z = Y_norm
-        obs_col, obs_vals = "log_median_shift", shifts
-    else:
-        Z = np.exp2(Y_norm)
-        obs_col, obs_vals = "median_scale", np.exp2(shifts)
-
-    # restore original NaNs; keep original zeros as NA (by design)
-    Z[nan_mask]  = np.nan
-    Z[zero_mask] = np.nan
-
-    if not inplace:
-        return Z, {"started_in": ("log" if is_log else "raw"), "detection": stats}
-
-    # write back
-    out = sparse.csr_matrix(Z) if was_sparse else Z
-    if layer is None:
         adata.X = out
+        adata.uns["normalization_factors"] = factors_df
+        check_proteodata(adata)
     else:
-        adata.layers[layer] = out
-    adata.obs[obs_col] = obs_vals
-
-    # bookkeeping
-    adata.uns.setdefault("normalization", {})
-    adata.uns["normalization"].update({
-        "method": "median",
-        "started_in": ("log" if is_log else "raw"),
-        "zeros_treated_as_na": True,
-        "layer": layer,
-        "detection": stats,
-        "log_base": 2.0,
-    })
-    return adata
+        adata_out = adata.copy()
+        adata_out.X = out
+        adata_out.uns["normalization_factors"] = factors_df
+        check_proteodata(adata_out)
+        return adata_out, factors_df

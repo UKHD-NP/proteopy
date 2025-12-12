@@ -6,6 +6,7 @@ from .filtering import (
     filter_proteins_by_peptide_count,
     filter_obs_by_category_count,
     remove_zero_variance_vars,
+    remove_contaminants,
     )
 
 from .imputation import (

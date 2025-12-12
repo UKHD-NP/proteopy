@@ -1,7 +1,10 @@
 import warnings
+from pathlib import Path
+from typing import Callable
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+from Bio import SeqIO
 
 from copro.utils.functools import partial_with_docsig
 from copro.utils.anndata import check_proteodata, is_proteodata
@@ -455,3 +458,89 @@ def remove_zero_variance_vars(
         new_adata = adata[:, keep_mask].copy()
         check_proteodata(new_adata)
         return new_adata
+
+
+def remove_contaminants(
+    adata,
+    contaminant_fasta_path,
+    protein_key="protein_id",
+    header_parser: Callable[[str], str] | None = None,
+    inplace=False,
+    ):
+    """
+    Remove variables whose protein identifier matches a contaminant FASTA entry.
+
+    Parameters
+    ----------
+    adata : anndata.AnnData
+        Annotated data.
+    contaminant_fasta_path : str | Path
+        Path to the contaminant FASTA file; headers are parsed for IDs.
+    protein_key : str, optional (default: "protein_id")
+        Column in ``adata.var`` containing protein identifiers to match.
+    header_parser : callable, optional
+        Function to extract protein IDs from FASTA headers. Defaults to splitting
+        the header on ``"|"`` and returning the second element, falling back to
+        the full header if not present.
+    inplace : bool, optional (default: False)
+        If True, modify ``adata`` in place. Otherwise, return a filtered view.
+
+    Returns
+    -------
+    None or anndata.AnnData
+        ``None`` if ``inplace=True``; otherwise the filtered AnnData view.
+    """
+    check_proteodata(adata)
+
+    if header_parser is None:
+        def header_parser(header: str) -> str:
+            parts = header.split("|")
+            return parts[1] if len(parts) > 1 else header
+
+    def _load_contaminant_ids(fasta_path: Path) -> set[str]:
+        contaminant_ids = set()
+        for record in SeqIO.parse(fasta_path, "fasta"):
+            parsed = header_parser(record.id)
+            if parsed == "":
+                warnings.warn(
+                    f"Header parser returned empty ID for record '{record.id}'.",
+                )
+                continue
+            contaminant_ids.add(parsed)
+        return contaminant_ids
+
+    fasta_path = Path(contaminant_fasta_path)
+    if not fasta_path.exists():
+        raise FileNotFoundError(f"Contaminant FASTA not found at {fasta_path}")
+
+    if protein_key not in adata.var.columns:
+        raise KeyError(f"`protein_key`='{protein_key}' not found in adata.var")
+
+    contaminant_ids = _load_contaminant_ids(fasta_path)
+
+    proteins = adata.var[protein_key]
+    keep_mask = ~proteins.isin(contaminant_ids)
+
+    _, level = is_proteodata(adata)
+    if level == "peptide":
+        removed_peptides = int((~keep_mask).sum())
+        removed_proteins = int(proteins[~keep_mask].nunique())
+        print(
+            f"Removed {removed_peptides} contaminating peptides and "
+            f"{removed_proteins} contaminating proteins.",
+        )
+    elif level == "protein":
+        removed_proteins = int((~keep_mask).sum())
+        print(f"Removed {removed_proteins} contaminating proteins.")
+    else:
+        removed = int((~keep_mask).sum())
+        print(f"Removed {removed} contaminating variables.")
+
+    if inplace:
+        adata._inplace_subset_var(keep_mask.values)
+        check_proteodata(adata)
+        return None
+
+    new_adata = adata[:, keep_mask]
+    check_proteodata(new_adata)
+    return new_adata

@@ -462,7 +462,7 @@ def remove_zero_variance_vars(
 
 def remove_contaminants(
     adata,
-    contaminant_fasta_path,
+    contaminant_path,
     protein_key="protein_id",
     header_parser: Callable[[str], str] | None = None,
     inplace=False,
@@ -474,8 +474,11 @@ def remove_contaminants(
     ----------
     adata : anndata.AnnData
         Annotated data.
-    contaminant_fasta_path : str | Path
-        Path to the contaminant FASTA file; headers are parsed for IDs.
+    contaminant_path : str | Path
+        Path to the contaminant list. The file can be in FASTA format, in which
+        case the headers are parsed to extract the contaminant ids (see param:
+        header_parser); or tabular format TSV/CSV files, in which case the
+        first column is extracted as contaminant ids..
     protein_key : str, optional (default: "protein_id")
         Column in ``adata.var`` containing protein identifiers to match.
     header_parser : callable, optional
@@ -497,7 +500,7 @@ def remove_contaminants(
             parts = header.split("|")
             return parts[1] if len(parts) > 1 else header
 
-    def _load_contaminant_ids(fasta_path: Path) -> set[str]:
+    def _load_contaminant_ids_from_fasta(fasta_path: Path) -> set[str]:
         contaminant_ids = set()
         for record in SeqIO.parse(fasta_path, "fasta"):
             parsed = header_parser(record.id)
@@ -509,14 +512,31 @@ def remove_contaminants(
             contaminant_ids.add(parsed)
         return contaminant_ids
 
-    fasta_path = Path(contaminant_fasta_path)
-    if not fasta_path.exists():
-        raise FileNotFoundError(f"Contaminant FASTA not found at {fasta_path}")
+    def _load_contaminant_ids_from_table(table_path: Path, sep: str) -> set[str]:
+        series = pd.read_csv(table_path, sep=sep, usecols=[0]).iloc[:, 0]
+        series = series.dropna().astype(str)
+        return set(series.tolist())
+
+    cont_path = Path(contaminant_path)
+    if not cont_path.exists():
+        raise FileNotFoundError(f"Contaminant file not found at {cont_path}")
 
     if protein_key not in adata.var.columns:
         raise KeyError(f"`protein_key`='{protein_key}' not found in adata.var")
 
-    contaminant_ids = _load_contaminant_ids(fasta_path)
+    suffix = cont_path.suffix.lower()
+    match suffix:
+        case ".fasta" | ".fa" | ".faa":
+            contaminant_ids = _load_contaminant_ids_from_fasta(cont_path)
+        case ".csv":
+            contaminant_ids = _load_contaminant_ids_from_table(cont_path, ",")
+        case ".tsv":
+            contaminant_ids = _load_contaminant_ids_from_table(cont_path, "\t")
+        case _:
+            raise ValueError(
+                "Unsupported contaminant file type. Use FASTA (.fasta/.fa/.faa), "
+                "CSV (.csv), or TSV (.tsv).",
+            )
 
     proteins = adata.var[protein_key]
     keep_mask = ~proteins.isin(contaminant_ids)

@@ -5,6 +5,20 @@ from functools import partial
 import numpy as np
 import pandas as pd
 from anndata import AnnData
+from scipy import sparse
+
+
+def _has_infinite_values(X) -> bool:
+    """
+    Check if the matrix X contains any infinite values (np.inf or -np.inf).
+
+    Handles both dense numpy arrays and scipy sparse matrices.
+    """
+    if X is None:
+        return False
+    if sparse.issparse(X):
+        return np.any(np.isinf(X.data))
+    return np.any(np.isinf(X))
 
 
 def _axis_len(a, axis: int = 0) -> int:
@@ -218,6 +232,15 @@ def is_proteodata(
         return False, None
 
     _check_structure(adata)  # also checks if obs/vars are unique
+
+    if adata.X is not None and _has_infinite_values(adata.X):
+        msg = (
+            "AnnData.X contains infinite values (np.inf or -np.inf). "
+            "Please remove or replace infinite values before proceeding."
+        )
+        if raise_error:
+            raise ValueError(msg)
+        return False, None
 
     var = adata.var
     has_protein_id = "protein_id" in var.columns

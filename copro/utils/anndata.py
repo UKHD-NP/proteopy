@@ -242,7 +242,47 @@ def is_proteodata(
             raise ValueError(msg)
         return False, None
 
+    # Check obs requirements
+    obs = adata.obs
+    if "sample_id" not in obs.columns:
+        msg = (
+            "Missing required 'sample_id' column in adata.obs. "
+            "Each observation (row) must have a sample identifier equal to the AnnData index."
+        )
+        if raise_error:
+            raise ValueError(msg)
+        return False, None
+
+    # Check for misplaced columns in obs (these belong in var)
+    misplaced_in_obs = []
+    if "protein_id" in obs.columns:
+        misplaced_in_obs.append("protein_id")
+    if "peptide_id" in obs.columns:
+        misplaced_in_obs.append("peptide_id")
+    if misplaced_in_obs:
+        msg = (
+            f"Found column(s) {misplaced_in_obs} in adata.obs. "
+            "These columns belong in adata.var, not adata.obs. "
+            "Observations (rows) represent samples, while variables (columns) "
+            "represent peptides or proteins."
+        )
+        if raise_error:
+            raise ValueError(msg)
+        return False, None
+
+    # Check for misplaced columns in var (these belong in obs)
     var = adata.var
+    if "sample_id" in var.columns:
+        msg = (
+            "Found 'sample_id' column in adata.var. "
+            "This column belongs in adata.obs, not adata.var. "
+            "Observations (rows) represent samples, while variables (columns) "
+            "represent peptides or proteins."
+        )
+        if raise_error:
+            raise ValueError(msg)
+        return False, None
+
     has_protein_id = "protein_id" in var.columns
     has_peptide_id = "peptide_id" in var.columns
 

@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 import re
+from pathlib import Path
 
 
 def sanitize_string(s: str) -> str:
@@ -29,3 +32,35 @@ def sanitize_string(s: str) -> str:
     'sample_ctrl'
     """
     return re.sub(r"[^a-zA-Z0-9_]", "_", str(s))
+
+
+def detect_separator(file_path: str | Path) -> str:
+    """Detect CSV/TSV separator from file extension.
+
+    Parameters
+    ----------
+    file_path : str | Path
+        Path to the file.
+
+    Returns
+    -------
+    str
+        Detected separator: ',' for .csv, '\\t' for .tsv.
+
+    Raises
+    ------
+    ValueError
+        If the file extension is not .csv or .tsv.
+    """
+    path = Path(file_path)
+    suffix = path.suffix.lower()
+    if suffix == ".csv":
+        return ","
+    elif suffix == ".tsv":
+        return "\t"
+    else:
+        raise ValueError(
+            f"Cannot auto-detect separator for extension '{suffix}'. "
+            "Supported extensions: .csv, .tsv. "
+            "Please provide the `sep` parameter explicitly."
+            )

@@ -5,9 +5,13 @@ from typing import Dict, Literal
 
 import anndata as ad
 import pandas as pd
+from pathlib import Path
+
+from copro.utils.anndata import check_proteodata
+from copro.utils.pandas import load_dataframe
 
 
-def peptides_long_from_df(
+def _peptides_long_from_df(
     intensities_df: pd.DataFrame,
     *,
     sample_annotation_df: pd.DataFrame | None = None,
@@ -17,7 +21,9 @@ def peptides_long_from_df(
     sort_obs_by_annotation: bool = False,
     ) -> ad.AnnData:
     """Convert pre-loaded peptide-level tables into an AnnData container."""
-    # Normalise the user-supplied column names to internal canonical labels.
+    # Normalize user-specified column names so downstream code can rely on a
+    # fixed set of canonical fields (peptide_id, protein_id, sample_id,
+    # intensity) regardless of the input header names.
     column_aliases = {
         "peptide_id": "peptide_id",
         "protein_id": "protein_id",
@@ -31,6 +37,10 @@ def peptides_long_from_df(
                 "column_map contains unsupported keys: "
                 f"{', '.join(sorted(unexpected))}"
                 )
+        if len(set(column_map.values())) != len(column_map.values()):
+            raise ValueError(
+                "column_map must map each canonical key to a unique source column."
+                )
         column_aliases.update(column_map)
 
     df = intensities_df.copy()
@@ -43,17 +53,26 @@ def peptides_long_from_df(
             f"{', '.join(sorted(missing_columns))}"
             )
 
-    # Rename columns so downstream logic can rely on canonical labels.
+    # Rename columns now so all later checks (duplicates, mapping) operate on
+    # canonical labels instead of alias-specific column names.
     rename_map_main = {actual: canonical for canonical, actual in column_aliases.items()}
     df = df.rename(columns=rename_map_main)
+
+    try:
+        df["intensity"] = pd.to_numeric(df["intensity"], errors="raise")
+    except Exception as exc:
+        raise ValueError("intensity column must contain numeric values.") from exc
 
     sample_column = "sample_id"
     duplicate_mask = df.duplicated(subset=[sample_column, "peptide_id"])
     if duplicate_mask.any():
         duplicated = df.loc[duplicate_mask, [sample_column, "peptide_id"]]
+        n_duplicates = len(duplicated)
+        sample_duplicates = duplicated.head(5).to_dict(orient='records')
+        extra = f" (showing first 5 of {n_duplicates})" if n_duplicates > 5 else ""
         raise ValueError(
-            "Duplicate peptide entries per sample detected: "
-            f"{duplicated.to_dict(orient='records')}"
+            f"Duplicate peptide entries per sample detected{extra}: "
+            f"{sample_duplicates}"
             )
 
     protein_counts = df.groupby("peptide_id")["protein_id"].nunique()
@@ -64,23 +83,21 @@ def peptides_long_from_df(
             f"{', '.join(map(str, inconsistent.index.tolist()))}"
             )
 
-    # Optionally fill _missing intensity values, keeping original data untouched.
     if fill_na is not None:
         fill_value = float(fill_na)
-        df_work = df.copy()
-        df_work["intensity"] = df_work["intensity"].fillna(fill_value)
-    else:
-        df_work = df
 
-    default_obs_order = df_work[sample_column].drop_duplicates().tolist()
-    annotation_order = None
+    default_obs_order = df[sample_column].drop_duplicates().tolist()
+    annotation_order: list[str] | None = None
 
-    # Reshape to samples x peptides matrix.
-    intensity_matrix = df_work.pivot(
+    # Pivot long-form rows into a deterministic samples x proteins matrix;
+    # sorting both axes ensures stable ordering even if the input table was
+    # shuffled.
+    intensity_matrix = df.pivot(
         index=sample_column,
         columns="peptide_id",
         values="intensity",
     )
+    intensity_matrix = intensity_matrix.astype(float)
     intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
     if fill_na is not None:
         intensity_matrix = intensity_matrix.fillna(fill_value)
@@ -88,22 +105,23 @@ def peptides_long_from_df(
     intensity_matrix.columns.name = None
 
     peptide_to_protein = (
-        df_work.groupby("peptide_id", sort=False)["protein_id"]
+        df.groupby("peptide_id", sort=False)["protein_id"]
         .first()
         .reindex(intensity_matrix.columns)
         )
 
-    # Build obs with the sample identifier retained as a column.
     obs = pd.DataFrame(index=intensity_matrix.index)
     obs["sample_id"] = obs.index
 
     if sample_annotation_df is not None:
         annotation_df = sample_annotation_df.copy()
-        rename_map_annotation = {
-            actual: canonical
-            for canonical, actual in column_aliases.items()
-            if actual in annotation_df.columns and canonical != actual
-            }
+        actual_sample_id = column_aliases["sample_id"]
+        rename_map_annotation = (
+            {actual_sample_id: "sample_id"}
+            if actual_sample_id in annotation_df.columns
+            and actual_sample_id != "sample_id"
+            else {}
+            )
         annotation_df = annotation_df.rename(columns=rename_map_annotation)
 
         if "sample_id" not in annotation_df.columns:
@@ -145,7 +163,7 @@ def peptides_long_from_df(
             name for name in annotation_df_unique["sample_id"] if name in obs_samples
             ]
 
-        obs_reset = obs.reset_index().rename(columns={"index": "_obs_index"})
+        obs_reset = obs.reset_index(names="_obs_index")
         merged_obs = obs_reset.merge(
             annotation_df_unique,
             how="left",
@@ -165,9 +183,10 @@ def peptides_long_from_df(
     if peptide_annotation_df is not None:
         peptide_annotation_df = peptide_annotation_df.copy()
         rename_map_peptide = {
-            actual: canonical
-            for canonical, actual in column_aliases.items()
-            if actual in peptide_annotation_df.columns and canonical != actual
+            column_aliases[key]: key
+            for key in ("peptide_id", "protein_id")
+            if column_aliases[key] in peptide_annotation_df.columns
+            and column_aliases[key] != key
             }
         peptide_annotation_df = peptide_annotation_df.rename(columns=rename_map_peptide)
 
@@ -214,7 +233,7 @@ def peptides_long_from_df(
                 "matrix did not have a matching peptide annotation."
                 )
 
-        var_reset = var.reset_index().rename(columns={"index": "_var_index"})
+        var_reset = var.reset_index(names="_var_index")
         merged_var = var_reset.merge(
             peptide_annotation_unique,
             how="left",
@@ -227,8 +246,8 @@ def peptides_long_from_df(
 
     if sort_obs_by_annotation:
         desired_order = annotation_order or default_obs_order
-        seen = set()
-        final_order = []
+        seen: set[str] = set()
+        final_order: list[str] = []
         for name in desired_order:
             if name in intensity_matrix.index and name not in seen:
                 final_order.append(name)
@@ -246,11 +265,12 @@ def peptides_long_from_df(
         var=var,
         )
     adata.strings_to_categoricals()
+    check_proteodata(adata)
 
     return adata
 
 
-def proteins_long_from_df(
+def _proteins_long_from_df(
     intensities_df: pd.DataFrame,
     *,
     sample_annotation_df: pd.DataFrame | None = None,
@@ -260,7 +280,9 @@ def proteins_long_from_df(
     sort_obs_by_annotation: bool = False,
     ) -> ad.AnnData:
     """Convert pre-loaded protein-level tables into an AnnData container."""
-
+    # Normalize user-specified column names so downstream code can rely on a
+    # fixed set of canonical fields (protein_id, sample_id, intensity)
+    # regardless of the input header names.
     column_aliases = {
         "protein_id": "protein_id",
         "sample_id": "sample_id",
@@ -272,6 +294,10 @@ def proteins_long_from_df(
             raise ValueError(
                 "column_map contains unsupported keys: "
                 f"{', '.join(sorted(unexpected))}"
+                )
+        if len(set(column_map.values())) != len(column_map.values()):
+            raise ValueError(
+                "column_map must map each canonical key to a unique source column."
                 )
         column_aliases.update(column_map)
 
@@ -285,49 +311,63 @@ def proteins_long_from_df(
             f"{', '.join(sorted(missing_columns))}"
             )
 
+    # Rename columns now so all later checks (duplicates, mapping) operate on
+    # canonical labels instead of alias-specific column names.
     rename_map_main = {actual: canonical for canonical, actual in column_aliases.items()}
     df = df.rename(columns=rename_map_main)
+
+    try:
+        df["intensity"] = pd.to_numeric(df["intensity"], errors="raise")
+    except Exception as exc:
+        raise ValueError("intensity column must contain numeric values.") from exc
 
     sample_column = "sample_id"
     duplicate_mask = df.duplicated(subset=[sample_column, "protein_id"])
     if duplicate_mask.any():
         duplicated = df.loc[duplicate_mask, [sample_column, "protein_id"]]
+        n_duplicates = len(duplicated)
+        sample_duplicates = duplicated.head(5).to_dict(orient='records')
+        extra = f" (showing first 5 of {n_duplicates})" if n_duplicates > 5 else ""
         raise ValueError(
-            "Duplicate protein entries per sample detected: "
-            f"{duplicated.to_dict(orient='records')}"
+            f"Duplicate protein entries per sample detected{extra}: "
+            f"{sample_duplicates}"
             )
 
     if fill_na is not None:
         fill_value = float(fill_na)
-        df_work = df.copy()
-        df_work["intensity"] = df_work["intensity"].fillna(fill_value)
-    else:
-        df_work = df
 
-    default_obs_order = df_work[sample_column].drop_duplicates().tolist()
+    default_obs_order = df[sample_column].drop_duplicates().tolist()
     annotation_order: list[str] | None = None
 
-    intensity_matrix = df_work.pivot(
+    # Pivot long-form rows into a deterministic samples x proteins matrix;
+    # sorting both axes ensures stable ordering even if the input table was
+    # shuffled.
+    intensity_matrix = df.pivot(
         index=sample_column,
         columns="protein_id",
         values="intensity",
     )
+    intensity_matrix = intensity_matrix.astype(float)
     intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
     if fill_na is not None:
         intensity_matrix = intensity_matrix.fillna(fill_value)
     intensity_matrix.index.name = None
     intensity_matrix.columns.name = None
 
+    # Keep sample_id both as index and explicit column to preserve the original
+    # identifiers and enable merges with optional sample annotations.
     obs = pd.DataFrame(index=intensity_matrix.index)
     obs["sample_id"] = obs.index
 
     if sample_annotation_df is not None:
         annotation_df = sample_annotation_df.copy()
-        rename_map_annotation = {
-            actual: canonical
-            for canonical, actual in column_aliases.items()
-            if actual in annotation_df.columns and canonical != actual
-            }
+        actual_sample_id = column_aliases["sample_id"]
+        rename_map_annotation = (
+            {actual_sample_id: "sample_id"}
+            if actual_sample_id in annotation_df.columns
+            and actual_sample_id != "sample_id"
+            else {}
+            )
         annotation_df = annotation_df.rename(columns=rename_map_annotation)
 
         if "sample_id" not in annotation_df.columns:
@@ -369,27 +409,31 @@ def proteins_long_from_df(
             name for name in annotation_df_unique["sample_id"] if name in obs_samples
             ]
 
-        obs_reset = obs.reset_index().rename(columns={"index": "_obs_index"})
+        obs_reset = obs.reset_index(names="_obs_index")
         merged_obs = obs_reset.merge(
             annotation_df_unique,
             how="left",
             on="sample_id",
+            suffixes=("", "_annotation"),
             )
         merged_obs.set_index("_obs_index", inplace=True)
         merged_obs.index.name = None
         obs = merged_obs
 
+    # Initialise var with protein identifiers.
     var = pd.DataFrame(index=intensity_matrix.columns)
     var.index.name = None
     var["protein_id"] = var.index
 
     if protein_annotation_df is not None:
         protein_annotation_df = protein_annotation_df.copy()
-        rename_map_protein = {
-            actual: canonical
-            for canonical, actual in column_aliases.items()
-            if actual in protein_annotation_df.columns and canonical != actual
-            }
+        actual_protein_id = column_aliases["protein_id"]
+        rename_map_protein = (
+            {actual_protein_id: "protein_id"}
+            if actual_protein_id in protein_annotation_df.columns
+            and actual_protein_id != "protein_id"
+            else {}
+            )
         protein_annotation_df = protein_annotation_df.rename(
             columns=rename_map_protein
             )
@@ -437,11 +481,12 @@ def proteins_long_from_df(
                 "matrix did not have a matching protein annotation."
                 )
 
-        var_reset = var.reset_index().rename(columns={"index": "_var_index"})
+        var_reset = var.reset_index(names="_var_index")
         merged_var = var_reset.merge(
             protein_annotation_unique,
             how="left",
             on="protein_id",
+            suffixes=("", "_annotation"),
             )
         merged_var.set_index("_var_index", inplace=True)
         merged_var.index.name = None
@@ -468,17 +513,18 @@ def proteins_long_from_df(
         var=var,
         )
     adata.strings_to_categoricals()
+    check_proteodata(adata)
 
     return adata
 
 
 def long(
-    intensities_path: str,
+    intensities: str | Path | pd.DataFrame,
     *,
     level: Literal["peptide", "protein"] | None = None,
-    sep: str = ",",
-    sample_annotation_path: str | None = None,
-    var_annotation_path: str | None = None,
+    sep: str | None = None,
+    sample_annotation: str | Path | pd.DataFrame | None = None,
+    var_annotation: str | Path | pd.DataFrame | None = None,
     fill_na: float | None = None,
     column_map: Dict[str, str] | None = None,
     sort_obs_by_annotation: bool = False,
@@ -487,23 +533,29 @@ def long(
 
     Parameters
     ----------
-    intensities_path : str
-        Path to a delimited text file containing long-form intensities.
+    intensities : str | Path | pd.DataFrame
+        Long-form intensities data. Accepts a file path (str or Path) or a
+        pandas DataFrame. When a file path is provided, the separator is
+        auto-detected from the extension (.csv -> ',', .tsv -> '\\t') unless
+        `sep` is explicitly specified.
     level : {"peptide", "protein"}, default None
-        Select whether to process peptide- or protein-level inputs. This argument is required.
-    sep : str, default "\\t"
-        Delimiter passed to `pandas.read_csv`.
-    sample_annotation_path : str, optional
-        Optional path to obs annotations.
-    var_annotation_path : str, optional merged into ``adata.obs``.
-        Optional path to var annotations merged into ``adata.var``.
-        The file is interpreted as peptide annotations when ``level="peptide"`` and as
-        protein annotations when `level="protein"`.
+        Select whether to process peptide- or protein-level inputs. This
+        argument is required.
+    sep : str, optional
+        Delimiter passed to `pandas.read_csv`. If None (the default),
+        the separator is auto-detected from the file extension. Ignored
+        when input is a DataFrame.
+    sample_annotation : str | Path | pd.DataFrame, optional
+        Optional obs annotations. Accepts a file path or DataFrame.
+    var_annotation : str | Path | pd.DataFrame, optional
+        Optional var annotations merged into ``adata.var``. Accepts a file
+        path or DataFrame. Interpreted as peptide annotations when
+        ``level="peptide"`` and as protein annotations when ``level="protein"``.
     fill_na : float, optional
         Optional replacement value for missing intensity entries.
     column_map : dict, optional
-        Optional mapping that specifies custom column names for the expected keys:
-        peptide_id, protein_id, sample_id, intensity
+        Optional mapping that specifies custom column names for the expected
+        keys: peptide_id, protein_id, sample_id, intensity.
     sort_obs_by_annotation : bool, default False
         When True, reorder observations to match the order of samples in the
         annotation (if supplied) or the original intensity table.
@@ -511,7 +563,8 @@ def long(
     Returns
     -------
     AnnData
-        Structured representation of the long-form intensities ready for downstream analysis.
+        Structured representation of the long-form intensities ready for
+        downstream analysis.
     """
     if level is None:
         raise ValueError("level is required; expected 'peptide' or 'protein'.")
@@ -523,22 +576,22 @@ def long(
             f"got {level!r} instead."
             )
 
-    df = pd.read_csv(intensities_path, sep=sep)
+    df = load_dataframe(intensities, sep)
 
     sample_annotation_df = (
-        pd.read_csv(sample_annotation_path, sep=sep)
-        if sample_annotation_path
+        load_dataframe(sample_annotation, sep)
+        if sample_annotation is not None
         else None
         )
 
     var_annotation_df = (
-        pd.read_csv(var_annotation_path, sep=sep)
-        if var_annotation_path
+        load_dataframe(var_annotation, sep)
+        if var_annotation is not None
         else None
         )
 
     if level_normalised == "peptide":
-        return peptides_long_from_df(
+        adata = _peptides_long_from_df(
             df,
             sample_annotation_df=sample_annotation_df,
             peptide_annotation_df=var_annotation_df,
@@ -546,12 +599,14 @@ def long(
             column_map=column_map,
             sort_obs_by_annotation=sort_obs_by_annotation,
             )
-
-    return proteins_long_from_df(
-        df,
-        sample_annotation_df=sample_annotation_df,
-        protein_annotation_df=var_annotation_df,
-        fill_na=fill_na,
-        column_map=column_map,
-        sort_obs_by_annotation=sort_obs_by_annotation,
-        )
+        return adata
+    else:
+        adata = _proteins_long_from_df(
+            df,
+            sample_annotation_df=sample_annotation_df,
+            protein_annotation_df=var_annotation_df,
+            fill_na=fill_na,
+            column_map=column_map,
+            sort_obs_by_annotation=sort_obs_by_annotation,
+            )
+        return adata

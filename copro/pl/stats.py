@@ -2,6 +2,7 @@ from functools import partial
 import warnings
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+import uuid
 
 import numpy as np
 import pandas as pd
@@ -20,7 +21,8 @@ from matplotlib.ticker import MaxNLocator
 from copro.utils.anndata import check_proteodata, is_proteodata
 from copro.utils.matplotlib import _resolve_color_scheme
 from copro.utils.functools import partial_with_docsig
-from copro.pp.stats import calculate_groupwise_cv
+from copro.utils.string import sanitize_string
+from copro.pp.stats import calculate_cv
 
 
 def completeness(
@@ -987,8 +989,9 @@ def cv_by_group(
     adata: ad.AnnData,
     group_by: str,
     layer: str | None = None,
-    zero_to_na: bool = True,
-    min_n: int = 1,
+    zero_to_na: bool = False,
+    min_samples: int = 3,
+    force: bool = False,
     order: list | None = None,
     color_scheme=None,
     alpha: float = 0.8,
@@ -1015,10 +1018,15 @@ def cv_by_group(
     layer : str or None, optional
         AnnData layer to read intensities from. Defaults to ``adata.X``.
     zero_to_na : bool, optional
-        Replace zero values with NaN before computing CVs. Default is ``True``.
-    min_n : int, optional
+        Replace zero values with NaN before computing CVs. Default is ``False``.
+    min_obs : int, optional
         Minimum number of observations per variable required to compute a CV.
-        Variables with fewer non-NaN entries receive NaN. Default is ``1``.
+        Variables with fewer non-NaN entries receive NaN. Default is ``3``.
+        Ignored when using precomputed CV data from ``adata.varm``.
+    force : bool, optional
+        Force recomputation of CV values even if precomputed data exists in
+        ``adata.varm``. When ``True``, uses a temporary slot that is deleted
+        after extracting the data. Default is ``False``.
     order : list or None, optional
         Explicit order of group labels (without the ``cv_`` prefix) along the
         x-axis. When ``None`` the observed group order is used.
@@ -1072,41 +1080,60 @@ def cv_by_group(
             f"Column '{group_by}' does not contain any finite groups."
         )
 
-    existing_cv_cols = [
-        f"cv_{grp}" for grp in unique_groups if f"cv_{grp}" in adata.var.columns
-    ]
-    if existing_cv_cols:
-        warnings.warn(
-            "Replacing existing CV columns for groups "
-            f"{', '.join(existing_cv_cols)}.",
-            stacklevel=2,
+    # Use existing CV data if available; otherwise compute temporarily
+    layer_suffix = sanitize_string(layer) if layer is not None else "X"
+    varm_key = f"cv_by_{sanitize_string(group_by)}_{layer_suffix}"
+
+    key_existed = varm_key in adata.varm
+    temp_key_name = None
+
+    # Determine whether to use precomputed data or compute new
+    use_precomputed = key_existed and not force
+
+    if use_precomputed:
+        # Check if min_samples was explicitly provided (not default)
+        default_min_samples = 3
+        if min_samples != default_min_samples:
+            raise ValueError(
+                f"Cannot use `min_samples={min_samples}` with precomputed CV "
+                f"data in adata.varm['{varm_key}']. Either:\n"
+                f"  - Use `force=True` to recompute CV values with the new "
+                f"`min_samples` setting, or\n"
+                f"  - Remove the precomputed data with "
+                f"`del adata.varm['{varm_key}']` before calling this function."
+            )
+        print(f"Using existing CV data from adata.varm['{varm_key}'].")
+        key_to_use = varm_key
+    else:
+        # Random key prevents overwriting existing varm slots
+        temp_key_name = f"_temp_cv_{uuid.uuid4().hex[:8]}"
+        calculate_cv(
+            adata,
+            group_by=group_by,
+            layer=layer,
+            zero_to_na=zero_to_na,
+            min_samples=min_samples,
+            key_added=temp_key_name,
+            inplace=True,
         )
+        key_to_use = temp_key_name
 
-    calculate_groupwise_cv(
-        adata,
-        group_by=group_by,
-        layer=layer,
-        zero_to_na=zero_to_na,
-        min_n=min_n,
-        inplace=True,
-    )
-
-    cv_cols = [f"cv_{grp}" for grp in unique_groups]
-    missing_cols = [col for col in cv_cols if col not in adata.var.columns]
-    if missing_cols:
+    if key_to_use not in adata.varm:
         raise RuntimeError(
-            "Failed to compute CV columns for groups: "
-            f"{', '.join(missing_cols)}."
+            f"Failed to compute CV data: adata.varm['{key_to_use}'] not found."
         )
 
     check_proteodata(adata)
 
-    # --- reshape data
-    df = adata.var[cv_cols].copy()
-    df_melted = df.melt(var_name="Group", value_name="CV")
-    df_melted["Group"] = df_melted["Group"].str.replace("^cv_", "", regex=True)
+    cv_df = adata.varm[key_to_use].copy()
 
-    # --- determine order
+    # Clean up temporary data immediately after extraction
+    if temp_key_name is not None:
+        del adata.varm[temp_key_name]
+
+    df_melted = cv_df.melt(var_name="Group", value_name="CV", ignore_index=False)
+    df_melted = df_melted.reset_index(drop=True)
+
     if order is None:
         order = unique_groups
     else:
@@ -1117,17 +1144,14 @@ def cv_by_group(
                 f"{', '.join(missing)}."
             )
 
-    # --- build palette
     resolved_colors = _resolve_color_scheme(color_scheme, order)
     if resolved_colors is None:
         palette = None
     else:
         palette = dict(zip(order, resolved_colors))
 
-    # --- create figure
     fig, ax_plot = plt.subplots(figsize=figsize, dpi=150)
 
-    # --- plot violins
     sns.violinplot(
         data=df_melted,
         x="Group",
@@ -1142,7 +1166,7 @@ def cv_by_group(
         ax=ax_plot,
     )
 
-    # --- optionally overlay points
+    # Optionally overlay points
     if show_points:
         sns.stripplot(
             data=df_melted,
@@ -1157,7 +1181,7 @@ def cv_by_group(
             ax=ax_plot,
         )
 
-    # --- optional horizontal dashed line
+    # Optional horizontal dashed line
     if hline is not None:
         ax_plot.axhline(
             y=hline,
@@ -1177,10 +1201,9 @@ def cv_by_group(
             fontsize=8,
         )
 
-    # --- finalize axes
     ax_plot.set_xlabel("")
     ax_plot.set_ylabel("Coefficient of Variation (CV)")
-    for label in ax_plot.get_xticklabels():  # ✅ safe label rotation
+    for label in ax_plot.get_xticklabels():
         label.set_rotation(xlabel_rotation)
     ax_plot.set_title("Distribution of CV across groups")
     sns.despine()
@@ -1188,12 +1211,10 @@ def cv_by_group(
 
     check_proteodata(adata)
 
-    # --- save figure if requested
     if save:
         fig.savefig(save, dpi=300, bbox_inches="tight")
         print(f"Figure saved to: {save}")
 
-    # --- show or return
     if show:
         plt.show()
 

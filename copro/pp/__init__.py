@@ -23,4 +23,4 @@ from .quantification import (
     quantify_proteoforms,
     )
 
-from .stats import calculate_groupwise_cv
+from .stats import calculate_cv

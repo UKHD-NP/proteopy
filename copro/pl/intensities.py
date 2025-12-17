@@ -538,7 +538,7 @@ proteoform_intensities = partial_with_docsig(
     )
 
 
-def intensity_box_per_obs(
+def intensity_box_per_sample(
     adata: ad.AnnData,
     layer: str | None = None,
     order_by: str | None = None,

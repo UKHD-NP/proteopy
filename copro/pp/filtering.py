@@ -168,7 +168,7 @@ This function filters the AnnData object along the `obs` axis based on the
 fraction or number of non-missing values (np.nan). Filtering can be performed
 globally or within groups defined by the `group_by` parameter.
 """
-filter_obs = partial_with_docsig(
+filter_samples = partial_with_docsig(
     filter_axis,
     axis=0,
     docstr_header=docstr_header,
@@ -181,7 +181,7 @@ This function filters the AnnData object along a the obs axis based on the
 fraction of non-missing values (np.nan). Filtering can be performed globally
 or within groups defined by the `group_by` parameter.
 """
-filter_obs_completeness = partial_with_docsig(
+filter_samples_completeness = partial_with_docsig(
     filter_axis,
     axis=0,
     min_count=None,
@@ -301,7 +301,7 @@ def filter_proteins_by_peptide_count(
         return new_adata
 
 
-def filter_obs_by_category_count(
+def filter_samples_by_category_count(
     adata,
     category_col,
     min_count=None,

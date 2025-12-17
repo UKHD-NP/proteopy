@@ -301,3 +301,59 @@ def var(
         return None
 
     return adata_target
+
+
+def samples(
+    adata: AnnData,
+    df: pd.DataFrame,
+    obs_on: str,
+    df_on: str,
+    *,
+    suffix: str = "_annotated",
+    sort_obs_by_ann: bool = False,
+    inplace: bool = True,
+) -> AnnData | None:
+    """Annotate ``adata.obs`` with rows from ``df`` matched on a key.
+
+    This function is an alias for :func:`~copro.ann.obs` and accepts the same
+    parameters. In proteomics, observations (rows in ``adata.obs``) often
+    represent samples, so this alias provides a more intuitive name for the
+    same functionality.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Input AnnData object.
+    df : pandas.DataFrame
+        Annotation table that supplies additional columns.
+    obs_on : str
+        Name of the key column in ``adata.obs`` (or the obs index name /
+        literal ``"index"``) used for matching.
+    df_on : str
+        Name of the key column in ``df``.
+    suffix : str, optional
+        Suffix applied to colliding column names from ``df``.
+    sort_obs_by_ann : bool, optional
+        Reorder observations by the order of matching keys in ``df``.
+    inplace : bool, optional
+        If ``True``, modify ``adata`` and return ``None``. Otherwise return a
+        new AnnData copy.
+
+    Returns
+    -------
+    AnnData or None
+        Updated AnnData when ``inplace`` is ``False``; otherwise ``None``.
+
+    See Also
+    --------
+    obs : Original function with identical functionality
+    """
+    return obs(
+        adata=adata,
+        df=df,
+        obs_on=obs_on,
+        df_on=df_on,
+        suffix=suffix,
+        sort_obs_by_ann=sort_obs_by_ann,
+        inplace=inplace,
+    )

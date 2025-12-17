@@ -219,15 +219,15 @@ completeness_per_var = partial_with_docsig(
     docstr_header=docstr_header,
     )
 
-docstr_header="Plot a histogram of completeness per observation.\n"
-completeness_per_obs = partial_with_docsig(
+docstr_header="Plot a histogram of completeness per sample (observation).\n"
+completeness_per_sample = partial_with_docsig(
     completeness,
     axis=1,
     docstr_header=docstr_header,
     )
 
 
-def n_var_per_obs(
+def n_var_per_sample(
     adata: ad.AnnData,
     group_by: str | None = None,
     order_by: str | None = None,
@@ -246,7 +246,7 @@ def n_var_per_obs(
     color_scheme: Any | None = None,
 ) -> Axes | None:
     """
-    Plot the number of detected variables per observation.
+    Plot the number of detected variables per sample (obs).
 
     Parameters
     ----------
@@ -604,23 +604,23 @@ def n_var_per_obs(
         return _ax
 
 docstr_header = "Plot the number of detected peptides per observation."
-n_peptides_per_obs = partial_with_docsig(
-    n_var_per_obs,
+n_peptides_per_sample = partial_with_docsig(
+    n_var_per_sample,
     level="peptide",
     ylabel="Nr. peptides detected",
     docstr_header=docstr_header,
 )
 
 docstr_header = "Plot the number of detected proteins per observation."
-n_proteins_per_obs = partial_with_docsig(
-    n_var_per_obs,
+n_proteins_per_sample = partial_with_docsig(
+    n_var_per_sample,
     level="protein",
     ylabel="Nr. proteins detected",
     docstr_header=docstr_header,
 )
 
 
-def n_obs_per_category(
+def n_samples_per_category(
     adata: ad.AnnData,
     category_key: str | Sequence[str],
     categories: Sequence[Any] | None = None,
@@ -635,7 +635,7 @@ def n_obs_per_category(
     ax: bool = False,
 ) -> Axes | None:
     """
-    Plot counts of observations per category (optionally stratified).
+    Plot sample (obs) counts per category (optionally stratified).
 
     Parameters
     ----------
@@ -831,8 +831,6 @@ def n_obs_per_category(
         )
         plt.close(fig)
 
-n_samples_per_category = n_obs_per_category
-
 
 def n_cat1_per_cat2_hist(
     adata: ad.AnnData,
@@ -1019,7 +1017,7 @@ def cv_by_group(
         AnnData layer to read intensities from. Defaults to ``adata.X``.
     zero_to_na : bool, optional
         Replace zero values with NaN before computing CVs. Default is ``False``.
-    min_obs : int, optional
+    min_samples : int, optional
         Minimum number of observations per variable required to compute a CV.
         Variables with fewer non-NaN entries receive NaN. Default is ``3``.
         Ignored when using precomputed CV data from ``adata.varm``.
@@ -1222,7 +1220,7 @@ def cv_by_group(
         return ax_plot
 
 
-def obs_correlation_matrix(
+def sample_correlation_matrix(
     adata: ad.AnnData,
     method: str = "pearson",
     zero_to_na: bool = False,
@@ -1240,7 +1238,7 @@ def obs_correlation_matrix(
     save: str | Path | None = None,
 ) -> Axes | None:
     """
-    Plot a clustered correlation heatmap across observations.
+    Plot a clustered correlation heatmap across samples (obs).
 
     Parameters
     ----------

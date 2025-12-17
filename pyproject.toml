@@ -18,6 +18,7 @@ dependencies = [
     'matplotlib',
     'seaborn',
     'statsmodels',
+    'pooch',
     ]
 
 [project.optional-dependencies]
@@ -25,6 +26,7 @@ dev = [
     'ipykernel',
     'jupyterlab',
     'nb_conda',
+    'pooch',
     'pre-commit',
     'pytest',
     ]
@@ -33,9 +35,10 @@ usage = [
     'ipykernel',
     'jupyterlab',
     'nb_conda',
-    'scanpy',
-    'python_igraph',
     'openpyxl',
+    'pooch',
+    'python_igraph',
+    'scanpy',
     ]
 
 [tool.setuptools.packages.find]

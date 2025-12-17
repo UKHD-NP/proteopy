@@ -988,7 +988,7 @@ def cv_by_group(
     group_by: str,
     layer: str | None = None,
     zero_to_na: bool = False,
-    min_samples: int = 3,
+    min_samples: int = None,
     force: bool = False,
     order: list | None = None,
     color_scheme=None,
@@ -1013,11 +1013,11 @@ def cv_by_group(
     group_by : str
         Column in ``adata.obs`` used to define observation groups for CV
         calculation.
-    layer : str or None, optional
+    layer : str | None, optional
         AnnData layer to read intensities from. Defaults to ``adata.X``.
     zero_to_na : bool, optional
         Replace zero values with NaN before computing CVs. Default is ``False``.
-    min_samples : int, optional
+    min_samples : int | None, optional
         Minimum number of observations per variable required to compute a CV.
         Variables with fewer non-NaN entries receive NaN. Default is ``3``.
         Ignored when using precomputed CV data from ``adata.varm``.
@@ -1025,15 +1025,15 @@ def cv_by_group(
         Force recomputation of CV values even if precomputed data exists in
         ``adata.varm``. When ``True``, uses a temporary slot that is deleted
         after extracting the data. Default is ``False``.
-    order : list or None, optional
+    order : list | None, optional
         Explicit order of group labels (without the ``cv_`` prefix) along the
         x-axis. When ``None`` the observed group order is used.
-    color_scheme : sequence, dict or None, optional
+    color_scheme : sequence, dict | None, optional
         Color assignments for groups. When None, uses the Matplotlib default
         color cycle.
     alpha : float, optional
         Transparency for the violin bodies. Default is ``0.8``.
-    hline : float or None, optional
+    hline : float | None, optional
         If set, draw a horizontal dashed line at this CV value.
     show_points : bool, optional
         Overlay individual variable CVs as a strip plot. Default is ``False``.
@@ -1049,7 +1049,7 @@ def cv_by_group(
         Call ``plt.show()`` when ``True``. Default is ``True``.
     ax : bool, optional
         Return the Matplotlib Axes if ``True``.
-    save : str or None, optional
+    save : str | None, optional
         Path to save the figure. When ``None`` the figure is not saved.
     """
 
@@ -1089,9 +1089,8 @@ def cv_by_group(
     use_precomputed = key_existed and not force
 
     if use_precomputed:
-        # Check if min_samples was explicitly provided (not default)
-        default_min_samples = 3
-        if min_samples != default_min_samples:
+        # Check if min_samples was explicitly provided
+        if min_samples:
             raise ValueError(
                 f"Cannot use `min_samples={min_samples}` with precomputed CV "
                 f"data in adata.varm['{varm_key}']. Either:\n"
@@ -1105,6 +1104,8 @@ def cv_by_group(
     else:
         # Random key prevents overwriting existing varm slots
         temp_key_name = f"_temp_cv_{uuid.uuid4().hex[:8]}"
+        default_min_samples = 3
+        min_samples = min_samples or default_min_samples
         calculate_cv(
             adata,
             group_by=group_by,

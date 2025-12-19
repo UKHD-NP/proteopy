@@ -4,3 +4,4 @@ from .copf import (
     peptide_clusters_from_dendograms,
     proteoform_scores,
     )
+from .stat_tests import differential_abundance

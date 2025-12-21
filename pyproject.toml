@@ -19,6 +19,7 @@ dependencies = [
     'seaborn',
     'statsmodels',
     'pooch',
+    'adjustText',
     ]
 
 [project.optional-dependencies]

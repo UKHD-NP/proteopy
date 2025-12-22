@@ -10,7 +10,7 @@ import seaborn as sns
 import anndata as ad
 from matplotlib.axes import Axes
 
-from copro.utils.anndata import check_proteodata
+from proteopy.utils.anndata import check_proteodata
 
 def proteoform_scores(
     adata: ad.AnnData,

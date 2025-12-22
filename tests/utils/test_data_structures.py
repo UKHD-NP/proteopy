@@ -1,5 +1,5 @@
 import pytest
-from copro.utils.data_structures import BinaryClusterTree, ListDict
+from proteopy.utils.data_structures import BinaryClusterTree, ListDict
 
 def test_ListDict():
     ld = ListDict()

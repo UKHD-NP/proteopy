@@ -3,7 +3,7 @@ import warnings
 from anndata import AnnData
 import pandas as pd
 
-from copro.utils import check_proteodata
+from proteopy.utils import check_proteodata
 
 
 def obs(
@@ -315,7 +315,7 @@ def samples(
 ) -> AnnData | None:
     """Annotate ``adata.obs`` with rows from ``df`` matched on a key.
 
-    This function is an alias for :func:`~copro.ann.obs` and accepts the same
+    This function is an alias for :func:`~proteopy.ann.obs` and accepts the same
     parameters. In proteomics, observations (rows in ``adata.obs``) often
     represent samples, so this alias provides a more intuitive name for the
     same functionality.

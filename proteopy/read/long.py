@@ -7,8 +7,8 @@ import anndata as ad
 import pandas as pd
 from pathlib import Path
 
-from copro.utils.anndata import check_proteodata
-from copro.utils.pandas import load_dataframe
+from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.pandas import load_dataframe
 
 
 def _peptides_long_from_df(

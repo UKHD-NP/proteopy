@@ -18,10 +18,10 @@ import math
 import os
 from scipy import sparse
 
-from copro.utils.anndata import check_proteodata
-from copro.utils.matplotlib import _resolve_color_scheme
-from copro.utils.array import is_log_transformed
-from copro.utils.functools import partial_with_docsig
+from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.matplotlib import _resolve_color_scheme
+from proteopy.utils.array import is_log_transformed
+from proteopy.utils.functools import partial_with_docsig
 
 
 def peptide_intensities(
@@ -87,7 +87,7 @@ def peptide_intensities(
         Size of each generated figure passed to :func:`matplotlib.pyplot.subplots`.
     color_scheme : Any, optional
         Palette specification forwarded to
-        :func:`copro.utils.matplotlib._resolve_color_scheme` for either the
+        :func:`proteopy.utils.matplotlib._resolve_color_scheme` for either the
         per-peptide ``color`` or aggregated ``group_by`` categories.
     show : bool, optional
         Display the generated figure(s) with :func:`matplotlib.pyplot.show`.
@@ -600,7 +600,7 @@ def intensity_box_per_sample(
     figsize : tuple of float, optional
         Figure size used when creating a new axis.
     color_scheme : Any, optional
-        Palette forwarded to :func:`copro.utils.matplotlib._resolve_color_scheme`
+        Palette forwarded to :func:`proteopy.utils.matplotlib._resolve_color_scheme`
         for either grouped categories (``group_by``) or observation-level
         annotations (``order_by``).
 
@@ -962,7 +962,7 @@ def intensity_hist(
         Overlay kernel density estimate curves.
     color_scheme : Any, optional
         Palette specification forwarded to
-        :func:`copro.utils.matplotlib._resolve_color_scheme`.
+        :func:`proteopy.utils.matplotlib._resolve_color_scheme`.
     xlim : tuple[float | int, float | int] | None, optional
         Explicit x-axis limits ``(xmin, xmax)`` applied to all histograms.
     alpha : float, optional

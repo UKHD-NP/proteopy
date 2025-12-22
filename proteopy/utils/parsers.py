@@ -6,7 +6,7 @@ import anndata as ad
 import numpy as np
 import pandas as pd
 
-from copro.utils.string import sanitize_string
+from proteopy.utils.string import sanitize_string
 
 STAT_TEST_METHOD_LABELS = {
     "ttest_two_sample": "Two-sample t-test",

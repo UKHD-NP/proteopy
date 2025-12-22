@@ -1,3 +1,3 @@
-# CoPro
+# ProteoPy
 
-Correlation-based analysis of bottom-up mass-spectrometry proteomics data.
+Analysis of bottom-up mass-spectrometry proteomics data.

@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 from anndata import AnnData
 
-from copro.pp.filtering import (
+from proteopy.pp.filtering import (
     filter_axis,
     filter_proteins_by_peptide_count,
     )

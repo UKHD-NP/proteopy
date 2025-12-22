@@ -6,8 +6,8 @@ import pandas as pd
 import scipy.sparse as sp
 from Bio import SeqIO
 
-from copro.utils.functools import partial_with_docsig
-from copro.utils.anndata import check_proteodata, is_proteodata
+from proteopy.utils.functools import partial_with_docsig
+from proteopy.utils.anndata import check_proteodata, is_proteodata
 
 
 def filter_axis(

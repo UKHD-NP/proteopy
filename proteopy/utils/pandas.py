@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from copro.utils.string import detect_separator
+from proteopy.utils.string import detect_separator
 
 
 def load_dataframe(

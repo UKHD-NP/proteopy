@@ -8,14 +8,14 @@ import copy
 from sklearn.cluster import AgglomerativeClustering
 
 
-from copro.tl.copro import (
+from proteopy.tl.copf import (
     pairwise_peptide_correlations_,
     peptide_dendograms_by_correlation_,
-    peptide_clusters_from_dendograms_, 
+    peptide_clusters_from_dendograms_,
     proteoform_scores_,
     )
 
-from copro.utils.data_structures import ListDict
+from proteopy.utils.data_structures import ListDict
 
 from tests.utils.helpers import (
     transform_dendogram_r2py,

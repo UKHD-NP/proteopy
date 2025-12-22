@@ -3,7 +3,7 @@ from pathlib import Path
 import pandas as pd
 from anndata import AnnData
 
-from copro.ann import base_anndata as ann_base
+from proteopy.ann import base_anndata as ann_base
 
 
 def proteins_from_csv(
@@ -30,9 +30,9 @@ def proteins_from_csv(
         Column in the CSV file used to match entries by protein ID.
     suffix : str, optional
         Suffix applied to colliding column names passed through to
-        :func:`copro.ann.base_anndata.var`.
+        :func:`proteopy.ann.base_anndata.var`.
     inplace : bool, optional
-        Forwarded to :func:`copro.ann.base_anndata.var`. If ``True``, modify
+        Forwarded to :func:`proteopy.ann.base_anndata.var`. If ``True``, modify
         ``adata`` in-place and return ``None``.
 
     Returns

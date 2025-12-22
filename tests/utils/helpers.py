@@ -3,7 +3,7 @@ import pandas as pd
 import copy
 from pytest import approx
 
-from copro.utils.copf import reconstruct_corrs_df_symmetric_from_long_df
+from proteopy.utils.copf import reconstruct_corrs_df_symmetric_from_long_df
 
 def test_reconstruct_corrs_df_symmetric_from_long_df():
 

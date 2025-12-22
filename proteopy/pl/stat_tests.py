@@ -10,8 +10,8 @@ from matplotlib.axes import Axes
 from adjustText import adjust_text
 import anndata as ad
 
-from copro.utils.anndata import check_proteodata
-from copro.utils.parsers import parse_stat_test_varm_slot
+from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.parsers import parse_stat_test_varm_slot
 
 
 def _stat_test_title_from_varm_slot(

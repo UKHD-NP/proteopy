@@ -5,9 +5,9 @@ import pandas as pd
 from scipy import sparse
 from anndata import AnnData
 
-from copro.utils.anndata import check_proteodata
-from copro.utils.array import is_log_transformed
-from copro.utils.string import sanitize_string
+from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.array import is_log_transformed
+from proteopy.utils.string import sanitize_string
 
 
 def _compute_cv_stats(X, zero_to_na=True):

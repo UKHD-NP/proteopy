@@ -5,7 +5,7 @@ from collections.abc import Sequence
 import pandas as pd
 from anndata import AnnData
 
-from copro.utils.anndata import check_proteodata
+from proteopy.utils.anndata import check_proteodata
 
 
 def proteoforms_df(

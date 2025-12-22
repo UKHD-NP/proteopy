@@ -18,11 +18,11 @@ import seaborn as sns
 import matplotlib as mpl
 from matplotlib.ticker import MaxNLocator
 
-from copro.utils.anndata import check_proteodata, is_proteodata
-from copro.utils.matplotlib import _resolve_color_scheme
-from copro.utils.functools import partial_with_docsig
-from copro.utils.string import sanitize_string
-from copro.pp.stats import calculate_cv
+from proteopy.utils.anndata import check_proteodata, is_proteodata
+from proteopy.utils.matplotlib import _resolve_color_scheme
+from proteopy.utils.functools import partial_with_docsig
+from proteopy.utils.string import sanitize_string
+from proteopy.pp.stats import calculate_cv
 
 
 def completeness(
@@ -917,7 +917,7 @@ def n_cat1_per_cat2_hist(
         if lower >= upper:
             raise ValueError("bin_range lower bound must be less than upper bound.")
 
-    temp_col = "__copro_axis_index__" if first_category == "index" else first_category
+    temp_col = "__proteopy_axis_index__" if first_category == "index" else first_category
     data = frame[[second_category]].copy()
     if first_category == "index":
         index_values = adata.obs_names if axis == 0 else adata.var_names
@@ -1260,7 +1260,7 @@ def sample_correlation_matrix(
         Optional column in ``adata.obs`` used to color dendrogram labels.
     color_scheme : Any
         Color palette specification understood by
-        :func:`copro.utils.matplotlib._resolve_color_scheme`.
+        :func:`proteopy.utils.matplotlib._resolve_color_scheme`.
     cmap : str
         Continuous colormap for the heatmap body.
     linkage_method : str

@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from anndata import AnnData
 
-from copro.utils.anndata import is_proteodata
+from proteopy.utils.anndata import is_proteodata
 
 
 class TestIsProteodata:

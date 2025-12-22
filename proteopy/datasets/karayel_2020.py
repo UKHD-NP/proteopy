@@ -30,7 +30,7 @@ import numpy as np
 import pandas as pd
 import pooch
 
-import copro as cp
+import proteopy as pp
 
 def _parse_sample_id(col: str) -> str:
     """Parse and clean sample identifiers from raw column names.
@@ -105,8 +105,8 @@ def karayel_2020():
 
     Examples
     --------
-    >>> import copro as cp
-    >>> adata = cp.datasets.karayel_2020()
+    >>> import proteopy as pp
+    >>> adata = pp.datasets.karayel_2020()
     >>> adata
     AnnData object with n_obs × n_vars
         obs: 'sample_id', 'cell_type', 'replicate'
@@ -142,7 +142,7 @@ def karayel_2020():
         url=url,
         known_hash=None,  # TODO
         fname="karayel_2020_proteome_report.csv",
-        path=pooch.os_cache("copro"),
+        path=pooch.os_cache("proteopy"),
         )
     df = pd.read_csv(file_path)
 
@@ -195,7 +195,7 @@ def karayel_2020():
         'PG.Genes': 'gene_name'
     })
 
-    adata = cp.read.long(
+    adata = pp.read.long(
         intensities=Karayel_2020_quant,
         level='protein',
         sample_annotation=Karayel_2020_meta_obs,

@@ -1,13 +1,13 @@
 **Beginning of AGENTS.md**
 # Repository Guidelines
-Package name: `CoPro` — Correlation Proteomics
+Package name: `ProteoPy`
 
-This document defines the structure, conventions, and development practices for the CoPro package. It serves as a reference for developers and LLM-based assistants to maintain consistency and quality across the repository.
+This document defines the structure, conventions, and development practices for the ProteoPy package. It serves as a reference for developers and LLM-based assistants to maintain consistency and quality across the repository.
 
 ---
 
 ## Overview
-CoPro is a Python package for bottom-up mass-spectrometry data analysis built on the AnnData framework. It provides a cohesive collection of tools to read, process, and analyze proteomics data at the precursor-, peptide-, and protein-levels.
+ProteoPy is a Python package for bottom-up mass-spectrometry data analysis built on the AnnData framework. It provides a cohesive collection of tools to read, process, and analyze proteomics data at the precursor-, peptide-, and protein-levels.
 
 It supports data from pipelines such as DIA-NN, MSFragger, and MaxQuant, offering capabilities for:
 - Quality control (QC)
@@ -20,7 +20,7 @@ The design philosophy emphasizes clarity, modularity, and ease of use, allowing 
 ---
 
 ## Project Structure
-The main package resides under `copro/`. Submodules are organized by functionality:
+The main package resides under `proteopy/`. Submodules are organized by functionality:
 
 ```
 Avoid prolixity:
@@ -28,7 +28,7 @@ Avoid prolixity:
 
 ### Function guidelines
 
-Use the funcion is_proteodata() found in copro/utils/anndata.py to check weather the supplied AnnData object conforms to the proteomics data assumptions for the copro package. The is_proteodata() is called at the beginning of the function and before returning the new anndata or modifying the supplied AnnData inplace.
+Use the funcion is_proteodata() found in proteopy/utils/anndata.py to check weather the supplied AnnData object conforms to the proteomics data assumptions for the proteopy package. The is_proteodata() is called at the beginning of the function and before returning the new anndata or modifying the supplied AnnData inplace.
 As a reminder, the proteomics data assumptions are that:
  - if the data is a protein-level proteomics dataset, it must contain the .var column `protein_id` which contains the same values and in the same order as the .var index and .var_names.
  - if the data is a peptide-level proteomics dataset, it must contain the .var columns `peptide_id` and `protein_id`. The `peptide_id` column contains the same values and in the same order as the .var index and .var_names. The `protein_id` are the proteins that the peptides map to. It must be single mapping, so no peptide should map to more than one protein_id.
@@ -150,8 +150,8 @@ All preprocessing (`pp`), tool (`tl`), and annotation (`ann`) functions operate 
 
 #### Imports
 ```python
-from copro.copf import pairwise_peptide_correlations   # public API
-from copro.utils.anndata import sanitize_obs            # private helper
+from proteopy.copf import pairwise_peptide_correlations   # public API
+from proteopy.utils.anndata import sanitize_obs            # private helper
 from tests.utils.helpers import transform_dendogram_r2py # test helper
 ```
 
@@ -161,7 +161,7 @@ from tests.utils.helpers import transform_dendogram_r2py # test helper
 
 #### 1) Validate proteomics assumptions
 Every public function that accepts an `AnnData` must call
-`copro/utils/anndata.py:check_proteodata()` at the beginning and again before returning
+`proteopy/utils/anndata.py:check_proteodata()` at the beginning and again before returning
 (if a new `AnnData` is returned or the input is modified in-place).
 
 Assumptions enforced by `check_proteodata()`:
@@ -191,7 +191,7 @@ from scipy import sparse
 
 def example_fn(adata, *, inplace=True, **kwargs):
     # Validate upfront
-    from copro.utils.anndata import check_proteodata
+    from proteopy.utils.anndata import check_proteodata
     check_proteodata(adata)
 
     X = adata.X
@@ -221,7 +221,7 @@ def example_fn(adata, *, inplace=True, **kwargs):
 ```
 
 #### 3) Data type assumptions for AnnData.X
-CoPro assumes that `AnnData.X` contains only the following data types:
+ProteoPy assumes that `AnnData.X` contains only the following data types:
 - `np.nan` (missing values)
 - `int` (integer numeric values)
 - `float` (floating-point numeric values)
@@ -355,7 +355,7 @@ pytest -v tests/
 
 ## Key Repository Files
 ```
-copro/
+proteopy/
 ├── ann/          # Annotation tools for the AnnData object
 ├── datasets/     # Loading and simulating curated datasets
 ├── get/          # Retrieval helpers for accessing AnnData content
@@ -364,12 +364,12 @@ copro/
 ├── read/         # Data import utilities for DIA-NN, MaxQuant, etc.
 ├── tl/           # Analytical tools and algorithms (e.g. COPF)
 └── utils/        # Shared helpers and miscellaneous utilities
-tests/             # Mirrors copro structure for testing
+tests/             # Mirrors proteopy structure for testing
 ```
 
 Each submodule contains multiple function-specific files (e.g., `normalization.py`, `imputation.py`). Keep files cohesive and small; group related functions meaningfully.
 
-- Tests: located in `tests/`, following the module structure of `copro/`.
+- Tests: located in `tests/`, following the module structure of `proteopy/`.
 - Test data: under `tests/data/`.
 - Documentation: Sphinx source files in `docs/`.
 - Tutorial datasets: under `data/`.
@@ -465,8 +465,8 @@ All preprocessing (`pp`), tool (`tl`), and annotation (`ann`) functions operate 
 
 #### Imports
 ```python
-from copro.copf import pairwise_peptide_correlations   # public API
-from copro.utils.anndata import sanitize_obs            # private helper
+from proteopy.copf import pairwise_peptide_correlations   # public API
+from proteopy.utils.anndata import sanitize_obs            # private helper
 from tests.utils.helpers import transform_dendogram_r2py # test helper
 ```
 
@@ -476,7 +476,7 @@ from tests.utils.helpers import transform_dendogram_r2py # test helper
 
 #### 1) Validate proteomics assumptions
 Every public function that accepts an `AnnData` must call
-`copro/utils/anndata.py:check_proteodata()` at the beginning and again before returning
+`proteopy/utils/anndata.py:check_proteodata()` at the beginning and again before returning
 (if a new `AnnData` is returned or the input is modified in-place).
 
 Assumptions enforced by `check_proteodata()`:
@@ -506,7 +506,7 @@ from scipy import sparse
 
 def example_fn(adata, *, inplace=True, **kwargs):
     # Validate upfront
-    from copro.utils.anndata import check_proteodata
+    from proteopy.utils.anndata import check_proteodata
     check_proteodata(adata)
 
     X = adata.X
@@ -653,7 +653,7 @@ pytest -v tests/
 
 ## Key Repository Files
 ```
-copro/
+proteopy/
 ├── .github/workflows/format-code_perform-tests_on_push-pr.yaml
 ├── AGENTS.md                # This file: repository and agent instructions
 ├── pyproject.toml

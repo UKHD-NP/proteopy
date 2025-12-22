@@ -3,9 +3,9 @@ requires = ['setuptools>=69', 'wheel']
 build-backend = 'setuptools.build_meta'
 
 [project]
-name = 'copro'
+name = 'proteopy'
 version = '0.1.0'
-description = 'Analysis of bottom-up mass-spectrometry proteomics data with focus on peptide-level proteoform inference.'
+description = 'Analysis of bottom-up mass-spectrometry proteomics data.'
 readme = 'README.md'
 requires-python = '>=3.10'
 license = {file = 'LICENCE.txt'}
@@ -43,4 +43,4 @@ usage = [
     ]
 
 [tool.setuptools.packages.find]
-include = ['copro*']
+include = ['proteopy*']

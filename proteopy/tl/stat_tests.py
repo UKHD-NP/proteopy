@@ -11,9 +11,9 @@ from scipy import sparse
 from scipy import stats
 from statsmodels.stats.multitest import multipletests
 
-from copro.utils.anndata import check_proteodata
-from copro.utils.array import is_log_transformed
-from copro.utils.string import sanitize_string
+from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.array import is_log_transformed
+from proteopy.utils.string import sanitize_string
 
 
 SUPPORTED_METHODS = {
@@ -514,7 +514,7 @@ def differential_abundance(
         Must satisfy 0 < alpha <= 1.
     space : {'auto', 'log', 'linear'}, optional
         Intensity space of input data. When ``"auto"``, inferred via
-        :func:`~copro.utils.array.is_log_transformed`. Two-sample
+        :func:`~proteopy.utils.array.is_log_transformed`. Two-sample
         methods require log space; linear data are converted to log2.
         When ``"log"`` or ``"linear"``, mismatch with inferred space
         raises error unless ``force=True``.
@@ -584,9 +584,9 @@ def differential_abundance(
     --------
     Two-group comparison between treated and control samples:
 
-    >>> import copro as cp
+    >>> import proteopy as pp
     >>> adata = cp.datasets.karayel_2020()
-    >>> cp.tl.differential_abundance(
+    >>> pp.tl.differential_abundance(
     ...     adata,
     ...     method="welch",
     ...     group_by="condition",
@@ -597,7 +597,7 @@ def differential_abundance(
 
     One-vs-rest comparison for all cell types:
 
-    >>> cp.tl.differential_abundance(
+    >>> pp.tl.differential_abundance(
     ...     adata,
     ...     method="ttest_two_sample",
     ...     group_by="cell_type",

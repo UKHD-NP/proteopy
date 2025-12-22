@@ -1,8 +1,8 @@
 import numpy as np
 from scipy import sparse
 
-from copro.utils.anndata import check_proteodata
-from copro.utils.array import is_log_transformed
+from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.array import is_log_transformed
 
 
 def impute_downshift(

@@ -80,21 +80,25 @@ def proteoform_scores(
         positive_mask = var[pval_col] > 0
         if not positive_mask.all():
             warnings.warn(
-                "Dropping non-positive p-values before plotting on a log "
-                "scale.",
+                "Dropping non-positive p-values before log-transforming.",
                 RuntimeWarning,
             )
             var = var.loc[positive_mask]
+        plot_pvals = -np.log10(var[pval_col])
+        if adj:
+            ylabel = "-log10(adj. p-value)"
+        else:
+            ylabel = "-log10(p-value)"
     else:
         non_negative = var[pval_col] >= 0
         if not non_negative.all():
             warnings.warn(
                 "Dropping negative p-values before plotting.",
-            RuntimeWarning,
+                RuntimeWarning,
             )
             var = var.loc[non_negative]
-    plot_pvals = var[pval_col]
-    ylabel = "adj. p-value" if adj else "p-value"
+        plot_pvals = var[pval_col]
+        ylabel = "adj. p-value" if adj else "p-value"
 
     if var.empty:
         raise ValueError("No valid proteoform scores available for plotting.")
@@ -182,9 +186,6 @@ def proteoform_scores(
             color="#A2A2A2",
             linestyle="--",
         )
-
-    if log_scores:
-        _ax.set_yscale("log", base=10)
 
     _ax.set_xlabel("Proteoform Score")
     _ax.set_ylabel(ylabel)

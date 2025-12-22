@@ -1,20 +1,22 @@
-from .obs import (
-    n_samples_by_category,
-    obs_correlation_matrix,
-    )
 from .intensities import (
     peptide_intensities,
     proteoform_intensities,
-    intensity_distribution_per_obs,
-    intensity_hist_imputed,
-    cv_distribution,
+    intensity_box_per_sample,
+    intensity_hist,
     )
-from .proteoforms import proteoform_scores
-from .statistics import (
-    var_completeness,
-    obs_completeness,
-    n_detected_peptides_per_sample,
-    n_detected_proteins_per_sample,
-    n_peptides_per_gene,
-    n_proteoforms_per_gene,
+
+from .stats import (
+    completeness,
+    completeness_per_var,
+    completeness_per_sample,
+    n_samples_per_category,
+    n_peptides_per_sample,
+    n_proteins_per_sample,
+    n_peptides_per_protein,
+    n_proteoforms_per_protein,
+    cv_by_group,
+    sample_correlation_matrix,
     )
+
+from .copf import proteoform_scores
+from .stat_tests import volcano_plot

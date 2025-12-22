@@ -1,8 +1,18 @@
 import re
 import warnings
-import pandas as pd
-import numpy as np
 from typing import Dict, Optional, List
+
+import anndata as ad
+import numpy as np
+import pandas as pd
+
+from copro.utils.string import sanitize_string
+
+STAT_TEST_METHOD_LABELS = {
+    "ttest_two_sample": "Two-sample t-test",
+    "welch": "Welch's t-test",
+}
+
 
 def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataFrame:
     """
@@ -238,3 +248,95 @@ def diann_run(s, warn=False):
         return 'no_parse_match'
 
     raise ValueError(f'No match for string:\n{s}')
+
+
+def _pretty_design_label(label: str) -> str:
+    return label.replace("_", " ").strip()
+
+
+def parse_stat_test_varm_slot(
+    varm_slot: str,
+    adata: ad.AnnData | None = None,
+) -> dict[str, str | None]:
+    """
+    Parse a stat-test varm slot name into its components.
+
+    Parameters
+    ----------
+    varm_slot : str
+        Slot name produced by ``copro.tl.stat_tests``.
+    adata : AnnData or None
+        AnnData used to resolve layer labels. When provided, the sanitized
+        layer suffix is mapped back to the original layer key.
+
+    Returns
+    -------
+    dict
+        Dictionary with keys: ``test_type``, ``test_label``, ``design``,
+        and ``layer``.
+
+    Raises
+    ------
+    ValueError
+        If the slot does not match the expected stat-test format.
+    """
+    if not isinstance(varm_slot, str) or not varm_slot:
+        raise ValueError("varm_slot must be a non-empty string.")
+
+    test_type = None
+    remainder = None
+    for supported in STAT_TEST_METHOD_LABELS:
+        prefix = f"{supported}_"
+        if varm_slot.startswith(prefix):
+            test_type = supported
+            remainder = varm_slot[len(prefix):]
+            break
+
+    if test_type is None or remainder is None:
+        raise ValueError(
+            "varm_slot must start with a supported test type: "
+            f"{sorted(STAT_TEST_METHOD_LABELS)}."
+        )
+
+    if not remainder:
+        raise ValueError("varm_slot is missing the design component.")
+
+    layer = None
+    design_part = remainder
+    if adata is not None and adata.layers:
+        if "_" in remainder:
+            candidate_design, candidate_layer = remainder.rsplit("_", 1)
+            layer_map = {
+                sanitize_string(name): name
+                for name in adata.layers.keys()
+            }
+            if candidate_layer in layer_map:
+                layer = layer_map[candidate_layer]
+                design_part = candidate_design
+
+    if design_part.endswith("_vs_rest"):
+        group = design_part[: -len("_vs_rest")]
+        if not group:
+            raise ValueError("Design is missing the group label.")
+        design = f"{_pretty_design_label(group)} vs rest"
+    elif "_vs_" in design_part:
+        group1, group2 = design_part.split("_vs_", 1)
+        if not group1 or not group2:
+            raise ValueError("Design is missing group labels.")
+        design = (
+            f"{_pretty_design_label(group1)} vs "
+            f"{_pretty_design_label(group2)}"
+        )
+    else:
+        raise ValueError(
+            "Design must use '<group1>_vs_<group2>' or '<group>_vs_rest'."
+        )
+
+    test_info = {
+        "test_type": test_type,
+        "test_label": STAT_TEST_METHOD_LABELS[test_type],
+        "design": design,
+        "layer": layer,
+    }
+
+    return test_info

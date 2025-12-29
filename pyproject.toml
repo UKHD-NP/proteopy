@@ -8,7 +8,16 @@ version = '0.1.0'
 description = 'Analysis of bottom-up mass-spectrometry proteomics data.'
 readme = 'README.md'
 requires-python = '>=3.10'
-license = {file = 'LICENCE.txt'}
+license = {file = 'LICENSE'}
+authors = [
+	{name = "Ian Dirk Fichtner", email = "iandirk.fichtner@med.uni-heidelberg.de"},
+	{name = "Isabell Bludau", email = "Isabell.Bludau@med.uni-heidelberg.de"}
+]
+
+[project.urls]
+Homepage = "https://github.com/UKHD-NP/proteopy"
+#Documentation = ""
+
 dependencies = [
     'numpy',
     'pandas',

@@ -1,0 +1,7 @@
+include LICENSE
+include README.md
+include pyproject.toml
+
+recursive-include proteopy *.py
+recursive-include tests *.py *.tsv
+recursive-include tutorials *.ipynb *.py

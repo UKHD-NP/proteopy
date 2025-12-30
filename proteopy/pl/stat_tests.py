@@ -54,7 +54,7 @@ def _stat_test_title_from_varm_slot(
         )
         return varm_slot
 
-    title = f"{parsed['test_label']} | {parsed['design']}"
+    title = f"{parsed['test_type_label']} | {parsed['design_label']}"
     if parsed["layer"]:
         title = f"{title} | layer: {parsed['layer']}"
     return title

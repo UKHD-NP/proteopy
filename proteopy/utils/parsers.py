@@ -272,8 +272,8 @@ def parse_stat_test_varm_slot(
     Returns
     -------
     dict
-        Dictionary with keys: ``test_type``, ``test_label``, ``design``,
-        and ``layer``.
+        Dictionary with keys: ``test_type``, ``test_type_label``, ``design``,
+        ``design_label``, and ``layer``.
 
     Raises
     ------
@@ -318,12 +318,14 @@ def parse_stat_test_varm_slot(
         group = design_part[: -len("_vs_rest")]
         if not group:
             raise ValueError("Design is missing the group label.")
-        design = f"{_pretty_design_label(group)} vs rest"
+        design = f"{group}_vs_rest"
+        design_label = f"{_pretty_design_label(group)} vs rest"
     elif "_vs_" in design_part:
         group1, group2 = design_part.split("_vs_", 1)
         if not group1 or not group2:
             raise ValueError("Design is missing group labels.")
-        design = (
+        design = f"{group1}_vs_{group2}"
+        design_label = (
             f"{_pretty_design_label(group1)} vs "
             f"{_pretty_design_label(group2)}"
         )
@@ -334,8 +336,9 @@ def parse_stat_test_varm_slot(
 
     test_info = {
         "test_type": test_type,
-        "test_label": STAT_TEST_METHOD_LABELS[test_type],
+        "test_type_label": STAT_TEST_METHOD_LABELS[test_type],
         "design": design,
+        "design_label": design_label,
         "layer": layer,
     }
 

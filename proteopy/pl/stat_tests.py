@@ -5,13 +5,16 @@ import warnings
 
 import numpy as np
 import pandas as pd
+from scipy import sparse
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+import seaborn as sns
 from adjustText import adjust_text
 import anndata as ad
 
 from proteopy.utils.anndata import check_proteodata
 from proteopy.utils.parsers import parse_stat_test_varm_slot
+from proteopy.utils.matplotlib import _resolve_color_scheme
 
 
 def _stat_test_title_from_varm_slot(
@@ -552,6 +555,350 @@ def volcano_plot(
                 ax=_ax,
                 arrowprops=dict(arrowstyle="->", color="0.4", lw=0.7),
             )
+
+    if save:
+        fig.savefig(save, dpi=300, bbox_inches="tight")
+    if show:
+        plt.show()
+    if ax:
+        return _ax
+    if not save and not show and not ax:
+        raise ValueError(
+            "Args show, ax and save all set to False, function does nothing.",
+        )
+    return None
+
+
+def differential_abundance_box(
+    adata: ad.AnnData,
+    varm_slot: str,
+    groups: list[str] | None = None,
+    order: list[str] | None = None,
+    top_n: int | None = None,
+    vars: list[str] | None = None,
+    layer: str | None = None,
+    figsize: tuple[float, float] = (10.0, 6.0),
+    title: str | None = None,
+    xlabel_rotation: float = 45,
+    color_scheme: str | dict | list | None = None,
+    show_pval: bool = True,
+    pval_fontsize: float | int = 9,
+    show: bool = True,
+    save: str | Path | None = None,
+    ax: bool | None = None,
+) -> Axes | None:
+    """
+    Display boxplots of intensities for top differentially abundant variables.
+
+    For each of the top N differentially abundant variables (sorted by
+    p-value) or a user-supplied list, shows side-by-side boxplots
+    comparing intensities across groups defined by the statistical test
+    and annotates the per-variable p-values.
+
+    Parameters
+    ----------
+    adata : ad.AnnData
+        :class:`~anndata.AnnData` containing differential abundance
+        test results in ``.varm`` and expression data in ``.X`` or
+        a specified layer.
+    varm_slot : str
+        Key in ``adata.varm`` containing the differential abundance
+        test results. Expected format produced by
+        ``proteopy.tl.differential_abundance``.
+    groups : list[str] | None, optional
+        Restrict boxplots to specific groups. When ``None``, uses all
+        groups involved in the comparison. Group names must match values
+        in the ``group_by`` column of ``adata.obs``.
+    order : list[str] | None, optional
+        Order in which to display groups within each variable's boxplots.
+        When ``None``, uses the order of groups as they appear in the
+        data (or as specified by ``groups``). All values must exist in
+        the ``group_by`` column.
+    top_n : int, optional
+        Number of top differentially abundant variables to display.
+        Variables are ranked by ascending p-value (most significant
+        first). Defaults to 10 when ``vars`` is ``None``.
+    vars : list[str] | None, optional
+        Explicit list of variables to plot, shown in the provided order.
+        When set, overrides ``top_n`` ranking.
+    layer : str | None, optional
+        Key in ``adata.layers`` providing the intensity matrix. When
+        ``None``, uses ``adata.X``.
+    figsize : tuple[float, float], optional
+        Figure dimensions (width, height) in inches.
+    title : str | None, optional
+        Plot title. If ``None``, generates a title from the
+        ``varm_slot`` name.
+    xlabel_rotation : float, optional
+        Rotation angle (degrees) for x-axis variable labels.
+    color_scheme : str | dict | list | None, optional
+        Color mapping for groups. Accepts a named Matplotlib colormap,
+        a dict mapping group names to colors, or a list of colors.
+        If ``None``, uses the default color cycle.
+    show_pval : bool, optional
+        If ``True``, annotate the per-variable p-values above the
+        boxplots. If ``False``, omit the annotations.
+    pval_fontsize : float | int, optional
+        Font size for the p-value annotations when ``show_pval`` is
+        ``True``.
+    show : bool, optional
+        Call ``matplotlib.pyplot.show()`` to display the plot.
+    save : str | Path | None, optional
+        File path to save the figure. Saved at 300 DPI with tight
+        bounding box. ``None`` skips saving.
+    ax : bool | None, optional
+        Return the :class:`matplotlib.axes.Axes` object. When
+        ``None`` or ``False``, returns ``None``. When ``True``,
+        returns the Axes object for further customization.
+
+    Returns
+    -------
+    Axes | None
+        The Matplotlib Axes object if ``ax=True``, otherwise ``None``.
+
+    Raises
+    ------
+    KeyError
+        If ``varm_slot`` is not in ``adata.varm``, if ``layer`` is not
+        in ``adata.layers``, or if the parsed ``group_by`` column is
+        not in ``adata.obs``.
+    TypeError
+        If ``adata.varm[varm_slot]`` is not a pandas DataFrame.
+    ValueError
+        If ``top_n`` is not a positive integer when used, if
+        ``vars`` is empty, contains duplicates, or includes entries
+        missing from the results or ``adata.var_names``, if both
+        ``top_n`` and ``vars`` are provided, if no valid results
+        remain after filtering, if specified ``groups`` are not
+        found in the data, if ``order`` contains values not
+        present in the ``group_by`` column, or if ``pval_fontsize``
+        is not a positive number when ``show_pval`` is ``True``.
+
+    Examples
+    --------
+    Plot top 10 differentially abundant proteins:
+
+    >>> pp.pl.differential_abundance_box(
+    ...     adata,
+    ...     varm_slot="welch;condition;treated_vs_control",
+    ... )
+
+    Plot top 5 proteins for specific groups:
+
+    >>> pp.pl.differential_abundance_box(
+    ...     adata,
+    ...     varm_slot="welch;condition;treated_vs_control",
+    ...     groups=["treated", "control"],
+    ...     top_n=5,
+    ... )
+    """
+    check_proteodata(adata)
+
+    # Validate varm slot exists and contains a DataFrame
+    if varm_slot not in adata.varm:
+        raise KeyError(
+            f"varm_slot '{varm_slot}' not found in adata.varm."
+        )
+
+    results = adata.varm[varm_slot]
+    if not isinstance(results, pd.DataFrame):
+        raise TypeError(
+            "Expected adata.varm[varm_slot] to be a pandas DataFrame."
+        )
+
+    default_top_n = 10
+    if vars is not None and top_n is not None:
+        raise ValueError("Provide only one of top_n or vars.")
+
+    # Validate top_n when used
+    if vars is None:
+        if top_n is None:
+            top_n = default_top_n
+        if not isinstance(top_n, int) or top_n <= 0:
+            raise ValueError("top_n must be a positive integer.")
+
+    # Parse varm slot to get group_by column
+    parsed = parse_stat_test_varm_slot(varm_slot, adata=adata)
+    group_by = parsed["group_by"]
+
+    if group_by not in adata.obs.columns:
+        raise KeyError(
+            f"Column '{group_by}' not found in adata.obs."
+        )
+
+    # Validate layer if specified
+    if layer is not None and layer not in adata.layers:
+        raise KeyError(
+            f"Layer '{layer}' not found in adata.layers."
+        )
+
+    # Determine p-value column for sorting
+    if "pval_adj" in results.columns:
+        pval_col = "pval_adj"
+    elif "pval" in results.columns:
+        pval_col = "pval"
+    else:
+        raise KeyError(
+            f"Neither 'pval_adj' nor 'pval' found in varm slot '{varm_slot}'."
+        )
+
+    if vars is not None:
+        if len(vars) == 0:
+            raise ValueError("vars must contain at least one variable.")
+        missing_results = [var for var in vars if var not in results.index]
+        missing_adata = [var for var in vars if var not in adata.var_names]
+        if missing_results or missing_adata:
+            raise ValueError(
+                "vars must exist in both the stat test results and "
+                "adata.var_names. "
+                f"Missing in results: {missing_results}. "
+                f"Missing in adata: {missing_adata}."
+            )
+        if len(vars) != len(set(vars)):
+            raise ValueError("vars contains duplicate entries.")
+        top_vars = vars
+    else:
+        # Sort by p-value and select top N variables
+        results_sorted = results.sort_values(by=pval_col, ascending=True)
+        top_vars = results_sorted.head(top_n).index.tolist()
+
+    if not top_vars:
+        raise ValueError("No valid variables found after filtering.")
+
+    if show_pval:
+        if not isinstance(pval_fontsize, (int, float)) or pval_fontsize <= 0:
+            raise ValueError("pval_fontsize must be a positive number.")
+
+    pvals_to_plot = None
+    if show_pval:
+        pvals_to_plot = results.loc[top_vars, pval_col].reindex(top_vars)
+
+    # Get intensity data
+    if layer is not None:
+        X = adata[:, top_vars].layers[layer]
+    else:
+        X = adata[:, top_vars].X
+
+    if sparse.issparse(X):
+        X = X.toarray()
+    X = np.asarray(X, dtype=float)
+
+    # Build long-format DataFrame for plotting
+    df = pd.DataFrame(
+        X,
+        index=adata.obs_names,
+        columns=top_vars,
+    )
+    df[group_by] = adata.obs[group_by].values
+    df_long = df.melt(
+        id_vars=[group_by],
+        var_name="variable",
+        value_name="intensity",
+    )
+
+    # Filter to specified groups if provided
+    if groups is not None:
+        available_groups = set(df_long[group_by].unique())
+        missing_groups = set(groups) - available_groups
+        if missing_groups:
+            raise ValueError(
+                f"Groups not found in data: {sorted(missing_groups)}. "
+                f"Available groups: {sorted(available_groups)}"
+            )
+        df_long = df_long[df_long[group_by].isin(groups)]
+        group_order = groups
+    else:
+        # Use all groups present in the data
+        group_order = df_long[group_by].dropna().unique().tolist()
+
+    # Apply explicit ordering if provided
+    if order is not None:
+        available_groups = set(group_order)
+        order_set = set(order)
+        missing_in_data = order_set - available_groups
+        missing_in_order = available_groups - order_set
+        if missing_in_data or missing_in_order:
+            raise ValueError(
+                f"Mismatch between 'order' and available groups. "
+                f"Groups in 'order' not in data: {sorted(missing_in_data)}. "
+                f"Groups in data not in 'order': {sorted(missing_in_order)}. "
+                f"Available groups: {sorted(available_groups)}"
+            )
+        group_order = order
+
+    if df_long.empty:
+        raise ValueError("No data remaining after filtering.")
+
+    # Preserve variable order (by significance)
+    df_long["variable"] = pd.Categorical(
+        df_long["variable"],
+        categories=top_vars,
+        ordered=True,
+    )
+
+    # Resolve color scheme
+    palette = None
+    if color_scheme is not None:
+        colors = _resolve_color_scheme(color_scheme, group_order)
+        if colors:
+            palette = dict(zip(group_order, colors))
+
+    # Create plot
+    fig, _ax = plt.subplots(figsize=figsize)
+
+    sns.boxplot(
+        data=df_long,
+        x="variable",
+        y="intensity",
+        hue=group_by,
+        hue_order=group_order,
+        palette=palette,
+        gap=0.1,
+        flierprops={'marker':'.', 'markersize':1,},
+        ax=_ax,
+    )
+
+    if show_pval and pvals_to_plot is not None:
+        # Annotate p-values at a uniform height near the top of the plot
+        all_intensity = df_long["intensity"].to_numpy()
+        finite_intensity = all_intensity[np.isfinite(all_intensity)]
+        data_max = (
+            float(finite_intensity.max()) if finite_intensity.size else 0.0
+        )
+        y_min, y_max = _ax.get_ylim()
+        span = y_max - y_min if y_max != y_min else 1.0
+        label_y = data_max + 0.05 * span
+        needed_y_max = label_y + 2.5 * (0.05 * span)
+        if needed_y_max > y_max:
+            _ax.set_ylim(y_min, needed_y_max)
+            y_max = needed_y_max
+            span = y_max - y_min if y_max != y_min else 1.0
+        for x_pos, var in zip(_ax.get_xticks(), top_vars):
+            pval = pvals_to_plot.get(var)
+            if pd.isna(pval):
+                continue
+            _ax.text(
+                x_pos,
+                label_y,
+                f"p={pval:.2e}",
+                ha="center",
+                va="bottom",
+                fontsize=pval_fontsize,
+            )
+
+    # Set axis labels and title
+    _ax.set_xlabel("")
+    _ax.set_ylabel("Intensity")
+    plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha="right")
+
+    if title is None:
+        title = _stat_test_title_from_varm_slot(adata, varm_slot)
+    _ax.set_title(title)
+
+    # Adjust legend
+    _ax.legend(title=group_by, bbox_to_anchor=(1.02, 1), loc="upper left")
+
+    plt.tight_layout()
 
     if save:
         fig.savefig(save, dpi=300, bbox_inches="tight")

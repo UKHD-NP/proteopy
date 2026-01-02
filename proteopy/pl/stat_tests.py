@@ -21,10 +21,10 @@ def _stat_test_title_from_varm_slot(
     """
     Generate a human-readable plot title from a stat test varm slot.
 
-    Parses the varm slot name to extract test type, design (group
-    comparison), and optional layer information, then formats them
-    into a concise title string. If parsing fails, returns the
-    original slot name with a runtime warning.
+    Parses the varm slot name to extract test type, group_by, design
+    (group comparison), and optional layer information, then formats them
+    into a concise title string. If parsing fails, returns the original
+    slot name with a runtime warning.
 
     Parameters
     ----------
@@ -33,17 +33,18 @@ def _stat_test_title_from_varm_slot(
         parsing.
     varm_slot : str
         Stat test result slot name in ``adata.varm``. Expected
-        format: ``<test_type>_<design>[_<layer>]`` (e.g.,
-        ``welch_treatment_vs_control_raw``).
+        format: ``<test_type>;<group_by>;<design>`` or
+        ``<test_type>;<group_by>;<design>;<layer>`` (e.g.,
+        ``welch;condition;treatment_vs_control``).
 
     Returns
     -------
     str
         Formatted title string. Format:
-        ``<Test Label> | <Design>`` or
-        ``<Test Label> | <Design> | layer: <layer>`` if a layer
-        was specified. Returns the original ``varm_slot`` unchanged
-        if parsing fails.
+        ``<Test Label> | <group_by>: <Design>`` or
+        ``<Test Label> | <group_by>: <Design> | layer: <layer>``
+        if a layer was specified. Returns the original ``varm_slot``
+        unchanged if parsing fails.
     """
     try:
         parsed = parse_stat_test_varm_slot(varm_slot, adata=adata)
@@ -54,7 +55,10 @@ def _stat_test_title_from_varm_slot(
         )
         return varm_slot
 
-    title = f"{parsed['test_type_label']} | {parsed['design_label']}"
+    title = (
+        f"{parsed['test_type_label']} | "
+        f"{parsed['group_by']}: {parsed['design_label']}"
+    )
     if parsed["layer"]:
         title = f"{title} | layer: {parsed['layer']}"
     return title
@@ -298,13 +302,13 @@ def volcano_plot(
     --------
     Plot differential abundance results with default settings:
 
-    >>> cp.pl.volcano_plot(adata, varm_slot="welch_treatment_vs_ctrl")
+    >>> pp.pl.volcano_plot(adata, varm_slot="welch;condition;treatment_vs_ctrl")
 
     Label top 10 proteins per side and save to file:
 
-    >>> cp.pl.volcano_plot(
+    >>> pp.pl.volcano_plot(
     ...     adata,
-    ...     varm_slot="welch_treatment_vs_ctrl",
+    ...     varm_slot="welch;condition;treatment_vs_ctrl",
     ...     top_labels=10,
     ...     save="volcano.png",
     ... )
@@ -314,9 +318,9 @@ def volcano_plot(
     >>> proteins_of_interest = adata.var["protein_id"].isin(
     ...     ["P12345", "Q67890"]
     ... )
-    >>> cp.pl.volcano_plot(
+    >>> pp.pl.volcano_plot(
     ...     adata,
-    ...     varm_slot="welch_treatment_vs_ctrl",
+    ...     varm_slot="welch;condition;treatment_vs_ctrl",
     ...     alt_color=proteins_of_interest,
     ... )
     """

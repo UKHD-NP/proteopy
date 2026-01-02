@@ -54,8 +54,8 @@ def differential_abundance_df(
         Long-format DataFrame with columns:
 
         - ``var_id``: Variable identifier (from ``adata.var_names``).
-        - ``test_type``: The ``.varm`` key identifying the source test.
-        - ``test_type_label``: Human-readable label for the test type.
+        - ``test_type``: The statistical test method (e.g., ``"welch"``).
+        - ``group_by``: The ``.obs`` column used for grouping.
         - ``design``: Underscore-separated design identifier (e.g., ``"A_vs_rest"``).
         - ``design_label``: Human-readable description of what the test compares.
         - ``mean1``: Mean expression in group 1.
@@ -146,20 +146,18 @@ def differential_abundance_df(
     for key in keys_list:
         df = adata.varm[key].copy()
         df["var_id"] = df.index
-        df["test_type"] = key
         parsed = parse_stat_test_varm_slot(key, adata=adata)
-        df["test_type_label"] = parsed["test_type_label"]
+        df["test_type"] = parsed["test_type"]
+        df["group_by"] = parsed["group_by"]
         df["design"] = parsed["design"]
-        df["design_label"] = parsed["design_label"]
         frames.append(df)
 
     result = pd.concat(frames, ignore_index=True)
 
-    # Reorder columns: var_id, test_type, test_type_label, design, design_label,
-    # then the rest
-    col_order = ["var_id", "test_type", "test_type_label", "design",
-                 "design_label", "mean1", "mean2", "logfc", "tstat", "pval",
-                 "pval_adj", "is_diff_abundant"]
+    # Reorder columns: var_id, test_type, group_by, design, then the rest
+    col_order = ["var_id", "test_type", "group_by",
+                 "design", "mean1", "mean2", "logfc", "tstat",
+                 "pval", "pval_adj", "is_diff_abundant"]
     # Include any extra columns that might be present
     extra_cols = [c for c in result.columns if c not in col_order]
     result = result[col_order + extra_cols]
@@ -206,9 +204,11 @@ def tests(adata: AnnData) -> pd.DataFrame:
 
         - ``key``: The ``.varm`` slot name.
         - ``key_group``: String identifier for the test group in format
-          ``"<test_type>_<design_mode>"`` or ``"<test_type>_<design_mode>_<layer>"``
+          ``"<test_type>;<group_by>;<design_mode>"`` or
+          ``"<test_type>;<group_by>;<design_mode>;<layer>"``
           if a layer was used.
         - ``test_type``: The statistical test type (e.g., ``"ttest_two_sample"``).
+        - ``group_by``: The ``.obs`` column used for grouping.
         - ``design``: Underscore-separated design identifier (e.g., ``"A_vs_rest"``).
         - ``design_label``: Human-readable description of what the test compares.
         - ``design_mode``: Either ``"one_vs_rest"`` or ``"one_vs_one"``.
@@ -220,9 +220,9 @@ def tests(adata: AnnData) -> pd.DataFrame:
     >>> # After running differential abundance tests
     >>> tests_df = pp.get.tests(adata)
     >>> tests_df
-              key          key_group  ...  design_mode
-    0  welch_A_vs_rest  welch_one_vs_rest  ...  one_vs_rest
-    1  welch_B_vs_rest  welch_one_vs_rest  ...  one_vs_rest
+                             key               key_group  ...  design_mode
+    0  welch;condition;A_vs_rest  welch;condition;one_vs_rest  ...  one_vs_rest
+    1  welch;condition;B_vs_rest  welch;condition;one_vs_rest  ...  one_vs_rest
     """
     from proteopy.utils.parsers import parse_stat_test_varm_slot
 
@@ -233,10 +233,13 @@ def tests(adata: AnnData) -> pd.DataFrame:
         try:
             parsed = parse_stat_test_varm_slot(key, adata=adata)
             design = parsed["design"]
-            design_mode = "one_vs_rest" if design.endswith("_vs_rest") else "one_vs_one"
+            design_mode = (
+                "one_vs_rest" if design.endswith("_vs_rest") else "one_vs_one"
+            )
             records.append({
                 "key": key,
                 "test_type": parsed["test_type"],
+                "group_by": parsed["group_by"],
                 "design": design,
                 "design_label": parsed["design_label"],
                 "design_mode": design_mode,
@@ -248,22 +251,22 @@ def tests(adata: AnnData) -> pd.DataFrame:
 
     if not records:
         return pd.DataFrame(
-            columns=["key", "key_group", "test_type", "design", "design_label",
-                     "design_mode", "layer"]
+            columns=["key", "key_group", "test_type", "group_by", "design",
+                     "design_label", "design_mode", "layer"]
         )
 
     df = pd.DataFrame(records)
 
-    # Build key_group string: "<test_type>_<design_mode>" or
-    # "<test_type>_<design_mode>_<layer>" if layer is not None
+    # Build key_group string: "<test_type>;<group_by>;<design_mode>" or
+    # "<test_type>;<group_by>;<design_mode>;<layer>" if layer is not None
     def build_key_group(row):
-        parts = [row["test_type"], row["design_mode"]]
+        parts = [row["test_type"], row["group_by"], row["design_mode"]]
         if row["layer"] is not None:
             parts.append(row["layer"])
-        return "_".join(parts)
+        return ";".join(parts)
 
     df["key_group"] = df.apply(build_key_group, axis=1)
-    df = df[["key", "key_group", "test_type", "design", "design_label",
-             "design_mode", "layer"]]
+    df = df[["key", "key_group", "test_type", "group_by", "design",
+             "design_label", "design_mode", "layer"]]
 
     return df

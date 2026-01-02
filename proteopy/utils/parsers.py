@@ -261,10 +261,16 @@ def parse_stat_test_varm_slot(
     """
     Parse a stat-test varm slot name into its components.
 
+    The expected format is ``<test_type>;<group_by>;<design>`` when no
+    layer is used, or ``<test_type>;<group_by>;<design>;<layer>`` when
+    a layer is specified. Components are separated by semicolons.
+
     Parameters
     ----------
     varm_slot : str
-        Slot name produced by ``copro.tl.stat_tests``.
+        Slot name produced by ``proteopy.tl.differential_abundance``.
+        Format: ``<test_type>;<group_by>;<design>`` or
+        ``<test_type>;<group_by>;<design>;<layer>``.
     adata : AnnData or None
         AnnData used to resolve layer labels. When provided, the sanitized
         layer suffix is mapped back to the original layer key.
@@ -272,47 +278,68 @@ def parse_stat_test_varm_slot(
     Returns
     -------
     dict
-        Dictionary with keys: ``test_type``, ``test_type_label``, ``design``,
-        ``design_label``, and ``layer``.
+        Dictionary with keys: ``test_type``, ``test_type_label``,
+        ``group_by``, ``design``, ``design_label``, and ``layer``.
 
     Raises
     ------
     ValueError
         If the slot does not match the expected stat-test format.
+
+    Examples
+    --------
+    >>> slot = "welch;condition;treated_vs_control"
+    >>> parse_stat_test_varm_slot(slot)
+    {'test_type': 'welch', 'test_type_label': "Welch's t-test",
+     'group_by': 'condition', 'design': 'treated_vs_control',
+     'design_label': 'treated vs control', 'layer': None}
     """
     if not isinstance(varm_slot, str) or not varm_slot:
         raise ValueError("varm_slot must be a non-empty string.")
 
-    test_type = None
-    remainder = None
-    for supported in STAT_TEST_METHOD_LABELS:
-        prefix = f"{supported}_"
-        if varm_slot.startswith(prefix):
-            test_type = supported
-            remainder = varm_slot[len(prefix):]
-            break
-
-    if test_type is None or remainder is None:
+    parts = varm_slot.split(";")
+    if len(parts) not in (3, 4):
         raise ValueError(
-            "varm_slot must start with a supported test type: "
-            f"{sorted(STAT_TEST_METHOD_LABELS)}."
+            "varm_slot must have format '<test_type>;<group_by>;<design>' "
+            "or '<test_type>;<group_by>;<design>;<layer>', "
+            f"got '{varm_slot}'."
         )
 
-    if not remainder:
+    test_type = parts[0]
+    group_by = parts[1]
+    design_part = parts[2]
+    layer_part = parts[3] if len(parts) == 4 else None
+
+    if test_type not in STAT_TEST_METHOD_LABELS:
+        raise ValueError(
+            f"Test type '{test_type}' is not supported. "
+            f"Supported types: {sorted(STAT_TEST_METHOD_LABELS)}."
+        )
+
+    if not group_by:
+        raise ValueError("varm_slot is missing the group_by component.")
+
+    if not design_part:
         raise ValueError("varm_slot is missing the design component.")
 
     layer = None
-    design_part = remainder
-    if adata is not None and adata.layers:
-        if "_" in remainder:
-            candidate_design, candidate_layer = remainder.rsplit("_", 1)
+    if layer_part:
+        if adata is not None and adata.layers:
             layer_map = {
                 sanitize_string(name): name
                 for name in adata.layers.keys()
             }
-            if candidate_layer in layer_map:
-                layer = layer_map[candidate_layer]
-                design_part = candidate_design
+            if layer_part in layer_map:
+                layer = layer_map[layer_part]
+            else:
+                raise ValueError(
+                    f"When adata passed, the layer part of the varm_slot "
+                    f"must contain the sanitized layer part for back-"
+                    f"mapping. '{layer_part}' not found in adata varm layers"
+                    f"(unsanitized): {adata.layers}."
+                    )
+        else:
+            layer = layer_part
 
     if design_part.endswith("_vs_rest"):
         group = design_part[: -len("_vs_rest")]
@@ -337,6 +364,7 @@ def parse_stat_test_varm_slot(
     test_info = {
         "test_type": test_type,
         "test_type_label": STAT_TEST_METHOD_LABELS[test_type],
+        "group_by": group_by,
         "design": design,
         "design_label": design_label,
         "layer": layer,

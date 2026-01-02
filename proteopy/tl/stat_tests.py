@@ -538,12 +538,21 @@ def differential_abundance(
 
         **Storage format in** ``adata.varm``:
 
-        Results stored as :class:`~pandas.DataFrame` with keys:
+        Results stored as :class:`~pandas.DataFrame` with keys using
+        the format ``{method};{group_by};{design}`` or
+        ``{method};{group_by};{design};{layer}`` when a layer is used:
 
-        - Two-group mode: ``"{method}_{group1}-{group2}"``
-          (e.g., ``"ttest_two_sample_treated-control"``).
-        - One-vs-rest mode: ``"{method}_{group}-vs-rest"`` for each
-          tested group (e.g., ``"ttest_two_sample_A-vs-rest"``).
+        - Two-group mode: ``"{method};{group_by};{group1}_vs_{group2}"``
+          (e.g., ``"welch;condition;treated_vs_control"``).
+        - One-vs-rest mode: ``"{method};{group_by};{group}_vs_rest"``
+          for each tested group
+          (e.g., ``"ttest_two_sample;cell_type;A_vs_rest"``).
+        - When a layer is used, it is appended as the fourth component
+          (e.g., ``"welch;condition;treated_vs_control;raw_intensities"``).
+
+        Additionally, a sanitized version of the ``group_by`` column
+        is added to ``adata.obs`` if not already present. This column
+        contains sanitized versions of the group labels.
 
         **DataFrame columns**:
 
@@ -585,14 +594,14 @@ def differential_abundance(
     Two-group comparison between treated and control samples:
 
     >>> import proteopy as pp
-    >>> adata = cp.datasets.karayel_2020()
+    >>> adata = pp.datasets.karayel_2020()
     >>> pp.tl.differential_abundance(
     ...     adata,
     ...     method="welch",
     ...     group_by="condition",
     ...     setup={"group1": "treated", "group2": "control"},
     ... )
-    >>> results = adata.varm["welch_treated-control"]
+    >>> results = adata.varm["welch;condition;treated_vs_control"]
     >>> sig_proteins = results[results["is_diff_abundant"]]
 
     One-vs-rest comparison for all cell types:
@@ -603,7 +612,7 @@ def differential_abundance(
     ...     group_by="cell_type",
     ...     setup=None,
     ... )
-    >>> # Results stored as "ttest_two_sample_{celltype}-vs-rest"
+    >>> # Results stored as "ttest_two_sample;cell_type;{celltype}_vs_rest"
     >>> for key in adata.varm.keys():
     ...     print(key, adata.varm[key]["is_diff_abundant"].sum())
     """
@@ -751,8 +760,18 @@ def differential_abundance(
         case "fdr_bh" | "fdr" | "bh" | "benjamini_hochberg":
             correction_method = "fdr_bh"
 
+    # Add sanitized group_by column to .obs if not already present
+    sanitized_group_by = sanitize_string(group_by)
+    if sanitized_group_by not in target.obs.columns:
+        target.obs[sanitized_group_by] = target.obs[group_by].apply(
+            sanitize_string
+        )
+
     # Process each comparison result
     method_label = sanitize_string(method)
+    group_by_label = sanitize_string(group_by)
+    layer_label = sanitize_string(layer) if layer is not None else None
+
     for results, group_label in results_list:
         # Multiple testing correction
         reject, pval_adj, _, _ = multipletests(
@@ -767,11 +786,12 @@ def differential_abundance(
         # Create DataFrame and store in varm
         results_df = pd.DataFrame(results, index=target.var_names)
 
-        if layer is None:
-            slot_name = f"{method_label}_{group_label}"
+        # Format: <test_type>;<group_by>;<design> or
+        # <test_type>;<group_by>;<design>;<layer> if layer is used
+        if layer_label is not None:
+            slot_name = f"{method_label};{group_by_label};{group_label};{layer_label}"
         else:
-            layer_label = sanitize_string(layer)
-            slot_name = f"{method_label}_{group_label}_{layer_label}"
+            slot_name = f"{method_label};{group_by_label};{group_label}"
 
         target.varm[slot_name] = results_df
         print(f"Saved test results in .varm['{slot_name}']")

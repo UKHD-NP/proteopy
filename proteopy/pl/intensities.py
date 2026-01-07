@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.patches import Patch
+from adjustText import adjust_text
 import seaborn as sns
 import matplotlib as mpl
 import anndata as ad
@@ -1376,3 +1377,569 @@ intensity_hist_per_obs = partial_with_docsig(
     per_obs=True,
     docstr_header=docstr_header,
     )
+
+
+def abundance_rank(
+    adata: ad.AnnData,
+    color: str | None = None,
+    highlight_vars: Sequence[str] | None = None,
+    var_labels_key: str | None = None,
+    var_label_fontsize: float = 8,
+    layer: str | None = None,
+    summary_method: str = "average",
+    log_transform: float | None = 10,
+    input_space: str = "auto",
+    force: bool = False,
+    zero_to_na: bool = False,
+    fill_na: float | int | None = None,
+    figsize: tuple[float, float] = (8, 6),
+    title: str | None = None,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    alpha: float = 0.6,
+    s: float = 20,
+    show: bool = True,
+    save: str | os.PathLike[str] | None = None,
+    ax: bool = False,
+    color_scheme: Any = None,
+) -> Axes | None:
+    """
+    Plot variable intensities vs their abundance rank.
+
+    A typical MS proteomics plot to assess dynamic range and intensity
+    distribution. Each point represents a variable (protein/peptide) with
+    its y-value being the summary statistic (e.g., average, median) across
+    observations (computation ignores NaNs).
+
+    When ``color`` is specified, summary values and ranks are computed
+    separately for each group. The plot shows one dot per variable per
+    group, with all groups superimposed. When ``color`` is ``None``, a
+    single dot per variable is plotted based on the global summary.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Proteomics :class:`~anndata.AnnData`.
+    color : str, optional
+        Column in ``adata.obs`` used to subset observations into groups.
+        Summary values and ranks are computed separately per group, and
+        all groups are plotted superimposed. When ``None``, global summary
+        across all observations is used.
+    highlight_vars : Sequence[str], optional
+        List of variable names to highlight with text labels using adjustText.
+        When ``color`` is specified, each variable is labeled once per group
+        at its group-specific position.
+    var_labels_key : str, optional
+        Column in ``adata.var`` containing alternative labels for highlighted
+        variables. When specified, these labels are displayed instead of the
+        variable names. Useful for displaying gene symbols instead of IDs.
+    var_label_fontsize : float, optional
+        Font size for highlighted variable labels.
+    layer : str, optional
+        Key in ``adata.layers`` providing the intensity matrix. When ``None``,
+        uses ``adata.X``.
+    summary_method : str, optional
+        Method to summarize intensities across observations per variable.
+        Options: ``'sum'``, ``'average'``, ``'median'``, ``'max'``.
+        NAs are ignored; if all values are NA, the result is NA.
+    log_transform : float, optional
+        Base for log transformation of intensities. Defines the target space.
+        When ``None``, no transformation is applied (linear space).
+    input_space : str, optional
+        Specifies the input data space: ``'log'``, ``'linear'``, or ``'auto'``.
+        When ``'auto'``, uses heuristics to infer whether data is already
+        log-transformed.
+    force : bool, optional
+        When ``True``, suppress warnings about input space mismatches.
+    zero_to_na : bool, optional
+        Convert zero intensities to ``NaN`` before transformations.
+    fill_na : float | int, optional
+        Replace missing values with this constant before transformations.
+    figsize : tuple[float, float], optional
+        Figure dimensions (width, height) in inches.
+    title : str, optional
+        Plot title. Defaults to ``"Abundance Rank Plot"``.
+    xlabel : str, optional
+        Label for x-axis. Defaults to ``"Rank"``.
+    ylabel : str, optional
+        Label for y-axis. Auto-generated based on transformation applied.
+    alpha : float, optional
+        Point transparency (0-1 range).
+    s : float, optional
+        Point size for the scatter plot.
+    show : bool, optional
+        Display the figure with ``matplotlib.pyplot.show()``.
+    save : str | os.PathLike, optional
+        Path to save the figure. ``None`` skips saving.
+    ax : bool, optional
+        Return the underlying Axes object instead of ``None``.
+    color_scheme : Any, optional
+        Palette specification forwarded to
+        :func:`proteopy.utils.matplotlib._resolve_color_scheme`.
+
+    Returns
+    -------
+    Axes | None
+        The Matplotlib Axes object if ``ax=True``, otherwise ``None``.
+
+    Raises
+    ------
+    ValueError
+        If ``input_space`` is ``'log'`` and ``log_transform`` is ``None``
+        (cannot convert log to linear without knowing the base), if both
+        ``zero_to_na`` and ``fill_na`` are set, or if no valid data remains.
+    KeyError
+        If ``color`` column is not in ``adata.obs``, if ``layer`` is not in
+        ``adata.layers``, or if ``highlight_vars`` contains variables not in
+        ``adata.var_names``.
+
+    Notes
+    -----
+    **Input/Output Space Logic:**
+
+    - ``input_space='auto'``: Heuristically infers whether data is
+      log-transformed. Prints an informational message about the inference.
+
+    - If input is inferred as log and target is also log (``log_transform``
+      is set): No transformation; prints a message that the log base is
+      ignored since data is already in log space.
+
+    - If input is inferred as log and target is linear (``log_transform=None``):
+      Raises an error because the original log base is unknown.
+
+    - If ``input_space`` is explicitly set (not ``'auto'``):
+      - ``input_space='linear'`` with ``log_transform`` set: Applies log
+        transformation.
+      - ``input_space='log'`` with ``log_transform=None``: Raises a warning
+        (or error if ``force=False``).
+      - Matching spaces: No transformation.
+
+    - When ``force=False`` and the inferred space doesn't match the declared
+      ``input_space``, a warning is raised.
+
+    Examples
+    --------
+    Basic abundance rank plot:
+
+    >>> proteopy.pl.abundance_rank(adata)
+
+    Color by sample condition:
+
+    >>> proteopy.pl.abundance_rank(adata, color="condition")
+
+    Highlight specific proteins:
+
+    >>> proteopy.pl.abundance_rank(
+    ...     adata,
+    ...     highlight_vars=["ProteinA", "ProteinB"],
+    ... )
+    """
+    check_proteodata(adata)
+
+    # --- Parameter validation ---
+    if input_space not in ("auto", "log", "linear"):
+        raise ValueError(
+            "input_space must be 'auto', 'log', or 'linear'."
+        )
+
+    if zero_to_na and fill_na is not None:
+        raise ValueError("`zero_to_na` and `fill_na` are mutually exclusive.")
+
+    if color is not None and color not in adata.obs.columns:
+        raise KeyError(f"Column '{color}' not found in adata.obs.")
+
+    if layer is not None and layer not in adata.layers:
+        raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+
+    if highlight_vars is not None:
+        missing_vars = [v for v in highlight_vars if v not in adata.var_names]
+        if missing_vars:
+            raise KeyError(
+                f"Variables not found in adata.var_names: {missing_vars}"
+            )
+
+    if var_labels_key is not None and var_labels_key not in adata.var.columns:
+        raise KeyError(f"Column '{var_labels_key}' not found in adata.var.")
+
+    if log_transform is not None:
+        if not isinstance(log_transform, (int, float)):
+            raise TypeError("log_transform must be a numeric value or None.")
+        if log_transform <= 0:
+            raise ValueError("log_transform must be positive.")
+        if log_transform == 1:
+            raise ValueError("log_transform cannot be 1.")
+
+    if not isinstance(alpha, (int, float)) or not 0 <= alpha <= 1:
+        raise ValueError("alpha must be a number between 0 and 1.")
+
+    if not isinstance(s, (int, float)) or s <= 0:
+        raise ValueError("s must be a positive number.")
+
+    valid_summary_methods = ("sum", "average", "median", "max")
+    if summary_method not in valid_summary_methods:
+        raise ValueError(
+            f"summary_method must be one of {valid_summary_methods}, "
+            f"got '{summary_method}'."
+        )
+
+    # --- Get data matrix ---
+    if layer is not None:
+        Xsrc = adata.layers[layer]
+    else:
+        Xsrc = adata.X
+
+    if sparse.issparse(Xsrc):
+        X = Xsrc.toarray()
+    else:
+        X = np.asarray(Xsrc, dtype=float)
+
+    X = X.copy()
+
+    # --- Handle NA and zero values ---
+    if fill_na is not None:
+        if not isinstance(fill_na, (int, float)):
+            raise TypeError("fill_na must be a numeric value.")
+        if not np.isfinite(fill_na):
+            raise ValueError("fill_na must be a finite numeric value.")
+        X[np.isnan(X)] = float(fill_na)
+
+    if zero_to_na:
+        X[X == 0] = np.nan
+
+    # --- Determine input space and apply transformations ---
+    inferred_is_log, infer_stats = is_log_transformed(adata, layer=layer)
+
+    # Determine target space
+    target_is_log = log_transform is not None
+
+    # Handle input_space='auto'
+    if input_space == "auto":
+        if inferred_is_log:
+            actual_input_is_log = True
+        else:
+            actual_input_is_log = False
+    else:
+        # Explicit input_space
+        actual_input_is_log = (input_space == "log")
+
+        # Check for mismatch between declared and inferred
+        if actual_input_is_log != inferred_is_log and not force:
+            inferred_str = "log" if inferred_is_log else "linear"
+            warnings.warn(
+                f"Declared input_space='{input_space}' but data appears to be "
+                f"'{inferred_str}' (p95={infer_stats['p95']:.2f}, "
+                f"frac_negative={infer_stats['frac_negative']:.4f}). "
+                f"Set force=True to suppress this warning.",
+                UserWarning,
+            )
+
+    # Apply transformation logic
+    transform_applied = None
+
+    if actual_input_is_log and target_is_log:
+        # Both log: no transformation needed
+        print(
+            "Input is already log-transformed; ignoring log_transform "
+            f"parameter (base={log_transform})."
+        )
+        transform_applied = "none (already log)"
+        ylabel_default = "Intensity (log)"
+
+    elif actual_input_is_log and not target_is_log:
+        # Log to linear: cannot do without knowing the original base
+        raise ValueError(
+            "Cannot convert log-transformed data to linear space without "
+            "knowing the original log base. Either set log_transform to keep "
+            "data in log space, or provide data in linear space."
+        )
+
+    elif not actual_input_is_log and target_is_log:
+        # Linear to log: apply transformation
+        log_base = float(log_transform)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            X = np.log1p(X) / np.log(log_base)
+        transform_applied = f"log{log_base:g}p1"
+        ylabel_default = f"Intensity ({transform_applied})"
+
+    else:
+        # Both linear: no transformation
+        transform_applied = "none (linear)"
+        ylabel_default = "Intensity"
+
+    # --- Define summary function ---
+    def compute_summary(arr, method):
+        """Compute summary statistic ignoring NAs."""
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "All-NaN slice encountered")
+            warnings.filterwarnings("ignore", "Mean of empty slice")
+            if method == "sum":
+                return np.nansum(arr, axis=0)
+            elif method == "average":
+                return np.nanmean(arr, axis=0)
+            elif method == "median":
+                return np.nanmedian(arr, axis=0)
+            elif method == "max":
+                return np.nanmax(arr, axis=0)
+
+    # --- Compute summary values and ranks ---
+    var_names = adata.var_names.to_numpy()
+    n_vars = len(var_names)
+
+    # Store summary values and ranks per group (or None for global)
+    group_summary_values = {}
+    group_rank_positions = {}
+
+    if color is not None:
+        # Get unique groups from the color column
+        groups = adata.obs[color].dropna().unique().tolist()
+
+        for group in groups:
+            # Get observations belonging to this group
+            group_obs_mask = adata.obs[color] == group
+            group_obs_indices = np.where(group_obs_mask)[0]
+
+            if len(group_obs_indices) == 0:
+                continue
+
+            # Compute summary using only this group's observations
+            X_group = X[group_obs_indices, :]
+            summary_vals = compute_summary(X_group, summary_method)
+
+            # Create ranking for this group (descending by summary value)
+            # Handle NaN values in ranking
+            rank_position = np.full(n_vars, np.nan)
+            valid_mask = np.isfinite(summary_vals)
+            if valid_mask.any():
+                valid_indices = np.where(valid_mask)[0]
+                valid_summary = summary_vals[valid_mask]
+                rank_order = np.argsort(-valid_summary)
+                for rank, idx in enumerate(rank_order):
+                    rank_position[valid_indices[idx]] = rank
+
+            group_summary_values[group] = summary_vals
+            group_rank_positions[group] = rank_position
+
+    else:
+        # Global summary across all observations
+        summary_vals = compute_summary(X, summary_method)
+
+        valid_mask = np.isfinite(summary_vals)
+        if not valid_mask.any():
+            raise ValueError("No valid intensities remain after preprocessing.")
+
+        rank_position = np.full(n_vars, np.nan)
+        valid_indices = np.where(valid_mask)[0]
+        valid_summary = summary_vals[valid_mask]
+        rank_order = np.argsort(-valid_summary)
+        for rank, idx in enumerate(rank_order):
+            rank_position[valid_indices[idx]] = rank
+
+        group_summary_values[None] = summary_vals
+        group_rank_positions[None] = rank_position
+
+    # --- Build plotting DataFrame ---
+    records = []
+
+    if color is not None:
+        for group in groups:
+            if group not in group_summary_values:
+                continue
+            summary_vals = group_summary_values[group]
+            rank_pos = group_rank_positions[group]
+
+            for j, var_name in enumerate(var_names):
+                summary_val = summary_vals[j]
+                rank_val = rank_pos[j]
+
+                if not np.isfinite(summary_val) or not np.isfinite(rank_val):
+                    continue
+
+                records.append({
+                    'var': var_name,
+                    'intensity': summary_val,
+                    'rank': rank_val,
+                    'color_group': group,
+                })
+    else:
+        summary_vals = group_summary_values[None]
+        rank_pos = group_rank_positions[None]
+
+        for j, var_name in enumerate(var_names):
+            summary_val = summary_vals[j]
+            rank_val = rank_pos[j]
+
+            if not np.isfinite(summary_val) or not np.isfinite(rank_val):
+                continue
+
+            records.append({
+                'var': var_name,
+                'intensity': summary_val,
+                'rank': rank_val,
+            })
+
+    if not records:
+        raise ValueError("No valid data points remain after computing summaries.")
+
+    plot_df = pd.DataFrame(records)
+
+    # --- Create plot ---
+    fig, _ax = plt.subplots(figsize=figsize)
+
+    if color is not None:
+        palette_values = _resolve_color_scheme(color_scheme, groups)
+        if not palette_values:
+            cmap = mpl.colormaps.get_cmap("tab10")
+            palette_values = [cmap(i % 10) for i in range(len(groups))]
+        palette = dict(zip(groups, palette_values))
+
+        for group in groups:
+            group_df = plot_df[plot_df['color_group'] == group]
+            _ax.scatter(
+                group_df['rank'],
+                group_df['intensity'],
+                c=[palette[group]],
+                alpha=alpha,
+                s=s,
+                label=str(group),
+            )
+        _ax.legend(
+            title=color,
+            bbox_to_anchor=(1.02, 1),
+            loc='upper left',
+        )
+    else:
+        _ax.scatter(
+            plot_df['rank'],
+            plot_df['intensity'],
+            alpha=alpha,
+            s=s,
+            color='steelblue',
+        )
+
+    # --- Add highlighted variable labels ---
+    if highlight_vars is not None and len(highlight_vars) > 0:
+        # Build label mapping
+        if var_labels_key is not None:
+            var_to_label = dict(zip(var_names, adata.var[var_labels_key]))
+        else:
+            var_to_label = {v: v for v in var_names}
+
+        texts = []
+        highlight_x = []
+        highlight_y = []
+
+        if color is not None:
+            # When coloring by groups, highlight each var in each group
+            for group in groups:
+                if group not in group_summary_values:
+                    continue
+                summary_vals = group_summary_values[group]
+                rank_pos = group_rank_positions[group]
+                grp_color = palette.get(group, 'red')
+
+                for var in highlight_vars:
+                    var_idx = np.where(var_names == var)[0]
+                    if len(var_idx) == 0:
+                        continue
+                    var_idx = var_idx[0]
+                    var_rank = rank_pos[var_idx]
+                    var_summary = summary_vals[var_idx]
+
+                    if not np.isfinite(var_summary) or not np.isfinite(var_rank):
+                        continue
+
+                    label = str(var_to_label.get(var, var))
+                    highlight_x.append(var_rank)
+                    highlight_y.append(var_summary)
+                    texts.append(
+                        _ax.text(
+                            var_rank,
+                            var_summary,
+                            label,
+                            fontsize=var_label_fontsize,
+                        )
+                    )
+                    _ax.scatter(
+                        [var_rank],
+                        [var_summary],
+                        color=grp_color,
+                        s=s * 2,
+                        zorder=10,
+                        marker='o',
+                        edgecolors='black',
+                        linewidths=0.5,
+                    )
+        else:
+            # Global: single marker per var
+            summary_vals = group_summary_values[None]
+            rank_pos = group_rank_positions[None]
+
+            for var in highlight_vars:
+                var_idx = np.where(var_names == var)[0]
+                if len(var_idx) == 0:
+                    continue
+                var_idx = var_idx[0]
+                var_rank = rank_pos[var_idx]
+                var_summary = summary_vals[var_idx]
+
+                if not np.isfinite(var_summary) or not np.isfinite(var_rank):
+                    continue
+
+                label = str(var_to_label.get(var, var))
+                highlight_x.append(var_rank)
+                highlight_y.append(var_summary)
+                texts.append(
+                    _ax.text(
+                        var_rank,
+                        var_summary,
+                        label,
+                        fontsize=var_label_fontsize,
+                    )
+                )
+                _ax.scatter(
+                    [var_rank],
+                    [var_summary],
+                    color='red',
+                    s=s * 2,
+                    zorder=10,
+                    marker='o',
+                    edgecolors='black',
+                    linewidths=0.5,
+                )
+
+        if texts:
+            adjust_text(
+                texts,
+                x=highlight_x,
+                y=highlight_y,
+                ax=_ax,
+                arrowprops=dict(arrowstyle="-", color="0.4", lw=0.7),
+                expand=(1.5,1.5),
+                force_text=0.5,
+                force_explode=(4.4, 4.4),
+                avoid_self=True,
+                only_move={'text': 'x+y'},
+            )
+
+    # --- Set labels and title ---
+    _ax.set_xlabel(xlabel or "Rank")
+    _ax.set_ylabel(ylabel or ylabel_default)
+    _ax.set_title(title or "Abundance Rank Plot")
+
+    plt.tight_layout()
+
+    # --- Save/Show logic ---
+    if save is not None:
+        fig.savefig(save, dpi=300, bbox_inches="tight")
+    if show:
+        plt.show()
+    if ax:
+        return _ax
+    if not save and not show and not ax:
+        warnings.warn(
+            "Plot created but not displayed, saved, or returned. "
+            "Set show=True, save to a path, or ax=True.",
+            UserWarning,
+        )
+        plt.close(fig)
+    return None

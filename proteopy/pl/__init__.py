@@ -3,6 +3,7 @@ from .intensities import (
     proteoform_intensities,
     intensity_box_per_sample,
     intensity_hist,
+    abundance_rank,
     )
 
 from .stats import (

@@ -19,25 +19,27 @@ Homepage = "https://github.com/UKHD-NP/proteopy"
 #Documentation = ""
 
 dependencies = [
+    'adjustText',
+    'anndata',
+    'matplotlib',
     'numpy',
     'pandas',
-    'anndata',
-    'scipy',
+    'pooch',
     'scikit-learn',
-    'matplotlib',
+    'scipy',
     'seaborn',
     'statsmodels',
-    'pooch',
-    'adjustText',
     ]
 
 [project.optional-dependencies]
 dev = [
+    'flake8',
     'ipykernel',
     'jupyterlab',
     'nb_conda',
     'pooch',
     'pre-commit',
+    'pylint',
     'pytest',
     ]
 

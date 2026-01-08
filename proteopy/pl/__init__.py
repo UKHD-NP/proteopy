@@ -17,6 +17,7 @@ from .stats import (
     n_proteoforms_per_protein,
     cv_by_group,
     sample_correlation_matrix,
+    hclustv_profiles_heatmap,
     )
 
 from .copf import proteoform_scores

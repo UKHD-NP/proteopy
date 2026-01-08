@@ -1,4 +1,3 @@
-from functools import partial
 import warnings
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -11,12 +10,13 @@ from pandas.api.types import is_string_dtype, is_categorical_dtype
 from scipy import sparse
 from scipy.spatial.distance import squareform
 from scipy.cluster.hierarchy import linkage
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
+from matplotlib.colors import Colormap
 from matplotlib.patches import Patch
-import seaborn as sns
-import matplotlib as mpl
 from matplotlib.ticker import MaxNLocator
+import seaborn as sns
 
 from proteopy.utils.anndata import check_proteodata, is_proteodata
 from proteopy.utils.matplotlib import _resolve_color_scheme
@@ -1396,7 +1396,7 @@ def sample_correlation_matrix(
     dist = 1 - corr_df.values
     np.fill_diagonal(dist, 0.0)
     dist = np.clip(dist, 0, 2)  # numerical guard
-    Z = linkage(squareform(dist, checks=False), method=linkage_method)
+    Z = linkage(squareform(dist), method=linkage_method)
 
     # ---- clustermap (center at off-diagonal mean)
     g = sns.clustermap(
@@ -1437,3 +1437,380 @@ def sample_correlation_matrix(
 
     if ax:
         return g.ax_heatmap
+
+
+def hclustv_profiles_heatmap(
+    adata: ad.AnnData,
+    selected_vars: list[str] | None = None,
+    group_by: str | None = None,
+    summary_method: str = "median",
+    linkage_method: str = "average",
+    distance_metric: str = "euclidean",
+    layer: str | None = None,
+    zero_to_na: bool = False,
+    fill_na: float | int | None = None,
+    skip_na: bool = True,
+    cmap: str = "coolwarm",
+    margin_color: bool = False,
+    order_by: str | None = None,
+    order: str | list | None = None,
+    color_scheme: str | dict | Sequence | Colormap | None = None,
+    row_cluster: bool = True,
+    col_cluster: bool = True,
+    xticklabels: bool = True,
+    yticklabels: bool = False,
+    figsize: tuple[float, float] = (10.0, 8.0),
+    title: str | None = None,
+    show: bool = True,
+    ax: bool = False,
+    save: str | Path | None = None,
+) -> Axes | None:
+    """
+    Plot a clustered heatmap of variable profiles across samples or groups.
+
+    Computes z-scores for each variable across samples (or group summaries),
+    then applies hierarchical clustering to visualize variable expression
+    patterns.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` with proteomics annotations.
+    selected_vars : list[str] | None
+        Explicit list of variables to include. When ``None``, all variables
+        are used.
+    group_by : str | None
+        Column in ``adata.obs`` used to group observations. When provided,
+        computes a summary statistic for each group rather than showing
+        individual samples.
+    summary_method : str
+        Method for computing group summaries when ``group_by`` is specified.
+        One of ``"median"`` or ``"mean"`` (alias ``"average"``).
+    linkage_method : str
+        Linkage criterion passed to :func:`scipy.cluster.hierarchy.linkage`.
+    distance_metric : str
+        Distance metric for clustering. One of ``"euclidean"``, ``"manhattan"``,
+        or ``"cosine"``.
+    layer : str | None
+        Optional ``adata.layers`` key to draw quantification values from.
+        When ``None`` the primary matrix ``adata.X`` is used.
+    zero_to_na : bool
+        Replace zeros with ``NaN`` before computing profiles.
+    fill_na : float | int | None
+        Replace ``NaN`` values with the specified constant.
+    skip_na : bool
+        Skip ``NaN`` values when computing group summaries and z-scores.
+    cmap : str
+        Colormap for the heatmap body.
+    margin_color : bool
+        Add a color bar between the column dendrogram and the heatmap.
+        When ``True``, colors by sample (if ``group_by`` is ``None``) or by
+        group (if ``group_by`` is set).
+    order_by : str | None
+        Column in ``adata.obs`` used to order samples (columns). When set,
+        automatically disables column clustering and orders columns by the
+        values of this column. Also displays a margin color bar colored by
+        this column. Cannot be used with ``group_by``.
+    order : str | list | None
+        The order by which to present samples, groups, or categories. If
+        ``order_by`` is ``None`` and ``order`` is ``None``, the existing order
+        is used. If ``order_by`` is ``None`` and ``order`` is not ``None``,
+        ``order`` specifies the column order (samples or groups). If
+        ``order_by`` is not ``None`` and ``order`` is ``None``, the unique
+        values in ``order_by`` are used (categorical order if categorical,
+        sorted order otherwise). If ``order_by`` is not ``None`` and
+        ``order`` is not ``None``, ``order`` defines the order of the unique
+        ``order_by`` values. Values not in ``order`` are excluded.
+    color_scheme : str | dict | Sequence | Colormap | None
+        Palette specification for the margin color bar, forwarded to
+        :func:`proteopy.utils.matplotlib._resolve_color_scheme`. Ignored
+        when neither ``margin_color`` nor ``order_by`` is set.
+    row_cluster : bool
+        Perform hierarchical clustering on variables (rows).
+    col_cluster : bool
+        Perform hierarchical clustering on samples/groups (columns).
+    xticklabels : bool
+        Show x-axis tick labels (sample/group names).
+    yticklabels : bool
+        Show y-axis tick labels (variable names).
+    figsize : tuple[float, float]
+        Matplotlib figure size in inches.
+    title : str | None
+        Title for the plot.
+    show : bool
+        Display the figure with :func:`matplotlib.pyplot.show`.
+    ax : bool
+        Return the heatmap :class:`matplotlib.axes.Axes` when ``True``.
+    save : str | Path | None
+        File path for saving the figure.
+
+    Returns
+    -------
+    Axes or None
+        Heatmap axes when ``ax`` is ``True``; otherwise ``None``.
+    """
+    check_proteodata(adata)
+
+    # Validate summary_method
+    summary_method = summary_method.lower()
+    if summary_method == "average":
+        summary_method = "mean"
+    if summary_method not in ("median", "mean"):
+        raise ValueError(
+            f"summary_method must be 'median' or 'mean', got '{summary_method}'."
+        )
+
+    # Validate distance_metric
+    distance_metric = distance_metric.lower()
+    if distance_metric not in ("euclidean", "manhattan", "cosine"):
+        raise ValueError(
+            f"distance_metric must be 'euclidean', 'manhattan', or 'cosine', "
+            f"got '{distance_metric}'."
+        )
+
+    # Map metric names to scipy pdist names
+    metric_map = {
+        "euclidean": "euclidean",
+        "manhattan": "cityblock",
+        "cosine": "cosine",
+    }
+    scipy_metric = metric_map[distance_metric]
+
+    # Validate order_by
+    if order_by is not None:
+        if group_by is not None:
+            raise ValueError(
+                "order_by cannot be used with group_by. When using group_by, "
+                "columns represent groups, not individual samples."
+            )
+        if order_by not in adata.obs.columns:
+            raise KeyError(f"Column '{order_by}' not found in adata.obs.")
+        # order_by and col_cluster are mutually exclusive; disable clustering
+        if col_cluster:
+            print((
+                "`order_by` parameter is incompatible with `col_cluster=True`. "
+                "`col_cluster` has been overridden."
+            ))
+            col_cluster = False
+
+    # Validate order parameter
+    if order is not None:
+        if col_cluster:
+            print((
+                "`order` parameter is incompatible with `col_cluster=True`. "
+                "`col_cluster` has been overridden."
+            ))
+            col_cluster = False
+        order = list(order)
+        if order_by is None and group_by is None:
+            # order specifies sample names
+            available_samples = set(adata.obs_names)
+            invalid_samples = [s for s in order if s not in available_samples]
+            if invalid_samples:
+                raise KeyError(
+                    f"Samples not found in adata.obs_names: {invalid_samples}"
+                )
+        elif group_by is not None:
+            # order specifies group names; validate against group_by column
+            available_groups = set(adata.obs[group_by].dropna().unique())
+            invalid_groups = [g for g in order if g not in available_groups]
+            if invalid_groups:
+                raise KeyError(
+                    f"Groups not found in adata.obs['{group_by}']: {invalid_groups}"
+                )
+        # Validation for order_by case is done after we have the data
+
+    # Extract matrix
+    if layer is None:
+        matrix = adata.X
+    else:
+        if layer not in adata.layers:
+            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+        matrix = adata.layers[layer]
+
+    if matrix is None:
+        raise ValueError("Selected matrix is empty.")
+
+    # Densify if sparse
+    if sparse.issparse(matrix):
+        matrix = matrix.toarray()
+    else:
+        matrix = np.asarray(matrix)
+
+    # Create DataFrame (obs x var)
+    df = pd.DataFrame(
+        matrix,
+        index=adata.obs_names,
+        columns=adata.var_names,
+    )
+
+    # Filter variables if specified
+    if selected_vars is not None:
+        missing_vars = [v for v in selected_vars if v not in df.columns]
+        if missing_vars:
+            raise KeyError(
+                f"Variables not found in adata.var_names: {missing_vars}"
+            )
+        df = df[selected_vars]
+
+    if zero_to_na:
+        df = df.replace(0, np.nan)
+
+    if fill_na is not None:
+        df = df.fillna(fill_na)
+
+    # Group by if specified
+    if group_by is not None:
+        if group_by not in adata.obs.columns:
+            raise KeyError(f"Column '{group_by}' not found in adata.obs.")
+        groups = adata.obs[group_by]
+        df["__group__"] = groups.values
+
+        # Compute group summaries
+        # include_groups=False excludes __group__ from the lambda input
+        if summary_method == "median":
+            summary_df = df.groupby("__group__", observed=True).apply(
+                lambda x: x.median(skipna=skip_na),
+                include_groups=False,
+            )
+        else:
+            summary_df = df.groupby("__group__", observed=True).apply(
+                lambda x: x.mean(skipna=skip_na),
+                include_groups=False,
+            )
+
+        # Transpose to get var x group
+        profile_df = summary_df.T
+    else:
+        # Transpose to get var x obs
+        profile_df = df.T
+
+    # Drop variables with all NaN
+    profile_df = profile_df.dropna(how="all")
+
+    if profile_df.empty:
+        raise ValueError("No variables remain after removing all-NaN rows.")
+
+    # Compute z-scores per variable (row)
+    row_means = profile_df.mean(axis=1, skipna=skip_na)
+    row_stds = profile_df.std(axis=1, skipna=skip_na, ddof=0)
+    row_stds = row_stds.replace(0, np.nan)  # avoid division by zero
+
+    z_df = profile_df.sub(row_means, axis=0).div(row_stds, axis=0)
+
+    # Fill NaN with 0 for clustering
+    z_df_filled = z_df.fillna(0)
+
+    # Order columns based on order_by and/or order
+    if order_by is not None:
+        # Get order based on obs column values
+        order_col_values = adata.obs.loc[z_df_filled.columns, order_by]
+        if order is not None:
+            # Validate that order values exist in the order_by column
+            available_values = set(order_col_values.unique())
+            invalid_values = [v for v in order if v not in available_values]
+            if invalid_values:
+                raise KeyError(
+                    f"Values not found in adata.obs['{order_by}']: {invalid_values}"
+                )
+            # Filter to samples whose order_by value is in order, then sort
+            mask = order_col_values.isin(order)
+            filtered_cols = z_df_filled.columns[mask]
+            order_col_values = order_col_values.loc[filtered_cols]
+            # Create categorical with specified order for sorting
+            order_col_values = pd.Categorical(
+                order_col_values,
+                categories=order,
+                ordered=True,
+            )
+            sorted_idx = (
+                pd.Series(order_col_values, index=filtered_cols)
+                .sort_values().index
+                )
+        else:
+            # Use categorical order if categorical, sorted order otherwise
+            if isinstance(order_col_values.dtype, pd.CategoricalDtype):
+                cat_order = list(order_col_values.cat.categories)
+                order_col_values = pd.Categorical(
+                    order_col_values,
+                    categories=cat_order,
+                    ordered=True,
+                )
+                sorted_idx = pd.Series(
+                    order_col_values,
+                    index=z_df_filled.columns,
+                ).sort_values().index
+            else:
+                sorted_idx = order_col_values.sort_values().index
+        z_df_filled = z_df_filled[sorted_idx]
+    elif order is not None:
+        # order specifies sample or group names directly
+        # Filter to only columns in order, maintaining order
+        valid_cols = [c for c in order if c in z_df_filled.columns]
+        z_df_filled = z_df_filled[valid_cols]
+
+    # Build column colors for margin annotation
+    col_colors = None
+    col_names = z_df_filled.columns
+
+    if order_by is not None:
+        # Color by the order_by column
+        categories = adata.obs.loc[col_names, order_by].values
+    elif margin_color:
+        # Color by sample or group
+        categories = col_names
+    else:
+        categories = None
+
+    if categories is not None:
+        # Create color palette
+        unique_cats = pd.Series(categories).unique()
+        resolved_colors = _resolve_color_scheme(color_scheme, unique_cats)
+        if resolved_colors is None:
+            resolved_colors = (
+                sns.color_palette("husl", n_colors=len(unique_cats))
+                if len(unique_cats) > 0 else []
+            )
+        color_map = dict(zip(unique_cats, resolved_colors))
+        col_colors = pd.Series(
+            [color_map[c] for c in categories],
+            index=col_names,
+        )
+
+    # Create clustermap
+    g = sns.clustermap(
+        z_df_filled,
+        method=linkage_method,
+        metric=scipy_metric,
+        row_cluster=row_cluster,
+        col_cluster=col_cluster,
+        cmap=cmap,
+        center=0,
+        figsize=figsize,
+        xticklabels=xticklabels,
+        yticklabels=yticklabels,
+        cbar_kws={"label": "Z-score"},
+        col_colors=col_colors,
+    )
+
+    g.ax_heatmap.set_xlabel("")
+
+    # Remove y-axis ticks from the margin color bar if present
+    if g.ax_col_colors is not None:
+        g.ax_col_colors.set_yticks([])
+
+    if title is not None:
+        g.figure.suptitle(title, y=1.02)
+
+    plt.tight_layout()
+
+    if save:
+        g.savefig(save, dpi=300, bbox_inches="tight")
+
+    if show:
+        plt.show()
+
+    if ax:
+        return g.ax_heatmap
+
+    return None

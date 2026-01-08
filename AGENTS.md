@@ -110,7 +110,7 @@ this number. If None, use the internal function defaults.
         Categorical .obs or .var column by which to order the observations or variables for plotting.
         Default=None (do not include this line in docstrings)
     order : str | list | None
-        The order by which to present the observations, variables, or categories. If `orderby` is None and `order` is None, the existing .var_names or .obs_names order will be used. If `orderby` is None and `order` is not None, `order` contains the order by which observations or variables will be plotted. If `orderby` is not None and `order` is None, the unique values in the `sortby` column will be used to plot the the axis. If `sortby` is categorical, the category order will be used, if it is str or object the order of occurance will be used. If `sortby` is not None and `order` is not None, `order` defines the order by which the unique `sortby` column values are plotted in the relevant axis.
+        The order by which to present the observations, variables, or categories. If `order_by` is None and `order` is None, the existing .var_names or .obs_names order will be used. If `order_by` is None and `order` is not None, `order` contains the order by which observations or variables will be plotted. If `order_by` is not None and `order` is None, the unique values in the `order_by` column will be used to plot the axis. If `order_by` is categorical, the category order will be used, if it is str or object a sorted order will be used. If `order_by` is not None and `order` is not None, `order` defines the order by which the unique `order_by` column values are plotted in the relevant axis.
         Default=None (do not include this line in docstrings)
     ascending : bool | None
         If `order` is None, sort the function relevant axis by a function-relevant
@@ -295,7 +295,7 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
   - If `order_by is None` and `order is None`: use existing `.var_names` / `.obs_names` order.
   - If `order_by is None` and `order is not None`: use `order` as the explicit order.
   - If `order_by is not None` and `order is None`: order by the unique values in `order_by`.
-    If `order_by` is categorical, use its category order; if object/string, use first-occurrence order.
+    If `order_by` is categorical, use its category order; if object/string, use sorted order.
   - If `order_by is not None` and `order is not None`: `order` defines the plotting order of the
     unique values from `order_by`.
 
@@ -596,7 +596,7 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
   - If `order_by is None` and `order is None`: use existing `.var_names` / `.obs_names` order.
   - If `order_by is None` and `order is not None`: use `order` as the explicit order.
   - If `order_by is not None` and `order is None`: order by the unique values in `order_by`.
-    If `order_by` is categorical, use its category order; if object/string, use first-occurrence order.
+    If `order_by` is categorical, use its category order; if object/string, use sorted order.
   - If `order_by is not None` and `order is not None`: `order` defines the plotting order of the
     unique values from `order_by`.
 

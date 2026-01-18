@@ -25,4 +25,5 @@ from .stat_tests import volcano_plot, differential_abundance_box
 
 from .clustering import (
     hclustv_silhouette,
+    hclustv_elbow,
     )

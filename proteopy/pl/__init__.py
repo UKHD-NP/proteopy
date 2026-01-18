@@ -22,3 +22,7 @@ from .stats import (
 
 from .copf import proteoform_scores
 from .stat_tests import volcano_plot, differential_abundance_box
+
+from .clustering import (
+    hclustv_silhouette,
+    )

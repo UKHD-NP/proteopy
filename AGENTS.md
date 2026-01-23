@@ -57,6 +57,10 @@ General argument guidelines:
     groupby : str
         Column in AnnData .var or .obs to perform grouping for the function algorithm (e.g. group by sample 'condition' to compute average peptide intensities across observations).
         Default=None (do not include this line in docstrings)
+    verbose : bool
+        If True, print status messages (e.g., file save locations, progress updates).
+        Include this parameter in any function that contains print statements.
+        Default=True (do not include this line in docstrings)
 
 Module-specific function guidelines
  - pp and tl:
@@ -394,6 +398,18 @@ New assets must remain lightweight and include provenance notes.
 
 ### Style Notes
 Prefer f-strings for string interpolation. Use type hints in function signatures and docstrings but avoid verbose variable-level type checking. Perform input type checking at the beginning of the function when possible for good readability.
+
+### Import Alias Convention
+In tutorials, docstring examples, and documentation, always import proteopy as `pr`:
+```python
+import proteopy as pr
+
+# Example usage in docstrings
+>>> import proteopy as pr
+>>> adata = pr.datasets.example_peptide_data()
+>>> pr.tl.hclust_vars(adata, group_by="condition")
+>>> pr.pl.hclust_vars_silhouette_scores(adata, k=5)
+```
 
 **Example of type hints**
 ```python

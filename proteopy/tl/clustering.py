@@ -14,6 +14,7 @@ from proteopy.utils.anndata import check_proteodata
 from proteopy.utils.parsers import (
     _is_standard_hclustv_key,
     _parse_hclustv_key_components,
+    _resolve_hclustv_keys,
     _resolve_hclustv_cluster_key,
 )
 
@@ -497,3 +498,219 @@ def hclustv_cluster_ann(
             print(f"Cluster annotations stored in adata.var['{cluster_key}']")
         return adata_out
 
+
+def hclustv_profiles(
+    adata: ad.AnnData,
+    cluster_key: str = 'auto',
+    layer: str | None = None,
+    group_by: str | None = None,
+    method: str = "median",
+    zero_to_na: bool = False,
+    fill_na: float | int | None = None,
+    skip_na: bool = True,
+    inplace: bool = True,
+    key_added: str | None = None,
+    verbose: bool = True,
+) -> ad.AnnData | None:
+    """
+    Compute cluster profiles from cluster annotations.
+
+    Summarizes variables within each cluster using mean or median to create
+    cluster profile intensities across all observations.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` with cluster annotations in ``.var``
+        (from :func:`~proteopy.tl.hclustv_cluster_ann`).
+    cluster_key : str
+        Column in ``adata.var`` containing cluster assignments. When
+        ``'auto'``, auto-detects from available ``'hclustv_cluster;...'``
+        columns. When multiple columns exist, must be specified explicitly.
+    layer : str | None
+        Layer to use for computing profiles. When ``None``, uses ``adata.X``.
+    group_by : str | None
+        Column in ``adata.obs`` to group observations by before computing
+        cluster profiles. When specified, observations are first summarized
+        by this column using ``method``, then cluster profiles are computed
+        on the grouped data.
+    method : str
+        Summarization method for computing cluster profiles. One of ``"mean"``
+        or ``"median"``. Also used for grouping observations when ``group_by``
+        is specified.
+    zero_to_na : bool
+        If ``True``, convert zeros in the data matrix to ``np.nan`` before
+        any computation.
+    fill_na : float | int | None
+        If specified, replace ``np.nan`` values with this constant before
+        computing profiles. Applied after ``zero_to_na``.
+    skip_na : bool
+        If ``True``, exclude ``np.nan`` values when computing summaries.
+        If ``False``, return ``np.nan`` if any value in the group is ``np.nan``.
+    inplace : bool
+        If ``True``, store results in ``adata.uns`` and return ``None``.
+        If ``False``, return a modified copy of ``adata``.
+    key_added : str | None
+        Custom key for storing results in ``adata.uns``. When ``None``,
+        uses the default format
+        ``'hclustv_profiles;<group_by>;<var_hash>;<layer>'`` derived from
+        the cluster key components.
+    verbose : bool
+        Print storage location key after computation.
+
+    Returns
+    -------
+    AnnData | None
+        If ``inplace=True``, returns ``None``.
+        If ``inplace=False``, returns a copy of ``adata`` with cluster
+        profiles stored in ``.uns``.
+
+    Raises
+    ------
+    ValueError
+        If no cluster annotations are found in ``adata.var``.
+        If multiple cluster columns exist and ``cluster_key`` is not
+        specified.
+        If ``method`` is not ``"mean"`` or ``"median"``.
+        If auto-generated storage key cannot be derived.
+    KeyError
+        If specified ``cluster_key`` is not found in ``adata.var``.
+        If specified ``layer`` is not found in ``adata.layers``.
+        If specified ``group_by`` column is not found in ``adata.obs``.
+
+    Notes
+    -----
+    The cluster profiles DataFrame is stored at
+    ``adata.uns['hclustv_profiles;<group_by>;<var_hash>;<layer>']``.
+
+    Examples
+    --------
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.karayel_2020()
+    >>> pr.tl.hclustv_tree(adata, group_by="condition")
+    >>> pr.tl.hclustv_cluster_ann(adata, 5)
+    >>> pr.tl.hclustv_profiles(adata)
+    """
+    check_proteodata(adata)
+
+    method = method.lower()
+    if method not in ("mean", "median"):
+        raise ValueError(
+            f"method must be 'mean' or 'median', got '{method}'."
+        )
+
+    resolved_key = _resolve_hclustv_cluster_key(
+        adata,
+        cluster_key=cluster_key,
+        verbose=verbose,
+    )
+
+    cluster_col = adata.var[resolved_key]
+
+    # Get data matrix
+    if layer is not None:
+        if layer not in adata.layers:
+            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+        matrix = adata.layers[layer]
+    else:
+        matrix = adata.X
+
+    if sparse.issparse(matrix):
+        matrix = matrix.toarray()
+    else:
+        matrix = np.asarray(matrix)
+
+    # Create DataFrame with obs as rows, vars as columns
+    df = pd.DataFrame(
+        matrix,
+        index=adata.obs_names,
+        columns=adata.var_names,
+    )
+
+    if zero_to_na:
+        df = df.replace(0, np.nan)
+
+    if fill_na is not None:
+        df = df.fillna(fill_na)
+
+    # Group by obs column if specified
+    if group_by is not None:
+        if group_by not in adata.obs.columns:
+            raise KeyError(
+                f"group_by column '{group_by}' not found in adata.obs."
+            )
+        groups = adata.obs[group_by]
+        if method == "mean":
+            df = df.groupby(groups).apply(
+                lambda x: x.mean(skipna=skip_na), include_groups=False
+            )
+        elif method == "median":
+            df = df.groupby(groups).apply(
+                lambda x: x.median(skipna=skip_na), include_groups=False
+            )
+
+    # Get unique clusters (excluding NaN)
+    clusters = cluster_col.dropna().unique()
+    clusters = sorted(clusters)
+
+    if len(clusters) == 0:
+        raise ValueError("No cluster assignments found in the specified column.")
+
+    # Compute profiles for each cluster
+    cluster_profiles = {}
+    for cluster_id in clusters:
+        cluster_vars = cluster_col[cluster_col == cluster_id].index.tolist()
+        if not cluster_vars:
+            continue
+        cluster_data = df[cluster_vars]
+        if method == "mean":
+            cluster_profiles[cluster_id] = cluster_data.mean(
+                axis=1, skipna=skip_na
+            )
+        elif method == "median":
+            cluster_profiles[cluster_id] = cluster_data.median(
+                axis=1, skipna=skip_na
+            )
+
+    profiles_df = pd.DataFrame(cluster_profiles)
+
+    # Build storage key
+    if key_added is not None:
+        profiles_key = key_added
+    elif resolved_key.startswith("hclustv_cluster;"):
+        # Extract components from cluster key
+        parts = resolved_key.split(";")
+        if len(parts) == 4:
+            group_by_str, var_hash = parts[1], parts[2]
+            # Use actual layer if specified, otherwise "X" for adata.X
+            if layer is not None:
+                layer_str = layer
+            else:
+                layer_str = "X"
+            profiles_key = (
+                f"hclustv_profiles;{group_by_str};{var_hash};{layer_str}"
+            )
+        else:
+            raise ValueError(
+                f"Cannot auto-generate storage key from cluster key "
+                f"'{resolved_key}'. Please provide key_added explicitly."
+            )
+    else:
+        raise ValueError(
+            f"Cannot auto-generate storage key from custom cluster_key "
+            f"'{resolved_key}'. Please provide key_added explicitly."
+        )
+
+    if inplace:
+        adata.uns[profiles_key] = profiles_df
+        check_proteodata(adata)
+        if verbose:
+            print(f"Cluster profiles stored in adata.uns['{profiles_key}']")
+        return None
+    else:
+        adata_out = adata.copy()
+        adata_out.uns[profiles_key] = profiles_df
+        check_proteodata(adata_out)
+        if verbose:
+            print(f"Cluster profiles stored in adata.uns['{profiles_key}']")
+        return adata_out

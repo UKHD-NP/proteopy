@@ -8,4 +8,5 @@ from .stat_tests import differential_abundance
 from .clustering import (
     hclustv_tree,
     hclustv_cluster_ann,
+    hclustv_profiles,
     )

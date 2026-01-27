@@ -489,3 +489,67 @@ def _resolve_hclustv_keys(
                 )
 
     return linkage_key, values_key
+
+
+def _resolve_hclustv_cluster_key(
+    adata: ad.AnnData,
+    cluster_key: str = 'auto',
+    verbose: bool = True,
+) -> str:
+    """
+    Resolve cluster annotation key from adata.var columns.
+
+    Auto-detects key if not provided, validates existence, and returns
+    the resolved key name.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` with cluster annotations stored in ``.var``.
+    cluster_key : str
+        Column in ``adata.var`` containing cluster annotations. When
+        ``'auto'``, auto-detects the cluster key if exactly one
+        ``'hclustv_cluster;...'`` column exists.
+    verbose : bool
+        Print status messages including auto-detected key.
+
+    Returns
+    -------
+    str
+        Resolved cluster key name.
+
+    Raises
+    ------
+    ValueError
+        If no cluster annotations are found or multiple candidates exist
+        when ``cluster_key='auto'``.
+    KeyError
+        If the specified ``cluster_key`` is not found in ``adata.var``.
+    """
+    cluster_candidates = [
+        col for col in adata.var.columns
+        if col.startswith("hclustv_cluster;")
+    ]
+
+    if cluster_key == 'auto':
+        if len(cluster_candidates) == 0:
+            raise ValueError(
+                "No cluster annotations found in adata.var. "
+                "Run proteopy.tl.hclustv_cluster_ann() first."
+            )
+        if len(cluster_candidates) > 1:
+            raise ValueError(
+                "Multiple cluster annotation columns found in adata.var. "
+                "Please specify cluster_key explicitly. "
+                f"Available keys: {cluster_candidates}"
+            )
+        cluster_key = cluster_candidates[0]
+        if verbose:
+            print(f"Using cluster annotations: adata.var['{cluster_key}']")
+    else:
+        if cluster_key not in adata.var.columns:
+            raise KeyError(
+                f"Cluster key '{cluster_key}' not found in adata.var columns."
+            )
+
+    return cluster_key

@@ -7,10 +7,63 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 from scipy import sparse
-from scipy.cluster.hierarchy import linkage
+from scipy.cluster.hierarchy import fcluster, linkage
 from scipy.spatial.distance import pdist
 
 from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.parsers import (
+    _is_standard_hclustv_key,
+    _parse_hclustv_key_components,
+    _resolve_hclustv_cluster_key,
+)
+
+
+def _validate_linkage_and_values(
+    Z: np.ndarray,
+    values_df: pd.DataFrame,
+) -> None:
+    """
+    Validate linkage matrix and values DataFrame for clustering operations.
+
+    Parameters
+    ----------
+    Z : np.ndarray
+        Linkage matrix from hierarchical clustering.
+    values_df : pd.DataFrame
+        DataFrame with variables as columns used to obtain the linkage matrix.
+
+    Raises
+    ------
+    TypeError
+        If linkage matrix is not a numpy array or values is not a DataFrame.
+    ValueError
+        If linkage matrix has invalid shape or dimension mismatch with
+        values DataFrame.
+    """
+    if not isinstance(Z, np.ndarray):
+        raise TypeError(
+            f"Expected linkage matrix to be numpy array, "
+            f"got {type(Z).__name__}."
+        )
+    if Z.ndim != 2 or Z.shape[1] != 4:
+        raise ValueError(
+            f"Invalid linkage matrix shape {Z.shape}. "
+            f"Expected (n-1, 4) for n observations."
+        )
+
+    if not isinstance(values_df, pd.DataFrame):
+        raise TypeError(
+            f"Expected values to be DataFrame, "
+            f"got {type(values_df).__name__}."
+        )
+
+    n_vars = values_df.shape[1]
+    expected_vars = Z.shape[0] + 1
+    if n_vars != expected_vars:
+        raise ValueError(
+            f"Dimension mismatch: linkage matrix has {expected_vars} leaves "
+            f"but values DataFrame has {n_vars} columns."
+        )
 
 
 def hclustv_tree(
@@ -288,3 +341,159 @@ def hclustv_tree(
         return None
     else:
         return adata_out
+
+
+def hclustv_cluster_ann(
+    adata: ad.AnnData,
+    k: int,
+    linkage_key: str = 'auto',
+    values_key: str = 'auto',
+    inplace: bool = True,
+    key_added: str | None = None,
+    verbose: bool = True,
+) -> ad.AnnData | None:
+    """
+    Annotate variables with cluster assignments from hierarchical clustering.
+
+    Uses :func:`scipy.cluster.hierarchy.fcluster` to cut the dendrogram
+    at ``k`` clusters and stores cluster assignments in ``.var``.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` with hierarchical clustering results stored
+        in ``.uns`` (from :func:`~proteopy.tl.hclustv_tree`).
+    k : int
+        Number of clusters to generate (required).
+    linkage_key : str
+        Key in ``adata.uns`` containing the linkage matrix. When ``'auto'``,
+        auto-detects the linkage key if exactly one
+        ``'hclustv_linkage;...'`` key exists. When multiple keys are present,
+        must be specified explicitly.
+    values_key : str
+        Key in ``adata.uns`` containing the values DataFrame. When ``'auto'``,
+        auto-detects the values key if exactly one
+        ``'hclustv_values;...'`` key exists. When multiple keys are present,
+        must be specified explicitly.
+    inplace : bool
+        If ``True``, store results in ``adata.var`` and return ``None``.
+        If ``False``, return a modified copy of ``adata``.
+    key_added : str | None
+        Custom key for storing results in ``adata.var``. When ``None``,
+        uses the default format
+        ``'hclustv_cluster;<group_by>;<var_hash>;<layer>'`` derived from
+        the linkage key components.
+    verbose : bool
+        Print storage location key after computation.
+
+    Returns
+    -------
+    AnnData | None
+        If ``inplace=True``, returns ``None``.
+        If ``inplace=False``, returns a copy of ``adata`` with cluster
+        annotations stored in ``.var``.
+
+    Raises
+    ------
+    ValueError
+        If no hierarchical clustering results are found in ``adata.uns``.
+        If multiple clustering results exist and ``linkage_key`` is not
+        specified.
+        If linkage matrix has invalid shape.
+        If ``k < 2`` (single cluster is semantically meaningless).
+        If auto-generated storage key cannot be derived from a custom
+        linkage key.
+    TypeError
+        If linkage matrix is not a numpy array.
+    KeyError
+        If specified ``linkage_key`` is not found in ``adata.uns``.
+
+    Notes
+    -----
+    Cluster assignments are stored at
+    ``adata.var['hclustv_cluster;<group_by>;<var_hash>;<layer>']``
+    Variables not included in the clustering (e.g., filtered out due to
+    NaN values) will have ``NaN`` in this column.
+
+    Examples
+    --------
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.karayel_2020()
+    >>> pr.tl.hclustv_tree(
+    ...     adata, group_by="condition", selected_vars=adata.vars[0:1000]
+    ... )
+    >>> pr.tl.hclustv_cluster_ann(adata, 5)
+
+    Access cluster assignments:
+
+    >>> adata.var['hclustv_cluster;condition;a1b2c3d4;X']
+    """
+    check_proteodata(adata)
+
+    # Resolve linkage and values keys
+    linkage_key, values_key = _resolve_hclustv_keys(
+        adata, linkage_key, values_key, verbose
+    )
+
+    Z = adata.uns[linkage_key]
+    values_df = adata.uns[values_key]
+
+    _validate_linkage_and_values(Z, values_df)
+
+    n_vars = values_df.shape[1]
+    if k < 2:
+        raise ValueError(
+            "k must be at least 2. A single cluster is semantically "
+            "meaningless for cluster assignments."
+        )
+    if k > n_vars:
+        if verbose:
+            print(
+                f"k={k} exceeds number of variables ({n_vars}). "
+                f"Limiting to k={n_vars}."
+            )
+        k = n_vars
+
+    labels = fcluster(Z, t=k, criterion="maxclust")
+
+    var_names = values_df.columns.tolist()
+    cluster_map = dict(zip(var_names, labels))
+
+    # Zero-pad cluster numbers for correct alphanumeric sorting
+    n_digits = len(str(k))
+
+    # Build cluster annotation series for adata.var
+    cluster_annotations = pd.Series(
+        index=adata.var_names,
+        dtype="object",
+    )
+    for var_name, cluster_id in cluster_map.items():
+        cluster_annotations[var_name] = f"{cluster_id:0{n_digits}d}"
+
+    # Build storage key
+    if key_added is not None:
+        cluster_key = key_added
+    elif _is_standard_hclustv_key(linkage_key, "linkage"):
+        components = _parse_hclustv_key_components(linkage_key)
+        group_by_str, var_hash, layer_str = components
+        cluster_key = f"hclustv_cluster;{group_by_str};{var_hash};{layer_str}"
+    else:
+        raise ValueError(
+            f"Cannot auto-generate storage key from custom linkage_key "
+            f"'{linkage_key}'. Please provide key_added explicitly."
+        )
+
+    if inplace:
+        adata.var[cluster_key] = cluster_annotations
+        check_proteodata(adata)
+        if verbose:
+            print(f"Cluster annotations stored in adata.var['{cluster_key}']")
+        return None
+    else:
+        adata_out = adata.copy()
+        adata_out.var[cluster_key] = cluster_annotations
+        check_proteodata(adata_out)
+        if verbose:
+            print(f"Cluster annotations stored in adata.var['{cluster_key}']")
+        return adata_out
+

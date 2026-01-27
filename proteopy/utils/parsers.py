@@ -373,6 +373,41 @@ def parse_stat_test_varm_slot(
     return test_info
 
 
+def _is_standard_hclustv_key(key: str, key_type: str = "linkage") -> bool:
+    """
+    Check if a key follows the standard hclust key format.
+
+    Parameters
+    ----------
+    key : str
+        The key to check.
+    key_type : str
+        Type of key: "linkage", "values", or "profiles".
+
+    Returns
+    -------
+    bool
+        True if the key follows the standard format.
+    """
+    prefix = f"hclustv_{key_type};"
+    parts = key.split(";")
+    return key.startswith(prefix) and len(parts) == 4
+
+
+def _parse_hclustv_key_components(key: str) -> tuple[str, str, str] | None:
+    """
+    Extract (group_by, hash, layer) components from a standard hclust key.
+
+    Returns None if the key does not follow the standard format.
+    """
+    parts = key.split(";")
+    if len(parts) != 4:
+        return None
+    if not (parts[0].startswith("hclustv_")):
+        return None
+    return (parts[1], parts[2], parts[3])
+
+
 def _resolve_hclustv_keys(
     adata: ad.AnnData,
     linkage_key: str = 'auto',

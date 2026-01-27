@@ -373,7 +373,7 @@ def parse_stat_test_varm_slot(
     return test_info
 
 
-def _resolve_hclust_keys(
+def _resolve_hclustv_keys(
     adata: ad.AnnData,
     linkage_key: str = 'auto',
     values_key: str = 'auto',

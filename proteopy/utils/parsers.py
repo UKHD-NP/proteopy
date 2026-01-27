@@ -394,7 +394,10 @@ def _resolve_hclust_keys(
         if key.startswith("hclustv_values;")
     ]
 
-    if linkage_key == 'auto':
+    linkage_auto = linkage_key == 'auto'
+    values_auto = values_key == 'auto'
+
+    if linkage_auto:
         if len(linkage_candidates) == 0:
             raise ValueError(
                 "No hierarchical clustering results found in adata.uns. "
@@ -415,7 +418,7 @@ def _resolve_hclust_keys(
                 f"Linkage key '{linkage_key}' not found in adata.uns."
             )
 
-    if values_key == 'auto':
+    if values_auto:
         if len(values_candidates) == 0:
             raise ValueError(
                 "No profile values found in adata.uns. "
@@ -435,5 +438,19 @@ def _resolve_hclust_keys(
             raise KeyError(
                 f"Values key '{values_key}' not found in adata.uns."
             )
+
+    # Validate matching components when both keys are auto-detected
+    if linkage_auto and values_auto:
+        linkage_components = _parse_hclustv_key_components(linkage_key)
+        values_components = _parse_hclustv_key_components(values_key)
+
+        if linkage_components is not None and values_components is not None:
+            if linkage_components != values_components:
+                raise ValueError(
+                    f"Auto-detected keys have mismatched components. "
+                    f"linkage_key '{linkage_key}' has (group_by, hash, layer) = "
+                    f"{linkage_components}, but values_key '{values_key}' has "
+                    f"{values_components}. Please specify keys explicitly."
+                )
 
     return linkage_key, values_key

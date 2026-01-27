@@ -371,3 +371,69 @@ def parse_stat_test_varm_slot(
     }
 
     return test_info
+
+
+def _resolve_hclust_keys(
+    adata: ad.AnnData,
+    linkage_key: str = 'auto',
+    values_key: str = 'auto',
+    verbose: bool = True,
+) -> tuple[str, str]:
+    """
+    Resolve linkage and values keys from adata.uns.
+
+    Auto-detects keys if not provided, validates existence, and returns
+    the resolved key names.
+    """
+    linkage_candidates = [
+        key for key in adata.uns.keys()
+        if key.startswith("hclustv_linkage;")
+    ]
+    values_candidates = [
+        key for key in adata.uns.keys()
+        if key.startswith("hclustv_values;")
+    ]
+
+    if linkage_key == 'auto':
+        if len(linkage_candidates) == 0:
+            raise ValueError(
+                "No hierarchical clustering results found in adata.uns. "
+                "Run proteopy.tl.hclustv_tree() first."
+            )
+        if len(linkage_candidates) > 1:
+            raise ValueError(
+                "Multiple linkage matrices found in adata.uns. "
+                "Please specify linkage_key explicitly. "
+                f"Available keys: {linkage_candidates}"
+            )
+        linkage_key = linkage_candidates[0]
+        if verbose:
+            print(f"Using linkage matrix: adata.uns['{linkage_key}']")
+    else:
+        if linkage_key not in adata.uns:
+            raise KeyError(
+                f"Linkage key '{linkage_key}' not found in adata.uns."
+            )
+
+    if values_key == 'auto':
+        if len(values_candidates) == 0:
+            raise ValueError(
+                "No profile values found in adata.uns. "
+                "Run proteopy.tl.hclustv_tree() first."
+            )
+        if len(values_candidates) > 1:
+            raise ValueError(
+                "Multiple profile values found in adata.uns. "
+                "Please specify values_key explicitly. "
+                f"Available keys: {values_candidates}"
+            )
+        values_key = values_candidates[0]
+        if verbose:
+            print(f"Using profile values: adata.uns['{values_key}']")
+    else:
+        if values_key not in adata.uns:
+            raise KeyError(
+                f"Values key '{values_key}' not found in adata.uns."
+            )
+
+    return linkage_key, values_key

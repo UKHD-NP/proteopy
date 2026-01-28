@@ -553,3 +553,67 @@ def _resolve_hclustv_cluster_key(
             )
 
     return cluster_key
+
+
+def _resolve_hclustv_profile_key(
+    adata: ad.AnnData,
+    profile_key: str = 'auto',
+    verbose: bool = True,
+) -> str:
+    """
+    Resolve cluster profile key from adata.uns.
+
+    Auto-detects key if not provided, validates existence, and returns
+    the resolved key name.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` with cluster profiles stored in ``.uns``.
+    profile_key : str
+        Key in ``adata.uns`` containing the profiles DataFrame. When
+        ``'auto'``, auto-detects the profile key if exactly one
+        ``'hclustv_profiles;...'`` key exists.
+    verbose : bool
+        Print status messages including auto-detected key.
+
+    Returns
+    -------
+    str
+        Resolved profile key name.
+
+    Raises
+    ------
+    ValueError
+        If no profiles are found or multiple candidates exist when
+        ``profile_key='auto'``.
+    KeyError
+        If the specified ``profile_key`` is not found in ``adata.uns``.
+    """
+    profile_candidates = [
+        key for key in adata.uns.keys()
+        if key.startswith("hclustv_profiles;")
+    ]
+
+    if profile_key == 'auto':
+        if len(profile_candidates) == 0:
+            raise ValueError(
+                "No cluster profiles found in adata.uns. "
+                "Run proteopy.tl.hclustv_profiles() first."
+            )
+        if len(profile_candidates) > 1:
+            raise ValueError(
+                "Multiple cluster profiles found in adata.uns. "
+                "Please specify profile_key explicitly. "
+                f"Available keys: {profile_candidates}"
+            )
+        profile_key = profile_candidates[0]
+        if verbose:
+            print(f"Using profiles: adata.uns['{profile_key}']")
+    else:
+        if profile_key not in adata.uns:
+            raise KeyError(
+                f"Profile key '{profile_key}' not found in adata.uns."
+            )
+
+    return profile_key

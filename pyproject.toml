@@ -1,57 +1,78 @@
 [build-system]
-requires = ['setuptools>=69', 'wheel']
-build-backend = 'setuptools.build_meta'
+requires = ["setuptools>=77.0.3", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = 'proteopy'
-version = '0.1.0'
-description = 'Analysis of bottom-up mass-spectrometry proteomics data.'
-readme = 'README.md'
-requires-python = '>=3.10'
-license = {file = 'LICENSE'}
+name = "proteopy"
+version = "0.1.0"
+description = "Analysis of bottom-up mass-spectrometry proteomics data."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Development Status :: 3 - Alpha",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Framework :: Pytest",
+    "Framework :: Sphinx",
+]
+license = "Apache-2.0"
+license-files = ["LICEN[CS]E*"]
 authors = [
 	{name = "Ian Dirk Fichtner", email = "iandirk.fichtner@med.uni-heidelberg.de"},
 	{name = "Isabell Bludau", email = "Isabell.Bludau@med.uni-heidelberg.de"}
 ]
-
-[project.urls]
-Homepage = "https://github.com/UKHD-NP/proteopy"
-#Documentation = ""
+keywords = [
+    "proteomics",
+    "mass-spectrometry",
+    "bioinformatics",
+    "proteoforms",
+    "data-analysis",
+    "anndata",
+]
 
 dependencies = [
-    'adjustText',
-    'anndata',
-    'matplotlib',
-    'numpy',
-    'pandas',
-    'pooch',
-    'scikit-learn',
-    'scipy',
-    'seaborn',
-    'statsmodels',
+    "adjustText",
+    "anndata",
+    "biopython",
+    "matplotlib",
+    "numpy",
+    "pandas",
+    "pooch",
+    "scikit-learn",
+    "scipy",
+    "seaborn",
+    "statsmodels",
     ]
 
 [project.optional-dependencies]
 dev = [
-    'flake8',
-    'ipykernel',
-    'jupyterlab',
-    'nb_conda',
-    'pooch',
-    'pre-commit',
-    'pylint',
-    'pytest',
+    "flake8",
+    "ipykernel",
+    "jupyterlab",
+    "nb_conda",
+    "pooch",
+    "pre-commit",
+    "pylint",
+    "pytest",
+    "twine",
     ]
 
 usage = [
-    'ipykernel',
-    'jupyterlab',
-    'nb_conda',
-    'openpyxl',
-    'pooch',
-    'python_igraph',
-    'scanpy',
+    "ipykernel",
+    "jupyterlab",
+    "nb_conda",
+    "openpyxl",
+    "pooch",
+    "python_igraph",
+    "scanpy",
     ]
 
 [tool.setuptools.packages.find]
-include = ['proteopy*']
+include = ["proteopy*"]
+
+[project.urls]
+Homepage = "https://github.com/UKHD-NP/proteopy"
+Issues = "https://github.com/UKHD-NP/proteopy/issues"
+Documentation = "https://proteopy.readthedocs.io/en/stable"
+Repository = "https://github.com/UKHD-NP/proteopy.git"

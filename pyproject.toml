@@ -51,10 +51,18 @@ dev = [
     "flake8",
     "ipykernel",
     "jupyterlab",
-    "pooch",
     "pre-commit",
+    "myst_parser",
+    "nbsphinx",
+
     "pylint",
     "pytest",
+    "sphinx-autobuild",
+    "sphinx-autodoc-typehints",
+    "sphinx-copybutton",
+    "sphinx-design",
+    "sphinx-rtd-theme",
+    "sphinx>=7.0",
     "twine",
     ]
 
@@ -62,7 +70,6 @@ usage = [
     "ipykernel",
     "jupyterlab",
     "openpyxl",
-    "pooch",
     "python_igraph",
     "scanpy",
     ]

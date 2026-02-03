@@ -76,14 +76,20 @@ dedicated virtual environment:
 python -m venv proteopy-env
 source proteopy-env/bin/activate  # Linux/macOS
 # proteopy-env\Scripts\activate   # Windows
+pip install ipykernel
+python -m ipykernel install --user --name=proteopy-env
 
 # Using conda
 conda create -n proteopy-env "python>=3.10"
 conda activate proteopy-env
+pip install ipykernel
+python -m ipykernel install --user --name=proteopy-env
 
 # Using uv
 uv venv proteopy-env
 source proteopy-env/bin/activate
+uv pip install ipykernel
+python -m ipykernel install --user --name=proteopy-env
 ```
 
 Then install ProteoPy:

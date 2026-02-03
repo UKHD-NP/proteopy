@@ -51,7 +51,6 @@ dev = [
     "flake8",
     "ipykernel",
     "jupyterlab",
-    "nb_conda",
     "pooch",
     "pre-commit",
     "pylint",
@@ -62,7 +61,6 @@ dev = [
 usage = [
     "ipykernel",
     "jupyterlab",
-    "nb_conda",
     "openpyxl",
     "pooch",
     "python_igraph",

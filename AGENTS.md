@@ -667,6 +667,22 @@ pytest -v tests/
 
 ---
 
+## Changelog
+
+The project maintains a changelog in `HISTORY.md` following the
+[Keep a Changelog](https://keepachangelog.com/) format. All notable changes
+should be documented here, even before a release is published.
+
+- Add new entries under the `[Unreleased]` section as changes are made
+- Use categories: `Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`,
+  `Security`
+- When releasing a new version, move unreleased changes to a versioned section
+  with the release date (e.g., `[0.2.0] - 2025-03-15`)
+- Keep entries concise but descriptive, including module paths where relevant
+  (e.g., `pr.pp.normalize_median()`)
+
+---
+
 ## Key Repository Files
 ```
 proteopy/

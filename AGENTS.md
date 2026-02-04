@@ -58,9 +58,12 @@ General argument guidelines:
         Column in AnnData .var or .obs to perform grouping for the function algorithm (e.g. group by sample 'condition' to compute average peptide intensities across observations).
         Default=None (do not include this line in docstrings)
     verbose : bool
-        If True, print status messages (e.g., file save locations, progress updates).
-        Include this parameter in any function that contains print statements.
-        Default=True (do not include this line in docstrings)
+        If True, print status messages describing which input data is being used
+        (e.g., matrix, layer, metadata columns), where results are stored
+        (e.g., `.obs`, `.var`, `.uns` keys, file paths), progress, file saving
+        location etc. Present in most functions across `pp`, `tl`, `pl`, `ann`,
+        and other modules. Default=False (do not include this line in
+        docstrings)
 
 Module-specific function guidelines
  - pp and tl:
@@ -107,14 +110,27 @@ this number. If None, use the internal function defaults.
     color_scheme : str | dict | Sequence | Colormap | callable | None
         Defines the color mapping for groups. Can be a named Matplotlib colormap, a single color, a list/tuple of colors, a dict mapping labels to colors, a Colormap object, or a callable that returns colors. If `None`, the default Matplotlib color cycle is used.
         Default=None (do not include this line in docstrings)
-    groups : list | None
-        Restrict plot to particular groups.
-        Default=None (do not include this line in docstrings)
     orderby : str | list | None
-        Categorical .obs or .var column by which to order the observations or variables for plotting.
+        Categorical .obs or .var column by which to order, subset, or
+        duplicate observations or variables for plotting. When combined
+        with `order`, controls which groups appear and in what sequence.
         Default=None (do not include this line in docstrings)
     order : str | list | None
-        The order by which to present the observations, variables, or categories. If `order_by` is None and `order` is None, the existing .var_names or .obs_names order will be used. If `order_by` is None and `order` is not None, `order` contains the order by which observations or variables will be plotted. If `order_by` is not None and `order` is None, the unique values in the `order_by` column will be used to plot the axis. If `order_by` is categorical, the category order will be used, if it is str or object a sorted order will be used. If `order_by` is not None and `order` is not None, `order` defines the order by which the unique `order_by` column values are plotted in the relevant axis.
+        Controls ordering, subsetting, and duplication of observations,
+        variables, or categories on the plot axis.
+        - If `order_by` is None and `order` is None: use existing
+          .var_names or .obs_names order.
+        - If `order_by` is None and `order` is not None: `order`
+          specifies the exact items to plot and their sequence. Items
+          not listed are excluded (subsetting). Items listed more than
+          once appear multiple times (duplication).
+        - If `order_by` is not None and `order` is None: use the unique
+          values in the `order_by` column. If categorical, use its
+          category order; if str/object, use sorted order.
+        - If `order_by` is not None and `order` is not None: `order`
+          defines which `order_by` groups to show and in what sequence.
+          Groups absent from `order` are excluded (subsetting). Groups
+          listed more than once appear multiple times (duplication).
         Default=None (do not include this line in docstrings)
     ascending : bool | None
         If `order` is None, sort the function relevant axis by a function-relevant
@@ -250,6 +266,7 @@ ProteoPy assumes that `AnnData.X` contains only the following data types:
 | `layer` | Optional key in `adata.layers` specifying quantification data |
 | `zero_to_na` | Convert zeros in `.X` to `np.nan` |
 | `fill_na` | Replace missing values in `.X` with a specified constant |
+| `verbose` | Print status messages about input data and output destinations (default: `False`) |
 
 ### Additional Argument Conventions
 
@@ -288,20 +305,15 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `color_scheme: str | dict | Sequence | Colormap | callable | None`
   Mapping for groups to colors. Accepts a named Matplotlib colormap, a single color, a list/tuple, a dict `{label: color}`, a `Colormap` object, or a callable returning colors. If `None`, use the Matplotlib default cycle.
 
-- `groups: list | None`
-  Restrict the plot to a subset of groups.
-
 - `order_by: str | list | None`
-  Categorical `.obs` or `.var` column(s) to order observations/variables for plotting.
+  Categorical `.obs` or `.var` column(s) by which to order, subset, or duplicate observations/variables for plotting. When combined with `order`, controls which groups appear and in what sequence.
 
 - `order: str | list | None`
-  Controls the explicit order of observations/variables or categories.
+  Controls ordering, subsetting, and duplication of observations, variables, or categories on the plot axis.
   - If `order_by is None` and `order is None`: use existing `.var_names` / `.obs_names` order.
-  - If `order_by is None` and `order is not None`: use `order` as the explicit order.
-  - If `order_by is not None` and `order is None`: order by the unique values in `order_by`.
-    If `order_by` is categorical, use its category order; if object/string, use sorted order.
-  - If `order_by is not None` and `order is not None`: `order` defines the plotting order of the
-    unique values from `order_by`.
+  - If `order_by is None` and `order is not None`: `order` specifies the exact items to plot and their sequence. Items not listed are excluded (subsetting). Items listed more than once appear multiple times (duplication).
+  - If `order_by is not None` and `order is None`: order by the unique values in `order_by`. If `order_by` is categorical, use its category order; if object/string, use sorted order.
+  - If `order_by is not None` and `order is not None`: `order` defines which `order_by` groups to show and in what sequence. Groups absent from `order` are excluded (subsetting). Groups listed more than once appear multiple times (duplication).
 
 - `ascending: bool | None`
   When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` preserves the derived order.
@@ -563,8 +575,12 @@ def example_fn(adata, *, inplace=True, **kwargs):
 | `layer` | Optional key in `adata.layers` specifying quantification data |
 | `zero_to_na` | Convert zeros in `.X` to `np.nan` |
 | `fill_na` | Replace missing values in `.X` with a specified constant |
+| `verbose` | Print status messages about input data and output destinations (default: `False`) |
 
 ### Additional Argument Conventions
+
+#### Cross-Module Arguments (`pp`, `tl`, `pl`, `ann`, and others)
+- `verbose`: print status messages describing which input data is being used and where results are stored (default: `False`). Include in most functions.
 
 #### Preprocessing and Tool Modules (`pp`, `tl`)
 - `inplace`: modify `adata` directly (default: `True`)
@@ -601,20 +617,15 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `color_scheme: str | dict | Sequence | Colormap | callable | None`
   Mapping for groups to colors. Accepts a named Matplotlib colormap, a single color, a list/tuple, a dict `{label: color}`, a `Colormap` object, or a callable returning colors. If `None`, use the Matplotlib default cycle.
 
-- `groups: list | None`
-  Restrict the plot to a subset of groups.
-
 - `order_by: str | list | None`
-  Categorical `.obs` or `.var` column(s) to order observations/variables for plotting.
+  Categorical `.obs` or `.var` column(s) by which to order, subset, or duplicate observations/variables for plotting. When combined with `order`, controls which groups appear and in what sequence.
 
 - `order: str | list | None`
-  Controls the explicit order of observations/variables or categories.
+  Controls ordering, subsetting, and duplication of observations, variables, or categories on the plot axis.
   - If `order_by is None` and `order is None`: use existing `.var_names` / `.obs_names` order.
-  - If `order_by is None` and `order is not None`: use `order` as the explicit order.
-  - If `order_by is not None` and `order is None`: order by the unique values in `order_by`.
-    If `order_by` is categorical, use its category order; if object/string, use sorted order.
-  - If `order_by is not None` and `order is not None`: `order` defines the plotting order of the
-    unique values from `order_by`.
+  - If `order_by is None` and `order is not None`: `order` specifies the exact items to plot and their sequence. Items not listed are excluded (subsetting). Items listed more than once appear multiple times (duplication).
+  - If `order_by is not None` and `order is None`: order by the unique values in `order_by`. If `order_by` is categorical, use its category order; if object/string, use sorted order.
+  - If `order_by is not None` and `order is not None`: `order` defines which `order_by` groups to show and in what sequence. Groups absent from `order` are excluded (subsetting). Groups listed more than once appear multiple times (duplication).
 
 - `ascending: bool | None`
   When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` preserves the derived order.

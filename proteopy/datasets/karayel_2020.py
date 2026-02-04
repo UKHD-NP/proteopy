@@ -7,7 +7,9 @@ CD34+ hematopoietic stem/progenitor cells (HSPCs) isolated from healthy
 donors, across five differentiation stages of erythroid development.
 
 Cells were FACS-sorted using CD235a, CD49d, and Band 3 surface markers.
-The data is sourced from the PRIDE archive (PXD017276) and includes
+The data is sourced from the PRIDE archive (`PXD017276
+<https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=PXD017276>`_)
+and includes
 measurements from the following erythroid differentiation stages:
 
 - Progenitor: CFU-E progenitor cells (CD34+ HSPCs, negative fraction)
@@ -74,7 +76,8 @@ def karayel_2020():
     measurements across five cell types representing sequential stages
     of erythroid development.
 
-    The function downloads data from the PRIDE archive (PXD017276),
+    The function downloads data from the PRIDE archive (`PXD017276
+    <https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=PXD017276>`_),
     processes sample identifiers, maps technical names to biological
     cell types, and excludes day 7 samples. Protein quantities marked
     as 'Filtered' in the original data are converted to ``np.nan``.
@@ -129,10 +132,11 @@ def karayel_2020():
 
     Reference
     ---------
-    Karayel et al. (2020) Integrative proteomics reveals principles of
-    dynamic phosphosignaling networks in human erythropoiesis.
-    Molecular Systems Biology 16: e9813.
-    DOI: 10.15252/msb.20209813
+    Karayel Ö, Xu P, Bludau I, Velan Bhoopalan S, Yao Y, Ana Rita FC, Santos A,
+    Schulman BA, Alpi AF, Weiss MJ, and Mann M. Integrative proteomics reveals
+    principles of dynamic phosphosignaling networks in human erythropoiesis.
+    Molecular Systems Biology, 2020. URL:
+    https://doi.org/10.15252/msb.20209813, doi:10.15252/msb.20209813.
     """
     url = (
         "https://ftp.pride.ebi.ac.uk/pride/data/archive/2020/10/"

@@ -1,0 +1,82 @@
+/* Inline code in sidebar navigation */
+.wy-menu-vertical li a code,
+.wy-menu-vertical li a tt {
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+    font-size: inherit;
+    color: inherit;
+}
+
+/* Custom inline roles */
+.blue-bold {
+    color: #2980b9;
+    font-weight: bold;
+}
+
+/* Custom navigation toggle styling */
+
+/* Style the toggle arrow - fixed position from right edge */
+.wy-menu-vertical .nav-toggle {
+    display: inline-block;
+    width: 1.2em;
+    height: 1em;
+    cursor: pointer;
+    position: absolute;
+    right: 0.5em;
+}
+
+/* Ensure link container is positioned for absolute child */
+.wy-menu-vertical li a {
+    position: relative;
+}
+
+/* Arrow icon using CSS - downward v when collapsed */
+.wy-menu-vertical .nav-toggle::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(45deg);
+    border: solid #9b9b9b;
+    border-width: 0 2px 2px 0;
+    padding: 3px;
+    transition: transform 0.2s ease;
+}
+
+/* Upward arrow when expanded */
+.wy-menu-vertical li.current > a > .nav-toggle::before {
+    transform: translate(-50%, -50%) rotate(-135deg);
+}
+
+/* Hover effect on toggle */
+.wy-menu-vertical .nav-toggle:hover::before {
+    border-color: #404040;
+}
+
+/* Hide default RTD toggle icon to avoid duplication */
+.wy-menu-vertical li span.toctree-expand,
+.wy-menu-vertical li button.toctree-expand,
+.wy-menu-vertical li .toctree-expand,
+.wy-menu-vertical a .toctree-expand,
+.toctree-expand {
+    display: none !important;
+}
+
+/* Ensure links look clickable */
+.wy-menu-vertical a {
+    cursor: pointer;
+}
+
+/* Hide alpha-style labels from bibliography entries */
+.citation .label {
+    display: none;
+}
+dl.citation > dt {
+    display: none;
+}
+dl.citation > dd {
+    margin-left: 0;
+}

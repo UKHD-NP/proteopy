@@ -201,14 +201,20 @@ def contaminants(
     force: bool = False,
 ) -> Path:
     """
-    Download contaminant FASTA files from known sources.
-    - ``ccp_crap``: Cambridge Centre for Proteomics, cRAP (via camprotR
-      download_ccp_crap).
-    - ``gpm_crap``: The Global Proteome Machine (GPM) common Repository of
-      Adventitious Proteins (cRAP).
-    - ``frankenfield2022``: Frankenfield et al., 2022
-      (doi:10.1021/acs.jproteome.2c00145).
-    - ``maxquant``: MaxQuant bundled contaminant list (v2.7.5.0).
+    Download contaminant FASTA files from putative sources.
+
+    - ``ccp_crap``: Cambridge Centre for Proteomics cRAP
+      (123 proteins, default) --
+      :doc:`details </api/manual/ccp-crap>`
+    - ``frankenfield2022``: Universal contaminant library (381 proteins)
+      from Frankenfield et al., 2022 --
+      :doc:`details </api/manual/frankenfield2022>`
+    - ``gpm_crap``: GPM common Repository of Adventitious Proteins
+      (116 proteins) --
+      :doc:`details </api/manual/gpm-crap>`
+    - ``maxquant``: MaxQuant bundled contaminant list
+      (242 proteins, v2.7.5.0) --
+      :doc:`details </api/manual/maxquant>`
 
     Parameters
     ----------

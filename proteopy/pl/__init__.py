@@ -13,6 +13,7 @@ from .stats import (
     completeness_per_sample,
     n_samples_per_category,
     n_peptides_per_sample,
+    n_cat1_per_cat2_hist,
     n_proteins_per_sample,
     n_peptides_per_protein,
     n_proteoforms_per_protein,

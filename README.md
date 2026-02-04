@@ -186,6 +186,9 @@ If you use the COPF proteoform inference functionality, please also cite:
 ## License
 
 ProteoPy was developed by the Bludau Lab at the Neuropathology Department
-Heidelberg and is freely available under the Apache 2.0 license. External
-Python dependencies (see [pyproject.toml](pyproject.toml) file) have their own
-licenses, which can be consulted on their respective websites.
+Heidelberg and is freely available under the Apache 2.0 license. Bundled
+third-party data (e.g. the CCP cRAP contaminant database) is provided under
+its original license; see [THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES) for
+details. External Python dependencies (see [pyproject.toml](pyproject.toml)
+file) have their own licenses, which can be consulted on their respective
+websites.

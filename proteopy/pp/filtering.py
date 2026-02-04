@@ -185,6 +185,7 @@ filter_samples_completeness = partial_with_docsig(
     filter_axis,
     axis=0,
     min_count=None,
+    docstr_header=docstr_header,
     )
 
 docstr_header = """
@@ -197,6 +198,7 @@ globally or within groups defined by the `group_by` parameter.
 filter_var = partial_with_docsig(
     filter_axis,
     axis=1,
+    docstr_header=docstr_header,
     )
 
 docstr_header = """
@@ -210,6 +212,7 @@ filter_var_completeness = partial_with_docsig(
     filter_axis,
     axis=1,
     min_count=None,
+    docstr_header=docstr_header,
     )
 
 
@@ -309,7 +312,8 @@ def filter_samples_by_category_count(
     inplace=True,
     ):
     """
-    Filter observations by the frequency of their category value.
+    Filter observations by the frequency of their category value in a ``.vars``
+    metadata column.
 
     Parameters
     ----------

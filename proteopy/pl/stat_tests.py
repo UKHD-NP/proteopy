@@ -572,11 +572,10 @@ def volcano_plot(
 def differential_abundance_box(
     adata: ad.AnnData,
     varm_slot: str,
-    groups: list[str] | None = None,
     order: list[str] | None = None,
     top_n: int | None = None,
-    vars: list[str] | None = None,
     layer: str | None = None,
+    verbose: bool = False,
     figsize: tuple[float, float] = (10.0, 6.0),
     title: str | None = None,
     xlabel_rotation: float = 45,
@@ -591,9 +590,9 @@ def differential_abundance_box(
     Display boxplots of intensities for top differentially abundant variables.
 
     For each of the top N differentially abundant variables (sorted by
-    p-value) or a user-supplied list, shows side-by-side boxplots
-    comparing intensities across groups defined by the statistical test
-    and annotates the per-variable p-values.
+    p-value), shows side-by-side boxplots comparing intensities across
+    groups defined by the statistical test and annotates the per-variable
+    p-values.
 
     Parameters
     ----------
@@ -605,25 +604,22 @@ def differential_abundance_box(
         Key in ``adata.varm`` containing the differential abundance
         test results. Expected format produced by
         ``proteopy.tl.differential_abundance``.
-    groups : list[str] | None, optional
-        Restrict boxplots to specific groups. When ``None``, uses all
-        groups involved in the comparison. Group names must match values
-        in the ``group_by`` column of ``adata.obs``.
     order : list[str] | None, optional
-        Order in which to display groups within each variable's boxplots.
-        When ``None``, uses the order of groups as they appear in the
-        data (or as specified by ``groups``). All values must exist in
-        the ``group_by`` column.
+        Order and/or subset groups within each variable's boxplots. When
+        ``None``, uses all groups as they appear in the data. When
+        provided, only groups listed in ``order`` are shown, in the
+        given sequence. All values must exist in the ``group_by`` column.
     top_n : int, optional
         Number of top differentially abundant variables to display.
         Variables are ranked by ascending p-value (most significant
-        first). Defaults to 10 when ``vars`` is ``None``.
-    vars : list[str] | None, optional
-        Explicit list of variables to plot, shown in the provided order.
-        When set, overrides ``top_n`` ranking.
+        first). Defaults to 10.
     layer : str | None, optional
         Key in ``adata.layers`` providing the intensity matrix. When
-        ``None``, uses ``adata.X``.
+        ``None``, auto-detects the layer from the statistical test
+        metadata.
+    verbose : bool, optional
+        If ``True``, print which layer or ``.X`` matrix is used for
+        intensity data.
     figsize : tuple[float, float], optional
         Figure dimensions (width, height) in inches.
     title : str | None, optional
@@ -665,12 +661,8 @@ def differential_abundance_box(
     TypeError
         If ``adata.varm[varm_slot]`` is not a pandas DataFrame.
     ValueError
-        If ``top_n`` is not a positive integer when used, if
-        ``vars`` is empty, contains duplicates, or includes entries
-        missing from the results or ``adata.var_names``, if both
-        ``top_n`` and ``vars`` are provided, if no valid results
-        remain after filtering, if specified ``groups`` are not
-        found in the data, if ``order`` contains values not
+        If ``top_n`` is not a positive integer, if no valid results
+        remain after filtering, if ``order`` contains values not
         present in the ``group_by`` column, or if ``pval_fontsize``
         is not a positive number when ``show_pval`` is ``True``.
 
@@ -683,12 +675,12 @@ def differential_abundance_box(
     ...     varm_slot="welch;condition;treated_vs_control",
     ... )
 
-    Plot top 5 proteins for specific groups:
+    Plot top 5 proteins for specific groups in a given order:
 
     >>> pp.pl.differential_abundance_box(
     ...     adata,
     ...     varm_slot="welch;condition;treated_vs_control",
-    ...     groups=["treated", "control"],
+    ...     order=["control", "treated"],
     ...     top_n=5,
     ... )
     """
@@ -706,16 +698,11 @@ def differential_abundance_box(
             "Expected adata.varm[varm_slot] to be a pandas DataFrame."
         )
 
-    default_top_n = 10
-    if vars is not None and top_n is not None:
-        raise ValueError("Provide only one of top_n or vars.")
-
-    # Validate top_n when used
-    if vars is None:
-        if top_n is None:
-            top_n = default_top_n
-        if not isinstance(top_n, int) or top_n <= 0:
-            raise ValueError("top_n must be a positive integer.")
+    # Validate top_n
+    if top_n is None:
+        top_n = 10
+    if not isinstance(top_n, int) or top_n <= 0:
+        raise ValueError("top_n must be a positive integer.")
 
     # Parse varm slot to get group_by column
     parsed = parse_stat_test_varm_slot(varm_slot, adata=adata)
@@ -726,11 +713,21 @@ def differential_abundance_box(
             f"Column '{group_by}' not found in adata.obs."
         )
 
+    # Auto-detect layer from test metadata when not specified
+    if layer is None:
+        layer = parsed["layer"]
+
     # Validate layer if specified
     if layer is not None and layer not in adata.layers:
         raise KeyError(
             f"Layer '{layer}' not found in adata.layers."
         )
+
+    if verbose:
+        if layer is not None:
+            print(f"Using layer: '{layer}'")
+        else:
+            print("Using .X matrix")
 
     # Determine p-value column for sorting
     if "pval_adj" in results.columns:
@@ -742,25 +739,9 @@ def differential_abundance_box(
             f"Neither 'pval_adj' nor 'pval' found in varm slot '{varm_slot}'."
         )
 
-    if vars is not None:
-        if len(vars) == 0:
-            raise ValueError("vars must contain at least one variable.")
-        missing_results = [var for var in vars if var not in results.index]
-        missing_adata = [var for var in vars if var not in adata.var_names]
-        if missing_results or missing_adata:
-            raise ValueError(
-                "vars must exist in both the stat test results and "
-                "adata.var_names. "
-                f"Missing in results: {missing_results}. "
-                f"Missing in adata: {missing_adata}."
-            )
-        if len(vars) != len(set(vars)):
-            raise ValueError("vars contains duplicate entries.")
-        top_vars = vars
-    else:
-        # Sort by p-value and select top N variables
-        results_sorted = results.sort_values(by=pval_col, ascending=True)
-        top_vars = results_sorted.head(top_n).index.tolist()
+    # Sort by p-value and select top N variables
+    results_sorted = results.sort_values(by=pval_col, ascending=True)
+    top_vars = results_sorted.head(top_n).index.tolist()
 
     if not top_vars:
         raise ValueError("No valid variables found after filtering.")
@@ -796,35 +777,20 @@ def differential_abundance_box(
         value_name="intensity",
     )
 
-    # Filter to specified groups if provided
-    if groups is not None:
-        available_groups = set(df_long[group_by].unique())
-        missing_groups = set(groups) - available_groups
-        if missing_groups:
-            raise ValueError(
-                f"Groups not found in data: {sorted(missing_groups)}. "
-                f"Available groups: {sorted(available_groups)}"
-            )
-        df_long = df_long[df_long[group_by].isin(groups)]
-        group_order = groups
-    else:
-        # Use all groups present in the data
-        group_order = df_long[group_by].dropna().unique().tolist()
-
-    # Apply explicit ordering if provided
+    # Determine group order and optionally filter groups
     if order is not None:
-        available_groups = set(group_order)
-        order_set = set(order)
-        missing_in_data = order_set - available_groups
-        missing_in_order = available_groups - order_set
-        if missing_in_data or missing_in_order:
+        available_groups = set(df_long[group_by].unique())
+        missing_in_data = set(order) - available_groups
+        if missing_in_data:
             raise ValueError(
-                f"Mismatch between 'order' and available groups. "
-                f"Groups in 'order' not in data: {sorted(missing_in_data)}. "
-                f"Groups in data not in 'order': {sorted(missing_in_order)}. "
+                f"Groups in 'order' not found in data: "
+                f"{sorted(missing_in_data)}. "
                 f"Available groups: {sorted(available_groups)}"
             )
-        group_order = order
+        df_long = df_long[df_long[group_by].isin(order)]
+        group_order = list(order)
+    else:
+        group_order = df_long[group_by].dropna().unique().tolist()
 
     if df_long.empty:
         raise ValueError("No data remaining after filtering.")

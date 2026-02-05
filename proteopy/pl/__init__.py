@@ -4,6 +4,7 @@ from .intensities import (
     intensity_box_per_sample,
     intensity_hist,
     abundance_rank,
+    box,
     )
 
 from .stats import (

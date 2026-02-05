@@ -1943,3 +1943,309 @@ def abundance_rank(
         )
         plt.close(fig)
     return None
+
+
+def box(
+    adata: ad.AnnData,
+    keys: str | list[str],
+    group_by: str | None = None,
+    order: list[str] | None = None,
+    layer: str | None = None,
+    zero_to_na: bool = False,
+    fill_na: float | int | None = None,
+    log_transform: float | None = None,
+    color_scheme: str | dict | list | None = None,
+    figsize: tuple[float, float] = (8.0, 5.0),
+    title: str | None = None,
+    xlabel_rotation: float = 0,
+    ylabel: str | None = None,
+    show: bool = True,
+    save: str | os.PathLike[str] | None = None,
+    ax: bool = False,
+) -> Axes | list[Axes] | None:
+    """
+    Boxplot of intensities for one or more variables.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` with intensity data in ``.X`` or a
+        specified layer.
+    keys : str | list[str]
+        Variable name(s) present in ``adata.var_names`` to plot.
+    group_by : str | None, optional
+        Column in ``adata.obs`` whose unique values define the x-axis
+        categories. When ``None``, all observations are pooled into a
+        single box.
+    order : list[str] | None, optional
+        Subset and order groups when ``group_by`` is set. Only groups
+        listed in ``order`` are shown, in the given sequence. Ignored when
+        ``group_by`` is ``None``.
+    layer : str | None, optional
+        Key in ``adata.layers`` providing the intensity matrix. When
+        ``None``, uses ``adata.X``.
+    zero_to_na : bool, optional
+        Convert zero intensities to ``NaN`` before other transforms.
+    fill_na : float | int | None, optional
+        Replace missing intensities with this value before transformations.
+    log_transform : float | None, optional
+        Base for log transformation. When set, applies
+        ``log(value + 1, base)``.
+    color_scheme : str | dict | list | None, optional
+        Color mapping for groups. Accepts a named Matplotlib colormap,
+        a dict mapping group names to colors, or a list of colors.
+    figsize : tuple[float, float], optional
+        Figure dimensions (width, height) in inches.
+    title : str | None, optional
+        Plot title. When ``None``, defaults to the variable name.
+    xlabel_rotation : float, optional
+        Rotation angle (degrees) for x-axis tick labels.
+    ylabel : str | None, optional
+        Label for the y-axis.
+    show : bool, optional
+        Call ``matplotlib.pyplot.show()`` to display the plot.
+    save : str | os.PathLike | None, optional
+        File path to save the figure. For a single key, the format is
+        inferred from the file extension (e.g. ``.png``, ``.pdf``,
+        ``.svg``). For multiple keys, saved as a multi-page PDF.
+    ax : bool, optional
+        If ``True``, return the underlying Axes object(s) instead of
+        ``None``.
+
+    Returns
+    -------
+    Axes | list[Axes] | None
+        The Matplotlib Axes object(s) if ``ax=True``, otherwise
+        ``None``.
+
+    Raises
+    ------
+    KeyError
+        If any element of ``keys`` is not in ``adata.var_names``, if
+        ``group_by`` is not in ``adata.obs``, or if ``layer`` is not
+        in ``adata.layers``.
+    ValueError
+        If ``keys`` is empty, if ``order`` contains values not present
+        in the ``group_by`` column, if ``log_transform`` is not
+        positive or equals 1, or if ``group_by`` is ``None`` and
+        ``order`` is provided.
+
+    Examples
+    --------
+    Single variable, grouped by condition:
+
+    >>> import proteopy as pr
+    >>> pr.pl.box(adata, keys="ProteinA", group_by="condition")
+
+    Multiple variables saved to PDF:
+
+    >>> pr.pl.box(
+    ...     adata,
+    ...     keys=["ProteinA", "ProteinB"],
+    ...     group_by="condition",
+    ...     save="boxplots.pdf",
+    ... )
+    """
+    check_proteodata(adata)
+
+    if isinstance(keys, str):
+        keys = [keys]
+    if not keys:
+        raise ValueError("keys must contain at least one variable.")
+
+    # Validate keys exist in var_names
+    missing_keys = [k for k in keys if k not in adata.var_names]
+    if missing_keys:
+        raise KeyError(
+            f"Keys not found in adata.var_names: {missing_keys}"
+        )
+
+    # Validate group_by
+    if group_by is not None and group_by not in adata.obs.columns:
+        raise KeyError(
+            f"Column '{group_by}' not found in adata.obs."
+        )
+
+    if order is not None and group_by is None:
+        raise ValueError(
+            "order can only be used when group_by is provided."
+        )
+
+    # Validate layer
+    if layer is not None and layer not in adata.layers:
+        raise KeyError(
+            f"Layer '{layer}' not found in adata.layers."
+        )
+
+    # Validate zero_to_na and fill_na
+    if zero_to_na and fill_na is not None:
+        raise ValueError("zero_to_na and fill_na are mutually exclusive.")
+
+    # Validate log_transform
+    if log_transform is not None:
+        if log_transform <= 0:
+            raise ValueError("log_transform must be positive.")
+        if log_transform == 1:
+            raise ValueError("log_transform cannot be 1.")
+
+    # Get intensity data
+    if layer is not None:
+        X = adata[:, keys].layers[layer]
+    else:
+        X = adata[:, keys].X
+
+    if sparse.issparse(X):
+        X = X.toarray()
+    X = np.asarray(X, dtype=float)
+
+    # Apply zero_to_na and fill_na
+    if zero_to_na:
+        X[X == 0] = np.nan
+    if fill_na is not None:
+        X[np.isnan(X)] = float(fill_na)
+
+    # Apply log transform
+    if log_transform is not None:
+        if (X < 0).any():
+            warnings.warn(
+                "Data contains negative values. Log transform will produce "
+                "NaN for values < -1.",
+                RuntimeWarning,
+            )
+        log_base = float(log_transform)
+        with np.errstate(invalid='ignore'):
+            X = np.log1p(X) / np.log(log_base)
+
+    # Build long-format DataFrame
+    df = pd.DataFrame(
+        X,
+        index=adata.obs_names,
+        columns=keys,
+    )
+
+    if group_by is not None:
+        df[group_by] = adata.obs[group_by].values
+        id_vars = [group_by]
+    else:
+        df["_group"] = "all"
+        id_vars = ["_group"]
+
+    df_long = df.melt(
+        id_vars=id_vars,
+        var_name="variable",
+        value_name="intensity",
+    )
+
+    # Determine group order and optionally filter groups
+    hue_col = group_by if group_by is not None else "_group"
+    if order is not None:
+        available_groups = set(df_long[hue_col].unique())
+        missing_in_data = set(order) - available_groups
+        if missing_in_data:
+            raise ValueError(
+                f"Groups in 'order' not found in data: "
+                f"{sorted(missing_in_data)}. "
+                f"Available groups: {sorted(available_groups)}"
+            )
+        df_long = df_long[df_long[hue_col].isin(order)]
+        group_order = list(order)
+    else:
+        if is_categorical_dtype(df_long[hue_col]):
+            group_order = [
+                cat for cat in df_long[hue_col].cat.categories
+                if cat in df_long[hue_col].values
+            ]
+        else:
+            group_order = sorted(df_long[hue_col].dropna().unique())
+        # Filter out rows with NaN groups
+        df_long = df_long[df_long[hue_col].isin(group_order)]
+
+    # Resolve color scheme
+    palette = None
+    if color_scheme is not None:
+        colors = _resolve_color_scheme(color_scheme, group_order)
+        if colors:
+            palette = dict(zip(group_order, colors))
+
+    # Determine ylabel
+    if ylabel is None:
+        if log_transform is not None:
+            base_str = f"{float(log_transform):g}"
+            ylabel = f"Intensity (log{base_str}(x + 1))"
+        else:
+            ylabel = "Intensity"
+
+    multi = len(keys) > 1
+    axes_out = []
+    pdf_pages = None
+
+    if save and multi:
+        save_path = (
+            str(save) if str(save).endswith('.pdf')
+            else f'{save}.pdf'
+        )
+        pdf_pages = PdfPages(save_path)
+
+    for key in keys:
+        sub = df_long[df_long["variable"] == key]
+        fig, _ax = plt.subplots(figsize=figsize)
+
+        if group_by is not None:
+            sns.boxplot(
+                data=sub,
+                x=hue_col,
+                y="intensity",
+                hue=hue_col,
+                order=group_order,
+                hue_order=group_order,
+                palette=palette,
+                legend=False,
+                flierprops={'marker': '.', 'markersize': 1},
+                ax=_ax,
+            )
+            _ax.set_xlabel(group_by)
+        else:
+            sns.boxplot(
+                data=sub,
+                y="intensity",
+                flierprops={'marker': '.', 'markersize': 1},
+                ax=_ax,
+            )
+            _ax.set_xlabel("")
+            _ax.set_xticks([])
+
+        _ax.set_ylabel(ylabel)
+        ha = "center" if xlabel_rotation == 0 else "right"
+        plt.setp(
+            _ax.get_xticklabels(),
+            rotation=xlabel_rotation,
+            ha=ha,
+        )
+        _ax.set_title(title if title is not None else key)
+
+        plt.tight_layout()
+
+        if ax:
+            axes_out.append(_ax)
+            if show:
+                plt.show()
+        elif save:
+            if multi:
+                pdf_pages.savefig(fig, bbox_inches='tight')
+            else:
+                fig.savefig(save, dpi=300, bbox_inches='tight')
+            if show:
+                plt.show()
+            plt.close(fig)
+        elif show:
+            plt.show()
+            plt.close(fig)
+        else:
+            plt.close(fig)
+
+    if pdf_pages is not None:
+        pdf_pages.close()
+
+    if ax:
+        return axes_out[0] if len(axes_out) == 1 else axes_out
+    return None

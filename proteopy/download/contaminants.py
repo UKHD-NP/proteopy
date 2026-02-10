@@ -68,7 +68,11 @@ def _format_frankenfield_header(header: str) -> str:
         )
 
     database, accession_number, protein_id = segments
-    check_uniprot_accession_nr(accession_number)
+    if accession_number.startswith("Cont_"):
+        accession_number = accession_number[len("Cont_"):]
+    _FRANKENFIELD_MANUAL_IDS = {"AAAA1", "AAAA2"}
+    if accession_number not in _FRANKENFIELD_MANUAL_IDS:
+        check_uniprot_accession_nr(accession_number)
 
     new_id = f"{database}|{accession_number}|{protein_id}"
     return f"{new_id} {desc}".strip()
@@ -180,8 +184,10 @@ _SOURCE_MAP = {
     "frankenfield2022": {
         "kind": "url",
         "value": (
-            "ftp://massive-ftp.ucsd.edu/v04/MSV000088714/sequence/"
-            "Contamination_Updated_FastaFile_0906.fasta"
+            "https://raw.githubusercontent.com/HaoGroup-ProtContLib/"
+            "Protein-Contaminant-Libraries-for-DDA-and-DIA-Proteomics/"
+            "refs/heads/main/Universal%20protein%20contaminant%20FASTA/"
+            "0602_Universal%20Contaminants.fasta"
         ),
         "default_path": "data/contaminants_frankenfield2022.fasta",
         "formatter": _format_frankenfield_header,
@@ -196,7 +202,7 @@ _SOURCE_MAP = {
 
 
 def contaminants(
-    source: str = "ccp_crap",
+    source: str = "frankenfield2022",
     path: str | Path | None = None,
     force: bool = False,
 ) -> Path:

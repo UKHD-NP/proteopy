@@ -309,7 +309,8 @@ def filter_samples_by_category_count(
     inplace=True,
     ):
     """
-    Filter observations by the frequency of their category value.
+    Filter observations by the frequency of their category value in a ``.vars``
+    metadata column.
 
     Parameters
     ----------

@@ -46,10 +46,14 @@ def normalize_median(
     Notes
     -----
     Median normalization:
-        - ``log_space=True``: ``X + ref - sample_median``
-        - ``log_space=False``: ``X * ref / sample_median``
-        - ``'max_ref'``: reference = max of sample medians (within batch if per_batch)
-        - ``'median_ref'``: reference = median of sample medians (within batch if per_batch)
+        ``log_space=True``
+            ``X + ref - sample_median``
+        ``log_space=False``
+            ``X * ref / sample_median``
+        ``'max_ref'``
+            reference = max of sample medians (within batch if per_batch)
+        ``'median_ref'``
+            reference = median of sample medians (within batch if per_batch)
 
     Returns
     -------

@@ -313,10 +313,10 @@ def samples(
     sort_obs_by_ann: bool = False,
     inplace: bool = True,
 ) -> AnnData | None:
-    """Annotate ``adata.obs`` with rows from ``df`` matched on a key.
+    """Annotate ``adata.obs`` with rows from ``df`` matched on a key (alias for
+    :func:`proteopy.ann.obs`).
 
-    This function is an alias for :func:`~proteopy.ann.obs` and accepts the same
-    parameters. In proteomics, observations (rows in ``adata.obs``) often
+    In proteomics, observations (rows in ``adata.obs``) often
     represent samples, so this alias provides a more intuitive name for the
     same functionality.
 

@@ -151,3 +151,4 @@ If you use the COPF proteoform inference functionality, please also cite:
    community
    contributors
    acknowledgements
+   references

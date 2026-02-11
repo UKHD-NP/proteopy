@@ -31,6 +31,7 @@ extensions = [
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
     "sphinx_autodoc_typehints",
+    "sphinxcontrib.bibtex",
     "sphinx_copybutton",
     "sphinx_design",
     "sphinx_rtd_theme",
@@ -101,3 +102,52 @@ intersphinx_mapping = {
     "scanpy": ("https://scanpy.readthedocs.io/en/stable/", None),
     # "mudata": ("https://mudata.readthedocs.io/en/latest/", None),  # Currently unavailable
 }
+
+# -- Bibliography configuration (sphinxcontrib-bibtex) -----------------------
+import pybtex.plugin
+from pybtex.richtext import Text
+from pybtex.style.formatting.alpha import Style as _AlphaStyle
+from pybtex.style.names import BaseNameStyle
+
+
+class _LastInitialNameStyle(BaseNameStyle):
+    """Format names as 'Last AB' (no dots, initials together)."""
+
+    def format(self, person, abbr=False):
+        parts = []
+        for name in person.rich_prelast_names:
+            parts.extend([name, ' '])
+        for i, name in enumerate(person.rich_last_names):
+            if i > 0:
+                parts.append(' ')
+            parts.append(name)
+        initials = ''.join(
+            n[0] for n in
+            person.first_names + person.middle_names
+            if n
+            )
+        if initials:
+            parts.extend([' ', initials])
+        if person.rich_lineage_names:
+            parts.append(', ')
+            for name in person.rich_lineage_names:
+                parts.append(name)
+        return Text(*parts)
+
+
+class _ProteopyStyle(_AlphaStyle):
+    default_name_style = 'last_initial'
+
+
+pybtex.plugin.register_plugin(
+    'pybtex.style.names', 'last_initial',
+    _LastInitialNameStyle,
+    )
+pybtex.plugin.register_plugin(
+    'pybtex.style.formatting', 'proteopy',
+    _ProteopyStyle,
+    )
+
+bibtex_bibfiles = ["references.bib"]
+bibtex_default_style = "proteopy"
+bibtex_reference_style = "author_year"

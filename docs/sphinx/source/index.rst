@@ -147,6 +147,7 @@ If you use the COPF proteoform inference functionality, please also cite:
    :maxdepth: 1
    :caption: About
 
+   news/index
    community
    contributors
    acknowledgements

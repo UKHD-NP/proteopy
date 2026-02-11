@@ -66,6 +66,11 @@ html_theme_options = {
     "collapse_navigation": False,
 }
 
+# Custom CSS and JS files
+html_css_files = ["custom.css"]
+html_js_files = ["custom.js"]
+
+# -- Autodoc configuration ---------------------------------------------------
 autodoc_member_order = "bysource"
 autodoc_typehints = "description"
 autodoc_default_options = {

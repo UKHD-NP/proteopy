@@ -2284,3 +2284,121 @@ def box(
     if ax:
         return axes_out[0] if len(axes_out) == 1 else axes_out
     return None
+
+def binary_heatmap(
+    adata: ad.AnnData,
+    sort_by: str | None = None,
+    threshold: float = 0,
+    fill_na: float | None = None,
+    figsize: tuple[float, float] = (15, 6),
+    title: str = "Binary intensity heatmap",
+    xlabel: str = "Peptides",
+    ylabel: str = "Samples",
+    x_clust: bool = False,
+    y_clust: bool = False,
+    show: bool = True,
+    save: str | os.PathLike[str] | None = None,
+    ax: bool = False,
+) -> Axes:
+     """Plot binary heatmap across all samples for all proteins.
+    adata : AnnData
+        Proteomics :class:`~anndata.AnnData`.
+    sort_by : str, optional
+        Column in ``adata.obs`` used to order observations on the x-axis.
+        When ``None``, observations follow ``adata.obs_names``.
+    fill_na : float, optional
+        Replace missing intensities when set.
+    figsize : tuple[float, float], optional
+        Size of each generated figure passed to :func:`seaborn.clustermap`.
+    title : str, optional
+        Plot title. Defaults to ``"Binary intensity heatmap"``.
+    xlabel : str, optional
+        Label for x-axis. Defaults to ``"Samples"``.
+    ylabel : str, optional
+        Label for y-axis. Defaults to ``"Peptides"``.
+    x_clust : bool, optional
+        Cluster the columns (samples). Defaults to ``False``.
+    y_clust : bool, optional
+        Cluster the rows (peptides). Defaults to ``False``.
+    show : bool, optional
+        Display the generated figure(s) with :func:`matplotlib.pyplot.show`.
+    save : str | os.PathLike, optional
+        Path for saving the figure(s). 
+    ax : bool, optional
+        When ``True``, return the underlying Axes objects instead of closing them.
+
+    Returns
+    -------
+    Axes | None
+        The Matplotlib Axes object if ``ax=True``, otherwise ``None``.     
+    """
+    # Check input
+    check_proteodata(adata)
+    
+    # Extract data as DataFrame 
+    data_df = pd.DataFrame(adata.X, index=adata.obs.index, columns=adata.var_names)
+    
+    # Sort by observation category, if given
+    obs = adata.obs.reset_index(names='obs_index')
+        
+    if sort_by:
+        if sort_by not in obs.columns:
+            raise KeyError(f"'{sort_by}' is not present in adata.obs")
+
+        if not is_categorical_dtype(obs[sort_by]):
+            obs[sort_by] = obs[sort_by].astype('category')
+
+        obs = obs[['obs_index', sort_by]]
+        
+        data_df = data_df.merge(obs, on='obs_index')
+        
+        data_df = data_df.sort_values(sort_by)
+        
+        data_df = data_df.drop(columns=[sort_by])
+    
+    data_df = data_df.transpose()
+
+    # Fill NaNs with a specific value
+    if fill_na is not None:
+        if not np.isfinite(fill_na):
+            raise ValueError("fill_na must be a finite float.")
+        data_df = data_df.fillna(fill_na)
+    else:
+        raise ValueError(
+            "Can not visualize NA values on a heatmap"
+        )
+    
+    # Binarize with thresholds
+    data_df = data_df.applymap(lambda x: 1 if x > threshold else 0)
+
+    # Create figure
+    g = sns.clustermap(
+        data_df,
+        ax=_ax,
+        cmap='coolwarm',
+        figsize=figsize,
+        row_cluster = y_clust,
+        col_cluster= x_clust,
+        center=0.5
+    )
+
+    # Customize labels
+    g.ax_heatmap.set_xlabel(xlabel)
+    g.ax_heatmap.set_ylabel(ylabel)
+    g.ax_heatmap.set_title(title)
+
+    # --- Save/Show logic ---
+    if save is not None:
+        g.savefig(save, dpi=300, bbox_inches="tight")
+    if show:
+        plt.show()
+    if ax:
+        return g.ax_heatmap
+    if not save and not show and not ax:
+        warnings.warn(
+            "Plot created but not displayed, saved, or returned. "
+            "Set show=True, save to a path, or ax=True.",
+            UserWarning,
+        )
+        plt.close(g)
+    return None

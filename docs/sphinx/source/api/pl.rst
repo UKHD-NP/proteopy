@@ -26,6 +26,7 @@ control, exploratory analysis, and statistical results.
    :nosignatures:
 
    proteopy.pl.abundance_rank
+   proteopy.pl.binary_heatmap
    proteopy.pl.completeness
    proteopy.pl.completeness_per_sample
    proteopy.pl.completeness_per_var

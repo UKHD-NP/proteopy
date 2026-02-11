@@ -17,9 +17,10 @@ import matplotlib as mpl
 import anndata as ad
 import math
 import os
+import sys
 from scipy import sparse
 
-from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.anndata import check_proteodata, is_proteodata
 from proteopy.utils.matplotlib import _resolve_color_scheme
 from proteopy.utils.array import is_log_transformed
 from proteopy.utils.functools import partial_with_docsig
@@ -2283,4 +2284,374 @@ def box(
 
     if ax:
         return axes_out[0] if len(axes_out) == 1 else axes_out
+    return None
+
+
+def binary_heatmap(
+    adata: ad.AnnData,
+    layer: str | None = None,
+    threshold: float | int = 0,
+    fill_na: float | int | None = None,
+    order_by: str | None = None,
+    order: Sequence[Any] | None = None,
+    col_cluster: bool = False,
+    row_cluster: bool = False,
+    ylabels: bool = False,
+    var_id_key: str | None = None,
+    cmap: Any | None = "coolwarm",
+    figsize: tuple[float, float] = (10, 8),
+    xtick_rotation: float = 90,
+    ytick_rotation: float = 0,
+    ylabel: str | None = None,
+    title: str | None = None,
+    show: bool = True,
+    save: str | os.PathLike[str] | None = None,
+    ax: bool = False,
+) -> Axes | None:
+    """
+    Plot a binary detection heatmap of intensities across samples and features.
+
+    Values greater than ``threshold`` are encoded as 1 (present) and values
+    less than or equal to ``threshold`` are encoded as 0 (absent). Missing
+    values are not allowed and trigger a ``ValueError``.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Proteomics :class:`~anndata.AnnData`.
+    layer : str, optional
+        Key in ``adata.layers`` to plot. When ``None``, use ``adata.X``.
+    threshold : float | int, optional
+        Values strictly greater than this are considered present (1); values
+        less than or equal become 0.
+    fill_na : float | int | None, optional
+        Replace missing values with this constant before binarization. When
+        ``None`` (default), missing values raise a ``ValueError``.
+    order_by : str, optional
+        Column in ``adata.obs`` used to group and order observations (samples).
+        When ``None``, observations follow ``adata.obs_names`` order.
+    order : Sequence[Any], optional
+        Explicit order of categories when ``order_by`` is set.
+        When ``None`` and ``order_by`` is categorical, uses category order;
+        otherwise uses sorted order.
+    col_cluster : bool, optional
+        Perform hierarchical clustering on samples (columns/x-axis) and display
+        the dendrogram when ``True``. Mutually exclusive with ``order_by``.
+    row_cluster : bool, optional
+        Perform hierarchical clustering on features (rows/y-axis) and display
+        the dendrogram when ``True``.
+    ylabels : bool, optional
+        Display y-axis tick labels and ticks when ``True``.
+    var_id_key : str | None, optional
+        Column in ``adata.var`` used as row labels. When ``None`` (default),
+        the key is derived automatically from the proteodata level:
+        ``"peptide_id"`` for peptide-level data and ``"protein_id"`` for
+        protein-level data. Falls back to ``adata.var_names`` when the
+        derived key is absent.
+    cmap : Any | None, optional
+        Colormap passed directly to :func:`seaborn.clustermap`. Accepts any
+        value recognised by Matplotlib (name string, ``Colormap`` instance,
+        etc.). Defaults to ``\"coolwarm\"``.
+    figsize : tuple of float, optional
+        Figure size passed to Matplotlib.
+    xtick_rotation : float, optional
+        Rotation angle for sample tick labels.
+    ytick_rotation : float, optional
+        Rotation angle for feature tick labels.
+    ylabel : str | None, optional
+        Label for the heatmap y-axis. When ``None`` (default), the label is
+        derived automatically from the proteodata level (``"Peptide"`` or
+        ``"Protein"``). Pass ``""`` to hide the label entirely.
+    title : str | None, optional
+        Optional title placed above the heatmap.
+    show : bool, optional
+        If True, call :func:`matplotlib.pyplot.show` after plotting.
+    save : str | PathLike, optional
+        Path to save the figure. ``None`` skips saving.
+    ax : bool, optional
+        When ``True``, return the axes (heatmap) or ClusterGrid (clustermap)
+        object instead of closing it.
+
+    Returns
+    -------
+    Axes | None
+        Handle to the created plot object when ``ax`` is ``True``; otherwise
+        ``None``.
+
+    Examples
+    --------
+    Basic binary detection heatmap from ``adata.X``:
+
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.karayel_2020()
+    >>> pr.pl.binary_heatmap(adata, threshold=0)
+
+    Order samples by an observation annotation and customize labels:
+
+    >>> pr.pl.binary_heatmap(
+    ...     adata,
+    ...     order_by="cell_type",
+    ...     order=["Progenitor", "ProE&EBaso", "LBaso", "Poly", "Ortho"],
+    ...     row_cluster=True,
+    ...     fill_na=0,
+    ...     ylabel="Peptides",
+    ...     xtick_rotation=45,
+    ... )
+    """
+
+    check_proteodata(adata)
+
+    _, _level = is_proteodata(adata)
+
+    # Derive var_id_key from proteodata level when not explicitly provided
+    if var_id_key is None:
+        if _level == "peptide":
+            var_id_key = "peptide_id"
+        elif _level == "protein":
+            var_id_key = "protein_id"
+
+    # Derive ylabel from proteodata level when not explicitly provided
+    if ylabel is None:
+        ylabel = _level.capitalize() if _level else ""
+
+    # Validate input and parameters
+    if isinstance(threshold, bool) or not isinstance(threshold, Real):
+        raise TypeError("`threshold` must be a numeric scalar.")
+    if not np.isfinite(threshold):
+        raise ValueError("`threshold` must be finite.")
+    if layer is not None and not isinstance(layer, str):
+        raise TypeError("`layer` must be a string or None.")
+    if fill_na is not None:
+        if isinstance(fill_na, bool):
+            raise TypeError("`fill_na` must be numeric, not boolean.")
+        if not isinstance(fill_na, Real):
+            raise TypeError("`fill_na` must be a numeric scalar.")
+        if not np.isfinite(fill_na):
+            raise ValueError("`fill_na` must be finite.")
+    if title is not None and not isinstance(title, str):
+        raise TypeError("`title` must be a string or None.")
+    if ylabel is not None and not isinstance(ylabel, str):
+        raise TypeError("`ylabel` must be a string or None.")
+    if var_id_key is not None and not isinstance(var_id_key, str):
+        raise TypeError("`var_id_key` must be a string or None.")
+    if not isinstance(show, bool):
+        raise TypeError("`show` must be a boolean.")
+    if not isinstance(ax, bool):
+        raise TypeError("`ax` must be a boolean.")
+    if not isinstance(col_cluster, bool):
+        raise TypeError("`col_cluster` must be a boolean.")
+    if not isinstance(row_cluster, bool):
+        raise TypeError("`row_cluster` must be a boolean.")
+    if not isinstance(ylabels, bool):
+        raise TypeError("`ylabels` must be a boolean.")
+    if order_by is not None and not isinstance(order_by, str):
+        raise TypeError("`order_by` must be a string or None.")
+    if order is not None:
+        if not isinstance(order, SequenceABC):
+            raise TypeError("`order` must be a sequence or None.")
+        if isinstance(order, (str, bytes)):
+            raise TypeError(
+                "`order` must be a sequence of category labels, not a string."
+            )
+    if order_by is not None and col_cluster:
+        raise ValueError(
+            "`order_by` and `col_cluster` are mutually exclusive; "
+            "choose one ordering method."
+        )
+    if not isinstance(xtick_rotation, Real) or isinstance(
+        xtick_rotation,
+        bool,
+    ):
+        raise TypeError("`xtick_rotation` must be numeric.")
+    if not isinstance(ytick_rotation, Real) or isinstance(
+        ytick_rotation,
+        bool,
+    ):
+        raise TypeError("`ytick_rotation` must be numeric.")
+    if figsize is None or not isinstance(figsize, SequenceABC):
+        raise TypeError("`figsize` must be a length-2 sequence of numbers.")
+    if len(figsize) != 2:
+        raise TypeError("`figsize` must be a length-2 sequence of numbers.")
+    try:
+        figsize = (float(figsize[0]), float(figsize[1]))
+    except (TypeError, ValueError) as exc:
+        raise TypeError("`figsize` entries must be numeric.") from exc
+    if save is not None and not isinstance(save, (str, os.PathLike)):
+        raise TypeError("`save` must be a path-like string or None.")
+
+    # Get data
+    if layer is None:
+        X_src = adata.X
+    else:
+        if layer not in adata.layers:
+            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+        X_src = adata.layers[layer]
+
+    if sparse.issparse(X_src):
+        X = X_src.toarray()
+    else:
+        X = np.asarray(X_src, dtype=float)
+
+    # Handle order_by and order for observation ordering
+    if order_by is not None:
+        if order_by not in adata.obs.columns:
+            raise KeyError(f"'{order_by}' not found in adata.obs columns.")
+
+        obs_col = adata.obs[order_by]
+
+        # Determine the ordering of categories
+        if pd.api.types.is_categorical_dtype(obs_col):
+            if order is not None:
+                # Validate that all order items are in the categories
+                available_cats = set(obs_col.cat.categories)
+                missing = set(order) - available_cats
+                if missing:
+                    raise ValueError(
+                        f"Items in 'order' not found in '{order_by}' "
+                        f"categories: {sorted(missing)}"
+                    )
+                cats_ordered = list(order)
+            else:
+                # Use categorical order
+                cats_ordered = list(obs_col.cat.categories)
+        else:
+            # Non-categorical column
+            unique_vals = pd.Series(obs_col.unique()).dropna()
+            try:
+                default_order = sorted(unique_vals)
+            except TypeError:
+                default_order = unique_vals.tolist()
+            if order is not None:
+                # Validate that all order items are in the unique values
+                available_vals = set(unique_vals)
+                missing = set(order) - available_vals
+                if missing:
+                    raise ValueError(
+                        f"Items in 'order' not found in '{order_by}' "
+                        f"values: {sorted(missing)}"
+                    )
+                cats_ordered = list(order)
+            else:
+                # Use sorted order
+                cats_ordered = default_order
+
+        # Build observation index order based on categories
+        obs_index_ordered = []
+        for cat in cats_ordered:
+            indices = adata.obs.index[obs_col == cat].tolist()
+            obs_index_ordered.extend(indices)
+
+        # Reorder the matrix and obs_names
+        idx_map = {name: i for i, name in enumerate(adata.obs_names)}
+        reorder_indices = [idx_map[name] for name in obs_index_ordered]
+        X = X[reorder_indices, :]
+        obs_names_ordered = obs_index_ordered
+    else:
+        obs_names_ordered = adata.obs_names
+
+    # Binary heatmap expects complete data unless fill_na
+    if fill_na is not None:
+        X = np.where(np.isnan(X), float(fill_na), X)
+    elif np.isnan(X).any():
+        raise ValueError(
+            "Missing values detected; binary_heatmap requires complete data."
+        )
+
+    # Convert numbers to binary mask
+    binary = (X > threshold).astype(int)
+    # pick row labels from var_id_key if available, otherwise use var_names
+    if var_id_key is not None and var_id_key in adata.var.columns:
+        row_index = adata.var[var_id_key]
+    else:
+        row_index = adata.var_names
+    # create DataFrame oriented for seaborn (features as rows)
+    plot_df = pd.DataFrame(
+        binary.T,
+        index=row_index,
+        columns=obs_names_ordered,
+    )
+
+    # colorbar configuration (binary heatmap uses only 0/1 ticks)
+    cbar_kws = {
+        "ticks": [0, 1],
+        "orientation": "horizontal",
+    }
+
+    # resolve colormap, falling back to default
+    cmap_resolved = cmap if cmap is not None else "coolwarm"
+
+    if row_cluster or col_cluster:
+        # estimate recursion limit required for computing dendrograms
+        cluster_sizes = []
+        if row_cluster:
+            cluster_sizes.append(plot_df.shape[0])
+        if col_cluster:
+            cluster_sizes.append(plot_df.shape[1])
+
+        current_limit = sys.getrecursionlimit()
+        target_limit = max(
+            current_limit,
+            int(4 * max(cluster_sizes) + 1000),
+        )
+    else:
+        current_limit = None
+        target_limit = None
+
+    try:
+        if target_limit is not None and target_limit > current_limit:
+            sys.setrecursionlimit(target_limit)
+
+        # draw the clustermap / heatmap
+        grid = sns.clustermap(
+            plot_df,
+            row_cluster=row_cluster,
+            col_cluster=col_cluster,
+            cmap=cmap_resolved,
+            vmin=0,
+            vmax=1,
+            figsize=figsize,
+            cbar_kws=cbar_kws,
+            tree_kws={'linewidths': 1},
+        )
+
+        grid.fig.subplots_adjust(right=0.70, bottom=0.12)
+        grid.ax_cbar.set_position([0.75, 0.04, 0.18, 0.03])
+    finally:
+        if target_limit is not None and current_limit is not None:
+            if sys.getrecursionlimit() != current_limit:
+                sys.setrecursionlimit(current_limit)
+    grid.ax_heatmap.set_ylabel(ylabel)
+    if title:
+        grid.ax_heatmap.set_title(title)
+    plt.setp(
+        grid.ax_heatmap.get_xticklabels(), rotation=xtick_rotation, ha="right"
+    )
+    if ylabels:
+        n_rows = plot_df.shape[0]
+        if row_cluster and grid.dendrogram_row is not None:
+            ordered_labels = [
+                plot_df.index[i] for i in grid.dendrogram_row.reordered_ind
+            ]
+        else:
+            ordered_labels = list(plot_df.index)
+        # Force a tick for every row; seaborn places centres at i + 0.5
+        grid.ax_heatmap.set_yticks([i + 0.5 for i in range(n_rows)])
+        grid.ax_heatmap.set_yticklabels(
+            ordered_labels,
+            rotation=ytick_rotation,
+            ha="left",
+        )
+    else:
+        grid.ax_heatmap.set_yticks([])
+        grid.ax_heatmap.set_yticklabels([])
+
+    if save is not None:
+        grid.fig.savefig(save, dpi=300, bbox_inches="tight")
+    if show:
+        plt.show()
+    elif not ax:
+        plt.close(grid.fig)
+
+    if ax:
+        return grid.ax_heatmap
     return None

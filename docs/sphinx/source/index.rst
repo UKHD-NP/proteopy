@@ -127,3 +127,26 @@ If you use the COPF proteoform inference functionality, please also cite:
         year={2021},
         doi={10.1038/s41467-021-24030-x}
     }
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+   :caption: Getting Started
+
+   installation
+
+.. toctree::
+   :hidden:
+   :maxdepth: 3
+   :caption: API reference
+
+   changelog
+
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+   :caption: About
+
+   community
+   contributors
+   acknowledgements

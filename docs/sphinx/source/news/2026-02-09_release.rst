@@ -1,0 +1,12 @@
+.. grid-item-card:: ProteoPy v0.1.0 Released
+    :margin: 0 0 2 0
+
+    *9 February 2026*
+
+    We are thrilled to announce the first public release of ProteoPy! Our goal is
+    to make proteomics data analysis accessible to everyone — whether you are a
+    seasoned bioinformatician or a bench scientist exploring your data for the
+    first time. We hope ProteoPy helps you get from raw results to biological
+    insight with minimal friction.
+
+    See the :doc:`installation </installation>` guides and :doc:`tutorials </tutorials/index>` to get started.

@@ -141,6 +141,7 @@ If you use the COPF proteoform inference functionality, please also cite:
    :maxdepth: 3
    :caption: API reference
 
+   api/index
    changelog
 
 .. toctree::

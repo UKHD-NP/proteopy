@@ -134,6 +134,7 @@ If you use the COPF proteoform inference functionality, please also cite:
    :caption: Getting Started
 
    installation
+   tutorials/index
 
 .. toctree::
    :hidden:

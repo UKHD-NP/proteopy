@@ -38,12 +38,16 @@ extensions = [
 ]
 
 master_doc = "index"
-source_suffix = '.rst'
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
+}
 templates_path = ["_templates"]
 exclude_patterns = [
     'build',
     'Thumbs.db',
     '.DS_Store',
+    '**.ipynb_checkpoints',
 ]
 language = 'en'
 
@@ -90,6 +94,13 @@ napoleon_use_ivar = True
 
 # -- Autosummary configuration -----------------------------------------------
 autosummary_generate = True
+autosummary_generate_overwrite = True
+autosummary_imported_members = True
+
+# -- nbsphinx configuration (Jupyter notebooks) ------------------------------
+nbsphinx_execute = 'never'  # Don't execute notebooks during build
+nbsphinx_allow_errors = True
+nbsphinx_timeout = 300
 
 # -- Intersphinx configuration (cross-references) ----------------------------
 intersphinx_mapping = {

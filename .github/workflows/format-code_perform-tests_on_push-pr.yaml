@@ -68,6 +68,22 @@ jobs:
             --count \
             --show-source \
             --select=E9,F63,F82
+          # On clean files (manually increment)
+          flake8 \
+            proteopy/ann/proteins.py \
+            proteopy/get/proteoforms.py \
+            tests/__init__.py \
+            tests/read/__init__.py \
+            tests/tl/__init__.py \
+            tests/utils/__init__.py \
+            tests/utils/test_anndata.py \
+            tests/utils/test_parsers.py \
+            --statistics \
+            --count \
+            --show-source \
+            --max-complexity=10 \
+            --max-line-length=127
+
       - name: Optional flake8 stats
         run: |
           # optional linting stats

@@ -10,7 +10,12 @@ class TestIsProteodata:
     def test_returns_true_for_valid_peptide_data(self):
         peptides = ["PEP1", "PEP2", "PEP3"]
         proteins = ["PROT_A", "PROT_B", "PROT_C"]
-        adata = AnnData(np.arange(9).reshape(3, 3), var=pd.DataFrame(index=peptides))
+        obs_names = [f"obs{i}" for i in range(3)]
+        adata = AnnData(
+            np.arange(9).reshape(3, 3),
+            obs=pd.DataFrame({"sample_id": obs_names}, index=obs_names),
+            var=pd.DataFrame(index=peptides),
+        )
         adata.var["peptide_id"] = peptides
         adata.var["protein_id"] = proteins
 
@@ -19,7 +24,12 @@ class TestIsProteodata:
 
     def test_peptide_data_requires_protein_column(self):
         peptides = ["PEP1", "PEP2"]
-        adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=peptides))
+        obs_names = [f"obs{i}" for i in range(2)]
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            obs=pd.DataFrame({"sample_id": obs_names}, index=obs_names),
+            var=pd.DataFrame(index=peptides),
+        )
         adata.var["peptide_id"] = peptides
 
         assert is_proteodata(adata) == (False, None)
@@ -43,7 +53,12 @@ class TestIsProteodata:
 
     def test_peptide_id_must_match_axis(self):
         peptides = ["PEP1", "PEP2"]
-        adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=peptides))
+        obs_names = [f"obs{i}" for i in range(2)]
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            obs=pd.DataFrame({"sample_id": obs_names}, index=obs_names),
+            var=pd.DataFrame(index=peptides),
+        )
         adata.var["peptide_id"] = ["PEP1", "PEP_DIFFERENT"]
         adata.var["protein_id"] = ["PROT1", "PROT2"]
 
@@ -54,7 +69,12 @@ class TestIsProteodata:
 
     def test_peptide_multiple_protein_mapping_returns_false(self):
         peptides = ["PEP1", "PEP2"]
-        adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=peptides))
+        obs_names = [f"obs{i}" for i in range(2)]
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            obs=pd.DataFrame({"sample_id": obs_names}, index=obs_names),
+            var=pd.DataFrame(index=peptides),
+        )
         adata.var["peptide_id"] = peptides
         adata.var["protein_id"] = ["PROT1;PROT2", "PROT3"]
 
@@ -64,7 +84,12 @@ class TestIsProteodata:
 
     def test_returns_true_for_valid_protein_data(self):
         proteins = ["PROT_A", "PROT_B"]
-        adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=proteins))
+        obs_names = [f"obs{i}" for i in range(2)]
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            obs=pd.DataFrame({"sample_id": obs_names}, index=obs_names),
+            var=pd.DataFrame(index=proteins),
+        )
         adata.var["protein_id"] = proteins
 
         assert adata.var["protein_id"].is_unique
@@ -72,7 +97,12 @@ class TestIsProteodata:
 
     def test_protein_id_must_match_axis(self):
         proteins = ["PROT_A", "PROT_B"]
-        adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=proteins))
+        obs_names = [f"obs{i}" for i in range(2)]
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            obs=pd.DataFrame({"sample_id": obs_names}, index=obs_names),
+            var=pd.DataFrame(index=proteins),
+        )
         adata.var["protein_id"] = ["PROT_A", "PROT_C"]
 
         assert is_proteodata(adata) == (False, None)

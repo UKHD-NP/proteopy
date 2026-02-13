@@ -25,7 +25,7 @@ def _make_adata_filter_obs_base() -> AnnData:
     )
     obs_names = [f"obs{i}" for i in range(6)]
     var_names = [f"protein_{i}" for i in range(5)]
-    obs = pd.DataFrame(index=obs_names)
+    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
     var = pd.DataFrame({"protein_id": var_names}, index=var_names)
     return AnnData(X=X, obs=obs, var=var)
 
@@ -43,7 +43,7 @@ def _make_adata_filter_obs_groupby_singletons() -> AnnData:
     )
     obs_names = [f"obs{i}" for i in range(3)]
     var_names = [f"protein_{i}" for i in range(2)]
-    obs = pd.DataFrame(index=obs_names)
+    obs = pd.DataFrame({"sample_id": obs_names},index=obs_names)
     var = pd.DataFrame(
         {
             "protein_id": var_names,
@@ -69,7 +69,7 @@ def _make_adata_filter_obs_groupby() -> AnnData:
     )
     obs_names = [f"obs{i}" for i in range(5)]
     var_names = [f"protein_{i}" for i in range(5)]
-    obs = pd.DataFrame(index=obs_names)
+    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
     var = pd.DataFrame(
         {
             "protein_id": var_names,
@@ -98,7 +98,7 @@ def _make_adata_filter_obs_groupby_na() -> AnnData:
     )
     obs_names = [f"obs{i}" for i in range(5)]
     var_names = [f"protein_{i}" for i in range(9)]
-    obs = pd.DataFrame(index=obs_names)
+    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
     var = pd.DataFrame({
             "protein_id": var_names,
             "group": ["g1", "g1", "g2", "g2", "g2", np.nan, np.nan, np.nan, np.nan],
@@ -120,7 +120,8 @@ def _make_adata_filter_var_base() -> AnnData:
         ],
         dtype=float,
     )
-    obs = pd.DataFrame(index=[f"obs{i}" for i in range(5)])
+    obs_names = [f"obs{i}" for i in range(5)]
+    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
     var_names = [f"protein_{i}" for i in range(6)]
     var = pd.DataFrame({"protein_id": var_names}, index=var_names)
     return AnnData(X=X, obs=obs, var=var)
@@ -136,7 +137,8 @@ def _make_adata_filter_var_groupby_singletons() -> AnnData:
         ],
         dtype=float,
     )
-    obs = pd.DataFrame({"group": ["g1", "g2"]}, index=[f"obs{i}" for i in range(2)])
+    obs_names = [f"obs{i}" for i in range(2)]
+    obs = pd.DataFrame({"sample_id": obs_names, "group": ["g1", "g2"]}, index=obs_names)
     var_names = [f"protein_{i}" for i in range(3)]
     var = pd.DataFrame({
             "protein_id": var_names,
@@ -159,9 +161,11 @@ def _make_adata_filter_var_groupby() -> AnnData:
         ],
         dtype=float,
     )
+    obs_names = [f"obs{i}" for i in range(5)]
     obs = pd.DataFrame({
-        "group": ["g1", "g1", "g2", "g2", "g2"]
-        }, index=[f"obs{i}" for i in range(5)],
+        "sample_id": obs_names,
+        "group": ["g1", "g1", "g2", "g2", "g2"],
+        }, index=obs_names,
     )
     var_names = [f"protein_{i}" for i in range(5)]
     var = pd.DataFrame({"protein_id": var_names}, index=var_names)
@@ -188,9 +192,13 @@ def _make_adata_filter_var_groupby_na() -> AnnData:
         ],
         dtype=float,
     )
+    obs_names = [f"obs{i}" for i in range(9)]
     obs = pd.DataFrame(
-        {"group": ["g1", "g1", "g2", "g2", "g2", np.nan, np.nan, np.nan, np.nan]},
-        index=[f"obs{i}" for i in range(9)],
+        {
+            "sample_id": obs_names,
+            "group": ["g1", "g1", "g2", "g2", "g2", np.nan, np.nan, np.nan, np.nan],
+        },
+        index=obs_names,
     )
     var_names = [f"protein_{i}" for i in range(5)]
     var = pd.DataFrame({
@@ -753,7 +761,8 @@ def _make_peptide_adata() -> AnnData:
         },
         index=var_names,
     )
-    obs = pd.DataFrame(index=[f"obs{i}" for i in range(3)])
+    obs_names = [f"obs{i}" for i in range(3)]
+    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
     return AnnData(X=X, obs=obs, var=var)
 
 
@@ -861,7 +870,8 @@ def test_filter_proteins_by_peptide_count_requires_peptide_level():
     X = np.zeros((2, 2))
     var_names = ["prot1", "prot2"]
     var = pd.DataFrame({"protein_id": var_names}, index=var_names)
-    obs = pd.DataFrame(index=["obs0", "obs1"])
+    obs_names = ["obs0", "obs1"]
+    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
     adata = AnnData(X=X, obs=obs, var=var)
 
     with pytest.raises(ValueError):

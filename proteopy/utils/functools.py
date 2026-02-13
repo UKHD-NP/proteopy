@@ -4,8 +4,6 @@ from functools import partial, update_wrapper
 from textwrap import dedent
 from typing import Dict, Set, Optional
 
-__all__ = ["partial_with_docsig", "fix"]
-
 # -----------------------
 # Docstring utilities
 # -----------------------

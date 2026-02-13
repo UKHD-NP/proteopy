@@ -39,22 +39,49 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pylint flake8 pytest
-          if [ -f "requirements/requirements_ci-cd.txt" ]; then pip install -r requirements/requirements_ci-cd.txt; fi
+          if [ -f "requirements/requirements_ci-cd.txt" ]; then
+            pip install -r requirements/requirements_ci-cd.txt
+          fi
 
       - name: Install package
         run: |
           pip install -e .
 
-      - name: Lint with flake8
+      - name: Collect Python files
+        id: pyfiles
         run: |
-          # stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F82 --show-source --statistics
-          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          EXCLUDE_DIRS=(
+            "^docs/"
+          )
+          PATTERN=$(IFS="|"; echo "${EXCLUDE_DIRS[*]}")
+          PY_FILES=$(git ls-files "*.py" \
+            | grep -vE "$PATTERN")
+          echo "PY_FILES<<EOF" >> "$GITHUB_ENV"
+          echo "$PY_FILES" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
+      - name: Strict lint with flake8
+        run: |
+          # Syntax errors / undefined names
+          flake8 $PY_FILES \
+            --statistics \
+            --count \
+            --show-source \
+            --select=E9,F63,F82
+      - name: Optional flake8 stats
+        run: |
+          # optional linting stats
+          flake8 $PY_FILES \
+            --exit-zero \
+            --statistics \
+            --count \
+            --show-source \
+            --max-complexity=10 \
+            --max-line-length=127
 
       - name: Lint with pylint
         run: |
-          pylint $(git ls-files "*.py") --disable=all --enable=E,F --disable=E0401
+          pylint $PY_FILES --disable=all --enable=E,F
 
       - name: Test with pytest
         run: |

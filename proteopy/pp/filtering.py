@@ -84,6 +84,7 @@ def filter_axis(
 
     axis_i = 1 - axis
     axis_labels = adata.obs_names if axis == 0 else adata.var_names
+    completeness = None # assigned below when min_fraction is set
 
     if group_by is not None:
         metadata = adata.obs if axis == 1 else adata.var

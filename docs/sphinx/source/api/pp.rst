@@ -45,6 +45,7 @@ filtering, normalization, and imputation of proteomics data.
    :nosignatures:
 
    proteopy.pp.extract_peptide_groups
+   proteopy.pp.summarize_modifications
    proteopy.pp.summarize_overlapping_peptides
    proteopy.pp.quantify_proteins
    proteopy.pp.quantify_proteoforms

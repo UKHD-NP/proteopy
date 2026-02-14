@@ -20,6 +20,7 @@ from .normalization import (
 from .quantification import (
     extract_peptide_groups,
     summarize_overlapping_peptides,
+    summarize_modifications,
     quantify_proteins,
     quantify_proteoforms,
     )

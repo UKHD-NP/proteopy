@@ -1,7 +1,7 @@
 import warnings
 import json
 import re
-from functools import partial
+
 
 import numpy as np
 import pandas as pd
@@ -193,38 +193,47 @@ def is_proteodata(
     adata: AnnData,
     *,
     raise_error: bool = False,
+    layers: str | list[str] | None = None,
 ) -> tuple[bool, str | None]:
     """
-    Check whether the AnnData object stores peptide- or protein-level proteomics data.
+    Check whether the AnnData object stores peptide- or protein-level
+    proteomics data.
 
     Parameters
     ----------
     adata
         AnnData object whose `.var` annotations will be inspected.
     raise_error
-        If True, raise a ValueError for proteomics-specific validation failures
-        instead of returning False.
+        If True, raise a ValueError for proteomics-specific validation
+        failures instead of returning False.
+    layers
+        Optional layer key or list of layer keys in ``adata.layers`` to
+        validate. Each specified layer matrix is checked for infinite
+        values, the same way ``.X`` is checked.
 
     Returns
     -------
     tuple[bool, str | None]
-        `(True, "peptide")` if the data satisfy the peptide-level assumptions,
-        `(True, "protein")` if they satisfy the protein-level assumptions,
-        otherwise `(False, None)` when `raise_error` is False.
+        ``(True, "peptide")`` if the data satisfy the peptide-level
+        assumptions, ``(True, "protein")`` if they satisfy the
+        protein-level assumptions, otherwise ``(False, None)`` when
+        ``raise_error`` is False.
 
     Notes
     -----
-    Peptide-level data must provide both `.var["peptide_id"]` and `.var["protein_id"]`.
-    Every `peptide_id` value must be unique, and the column must match
-    `adata.var_names` (and the `.var` index) exactly. Each peptide must map to
-    exactly one `protein_id`.
+    Peptide-level data must provide both ``.var["peptide_id"]`` and
+    ``.var["protein_id"]``. Every ``peptide_id`` value must be unique,
+    and the column must match ``adata.var_names`` (and the ``.var``
+    index) exactly. Each peptide must map to exactly one
+    ``protein_id``. Neither column may contain missing values.
 
-    Protein-level data must provide `.var["protein_id"]`, must *not* contain a
-    `peptide_id` column, and the `protein_id` values must match `adata.var_names`
-    (and the `.var` index) exactly while also being unique.
+    Protein-level data must provide ``.var["protein_id"]``, must *not*
+    contain a ``peptide_id`` column, and the ``protein_id`` values must
+    match ``adata.var_names`` (and the ``.var`` index) exactly while
+    also being unique. The column must not contain missing values.
 
-    Set `raise_error=True` to raise a ValueError instead of returning False when
-    the proteomics-specific validation fails.
+    Set ``raise_error=True`` to raise a ValueError instead of returning
+    False when the proteomics-specific validation fails.
     """
     if not isinstance(adata, AnnData):
         raise TypeError("is_proteodata expects an AnnData object.")
@@ -236,12 +245,38 @@ def is_proteodata(
 
     if adata.X is not None and _has_infinite_values(adata.X):
         msg = (
-            "AnnData.X contains infinite values (np.inf or -np.inf). "
-            "Please remove or replace infinite values before proceeding."
+            "AnnData.X contains infinite values (np.inf or "
+            "-np.inf). Please remove or replace infinite values "
+            "before proceeding."
         )
         if raise_error:
             raise ValueError(msg)
         return False, None
+
+    # Validate requested layers for infinite values
+    if layers is not None:
+        if isinstance(layers, str):
+            layers = [layers]
+        for layer_key in layers:
+            if layer_key not in adata.layers:
+                msg = (
+                    f"Layer '{layer_key}' not found in "
+                    f"adata.layers. Available layers: "
+                    f"{list(adata.layers.keys())}."
+                )
+                if raise_error:
+                    raise ValueError(msg)
+                return False, None
+            if _has_infinite_values(adata.layers[layer_key]):
+                msg = (
+                    f"adata.layers['{layer_key}'] contains "
+                    f"infinite values (np.inf or -np.inf). "
+                    f"Please remove or replace infinite values "
+                    f"before proceeding."
+                )
+                if raise_error:
+                    raise ValueError(msg)
+                return False, None
 
     # Check obs requirements
     obs = adata.obs
@@ -290,9 +325,29 @@ def is_proteodata(
     if has_peptide_id:
         if not has_protein_id:
             msg = (
-                "Found a 'peptide_id' column but no 'protein_id' column. "
-                "If working at peptide-level, a peptide_id -> protein_id mapping "
-                "must be included."
+                "Found a 'peptide_id' column but no 'protein_id' "
+                "column. If working at peptide-level, a "
+                "peptide_id -> protein_id mapping must be included."
+            )
+            if raise_error:
+                raise ValueError(msg)
+            return False, None
+
+        if var["peptide_id"].isna().any():
+            msg = (
+                "Column 'peptide_id' in adata.var contains missing "
+                "values (NaN/None). All peptide identifiers must "
+                "be non-null."
+            )
+            if raise_error:
+                raise ValueError(msg)
+            return False, None
+
+        if var["protein_id"].isna().any():
+            msg = (
+                "Column 'protein_id' in adata.var contains missing "
+                "values (NaN/None). All protein identifiers must "
+                "be non-null."
             )
             if raise_error:
                 raise ValueError(msg)
@@ -322,6 +377,16 @@ def is_proteodata(
     if not has_protein_id:
         return False, None
 
+    if var["protein_id"].isna().any():
+        msg = (
+            "Column 'protein_id' in adata.var contains missing "
+            "values (NaN/None). All protein identifiers must "
+            "be non-null."
+        )
+        if raise_error:
+            raise ValueError(msg)
+        return False, None
+
     if not _var_column_matches_axis(adata, "protein_id"):
         msg = (
             "Found a 'protein_id' column but it does not match AnnData.var_names."
@@ -332,7 +397,42 @@ def is_proteodata(
 
     return True, "protein"
 
-check_proteodata = partial(is_proteodata, raise_error=True)
+
+def check_proteodata(
+    adata: AnnData,
+    *,
+    layers: str | list[str] | None = None,
+) -> tuple[bool, str | None]:
+    """
+    Validate that *adata* satisfies ProteoPy assumptions, raising on
+    failure.
+
+    Thin wrapper around :func:`is_proteodata` with
+    ``raise_error=True``. See that function for full documentation.
+
+    Parameters
+    ----------
+    adata
+        AnnData object to validate.
+    layers
+        Optional layer key or list of layer keys to validate for
+        infinite values.
+
+    Returns
+    -------
+    tuple[bool, str | None]
+        ``(True, "peptide")`` or ``(True, "protein")`` on success.
+
+    Raises
+    ------
+    ValueError
+        If any validation check fails.
+    """
+    return is_proteodata(
+        adata,
+        raise_error=True,
+        layers=layers,
+        )
 
 
 def sanitize_obs_cols(

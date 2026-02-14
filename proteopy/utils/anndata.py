@@ -41,7 +41,8 @@ def _axis_len(a, axis: int = 0) -> int:
         raise TypeError(
             (
                 "Object of type "
-                f"{type(a)!r} does not expose a usable length along axis {axis}."
+                f"{type(a)!r} does not expose a usable "
+                f"length along axis {axis}."
             )
         ) from e
 
@@ -137,7 +138,8 @@ def _check_uniqueness(adata: AnnData, warn_only: bool = False) -> None:
             shown = ", ".join(map(repr, dups[:10]))
             extra = "" if len(dups) <= 10 else f" … and {len(dups) - 10} more"
             msg = (
-                f"Duplicate names detected in {axis_name} axis: {shown}{extra}. "
+                f"Duplicate names detected in {axis_name} "
+                f"axis: {shown}{extra}. "
                 "Consider calling `.obs_names_make_unique()` or "
                 "`.var_names_make_unique()` (depending on axis) to fix."
             )
@@ -159,7 +161,8 @@ def _check_structure(adata: AnnData) -> None:
 
 
 def _var_column_matches_axis(adata: AnnData, column: str) -> bool:
-    """Return True when the chosen .var column exactly matches both axis definitions."""
+    """Return True when the chosen .var column exactly
+    matches both axis definitions."""
     if column not in adata.var.columns:
         return False
 
@@ -171,13 +174,16 @@ def _var_column_matches_axis(adata: AnnData, column: str) -> bool:
     var_names = adata.var_names.to_numpy()
     var_index = adata.var.index.to_numpy()
 
-    return np.array_equal(values, var_names) and np.array_equal(values, var_index)
+    matches_names = np.array_equal(values, var_names)
+    matches_index = np.array_equal(values, var_index)
+    return matches_names and matches_index
 
 
 def _has_multiple_values_per_cell(
     series: pd.Series, delimiters: str = " ,;"
 ) -> bool:
-    """Return True when any entry contains more than one value separated by delimiters."""
+    """Return True when any entry contains more than one
+    value separated by delimiters."""
     if series.isna().any():
         return True
 
@@ -187,6 +193,156 @@ def _has_multiple_values_per_cell(
 
     pattern = f"[{re.escape(delimiters)}]"
     return tokens.str.contains(pattern).any()
+
+
+# ------------------------------------------------------------------
+# is_proteodata helpers
+# ------------------------------------------------------------------
+
+_FAIL = (False, None)
+
+
+def _validation_fail(msg, raise_error):
+    """Raise ValueError or return ``_FAIL`` depending on *raise_error*."""
+    if raise_error:
+        raise ValueError(msg)
+    return _FAIL
+
+
+def _check_matrix_values(adata, raise_error, layers):
+    """Validate .X and requested layers for infinite values."""
+    if adata.X is not None and _has_infinite_values(adata.X):
+        return _validation_fail(
+            "AnnData.X contains infinite values (np.inf or "
+            "-np.inf). Please remove or replace infinite values "
+            "before proceeding.",
+            raise_error,
+        )
+
+    if layers is not None:
+        if isinstance(layers, str):
+            layers = [layers]
+        for layer_key in layers:
+            if layer_key not in adata.layers:
+                return _validation_fail(
+                    f"Layer '{layer_key}' not found in "
+                    f"adata.layers. Available layers: "
+                    f"{list(adata.layers.keys())}.",
+                    raise_error,
+                )
+            if _has_infinite_values(adata.layers[layer_key]):
+                return _validation_fail(
+                    f"adata.layers['{layer_key}'] contains "
+                    f"infinite values (np.inf or -np.inf). "
+                    f"Please remove or replace infinite values "
+                    f"before proceeding.",
+                    raise_error,
+                )
+    return None
+
+
+def _check_obs_requirements(adata, raise_error):
+    """Validate obs has sample_id and no misplaced var columns."""
+    obs = adata.obs
+    if "sample_id" not in obs.columns:
+        return _validation_fail(
+            "Missing required 'sample_id' column in adata.obs. "
+            "Each observation (row) must have a sample "
+            "identifier equal to the AnnData index.",
+            raise_error,
+        )
+
+    misplaced_in_obs = [
+        col for col in ("protein_id", "peptide_id")
+        if col in obs.columns
+    ]
+    if misplaced_in_obs:
+        return _validation_fail(
+            f"Found column(s) {misplaced_in_obs} in adata.obs. "
+            "These columns belong in adata.var, not adata.obs. "
+            "Observations (rows) represent samples, while "
+            "variables (columns) represent peptides or proteins.",
+            raise_error,
+        )
+    return None
+
+
+def _check_var_requirements(adata, raise_error):
+    """Validate var does not contain misplaced obs columns."""
+    if "sample_id" in adata.var.columns:
+        return _validation_fail(
+            "Found 'sample_id' column in adata.var. "
+            "This column belongs in adata.obs, not adata.var. "
+            "Observations (rows) represent samples, while "
+            "variables (columns) represent peptides or proteins.",
+            raise_error,
+        )
+    return None
+
+
+def _check_peptide_level(adata, raise_error):
+    """Validate peptide-level specific requirements."""
+    var = adata.var
+    if "protein_id" not in var.columns:
+        return _validation_fail(
+            "Found a 'peptide_id' column but no 'protein_id' "
+            "column. If working at peptide-level, a "
+            "peptide_id -> protein_id mapping must be included.",
+            raise_error,
+        )
+
+    if var["peptide_id"].isna().any():
+        return _validation_fail(
+            "Column 'peptide_id' in adata.var contains missing "
+            "values (NaN/None). All peptide identifiers must "
+            "be non-null.",
+            raise_error,
+        )
+
+    if var["protein_id"].isna().any():
+        return _validation_fail(
+            "Column 'protein_id' in adata.var contains missing "
+            "values (NaN/None). All protein identifiers must "
+            "be non-null.",
+            raise_error,
+        )
+
+    if not _var_column_matches_axis(adata, "peptide_id"):
+        return _validation_fail(
+            "Found a 'peptide_id' column but it does "
+            "not match AnnData.var_names. "
+            "If your data are protein-level, please rename "
+            "or remove the 'peptide_id' column.",
+            raise_error,
+        )
+
+    if _has_multiple_values_per_cell(var["protein_id"]):
+        return _validation_fail(
+            "Detected peptides mapping to multiple proteins. "
+            "Ensure each peptide maps to exactly one protein_id.",
+            raise_error,
+        )
+    return None
+
+
+def _check_protein_level(adata, raise_error):
+    """Validate protein-level specific requirements."""
+    var = adata.var
+    if var["protein_id"].isna().any():
+        return _validation_fail(
+            "Column 'protein_id' in adata.var contains missing "
+            "values (NaN/None). All protein identifiers must "
+            "be non-null.",
+            raise_error,
+        )
+
+    if not _var_column_matches_axis(adata, "protein_id"):
+        return _validation_fail(
+            "Found a 'protein_id' column but it does "
+            "not match AnnData.var_names.",
+            raise_error,
+        )
+    return None
 
 
 def is_proteodata(
@@ -239,162 +395,37 @@ def is_proteodata(
         raise TypeError("is_proteodata expects an AnnData object.")
 
     if adata.var is None or adata.var.empty:
-        return False, None
+        return _FAIL
 
-    _check_structure(adata)  # also checks if obs/vars are unique
+    _check_structure(adata)
 
-    if adata.X is not None and _has_infinite_values(adata.X):
-        msg = (
-            "AnnData.X contains infinite values (np.inf or "
-            "-np.inf). Please remove or replace infinite values "
-            "before proceeding."
-        )
-        if raise_error:
-            raise ValueError(msg)
-        return False, None
+    result = _check_matrix_values(adata, raise_error, layers)
+    if result is not None:
+        return result
 
-    # Validate requested layers for infinite values
-    if layers is not None:
-        if isinstance(layers, str):
-            layers = [layers]
-        for layer_key in layers:
-            if layer_key not in adata.layers:
-                msg = (
-                    f"Layer '{layer_key}' not found in "
-                    f"adata.layers. Available layers: "
-                    f"{list(adata.layers.keys())}."
-                )
-                if raise_error:
-                    raise ValueError(msg)
-                return False, None
-            if _has_infinite_values(adata.layers[layer_key]):
-                msg = (
-                    f"adata.layers['{layer_key}'] contains "
-                    f"infinite values (np.inf or -np.inf). "
-                    f"Please remove or replace infinite values "
-                    f"before proceeding."
-                )
-                if raise_error:
-                    raise ValueError(msg)
-                return False, None
+    result = _check_obs_requirements(adata, raise_error)
+    if result is not None:
+        return result
 
-    # Check obs requirements
-    obs = adata.obs
-    if "sample_id" not in obs.columns:
-        msg = (
-            "Missing required 'sample_id' column in adata.obs. "
-            "Each observation (row) must have a sample identifier equal to the AnnData index."
-        )
-        if raise_error:
-            raise ValueError(msg)
-        return False, None
+    result = _check_var_requirements(adata, raise_error)
+    if result is not None:
+        return result
 
-    # Check for misplaced columns in obs (these belong in var)
-    misplaced_in_obs = []
-    if "protein_id" in obs.columns:
-        misplaced_in_obs.append("protein_id")
-    if "peptide_id" in obs.columns:
-        misplaced_in_obs.append("peptide_id")
-    if misplaced_in_obs:
-        msg = (
-            f"Found column(s) {misplaced_in_obs} in adata.obs. "
-            "These columns belong in adata.var, not adata.obs. "
-            "Observations (rows) represent samples, while variables (columns) "
-            "represent peptides or proteins."
-        )
-        if raise_error:
-            raise ValueError(msg)
-        return False, None
-
-    # Check for misplaced columns in var (these belong in obs)
     var = adata.var
-    if "sample_id" in var.columns:
-        msg = (
-            "Found 'sample_id' column in adata.var. "
-            "This column belongs in adata.obs, not adata.var. "
-            "Observations (rows) represent samples, while variables (columns) "
-            "represent peptides or proteins."
-        )
-        if raise_error:
-            raise ValueError(msg)
-        return False, None
-
-    has_protein_id = "protein_id" in var.columns
     has_peptide_id = "peptide_id" in var.columns
 
     if has_peptide_id:
-        if not has_protein_id:
-            msg = (
-                "Found a 'peptide_id' column but no 'protein_id' "
-                "column. If working at peptide-level, a "
-                "peptide_id -> protein_id mapping must be included."
-            )
-            if raise_error:
-                raise ValueError(msg)
-            return False, None
-
-        if var["peptide_id"].isna().any():
-            msg = (
-                "Column 'peptide_id' in adata.var contains missing "
-                "values (NaN/None). All peptide identifiers must "
-                "be non-null."
-            )
-            if raise_error:
-                raise ValueError(msg)
-            return False, None
-
-        if var["protein_id"].isna().any():
-            msg = (
-                "Column 'protein_id' in adata.var contains missing "
-                "values (NaN/None). All protein identifiers must "
-                "be non-null."
-            )
-            if raise_error:
-                raise ValueError(msg)
-            return False, None
-
-        if not _var_column_matches_axis(adata, "peptide_id"):
-            msg = (
-                "Found a 'peptide_id' column but it does not match AnnData.var_names. "
-                "If your data are protein-level, please rename or remove the "
-                "'peptide_id' column."
-            )
-            if raise_error:
-                raise ValueError(msg)
-            return False, None
-
-        if _has_multiple_values_per_cell(var["protein_id"]):
-            msg = (
-                "Detected peptides mapping to multiple proteins. "
-                "Ensure each peptide maps to exactly one protein_id."
-            )
-            if raise_error:
-                raise ValueError(msg)
-            return False, None
-
+        result = _check_peptide_level(adata, raise_error)
+        if result is not None:
+            return result
         return True, "peptide"
 
-    if not has_protein_id:
-        return False, None
+    if "protein_id" not in var.columns:
+        return _FAIL
 
-    if var["protein_id"].isna().any():
-        msg = (
-            "Column 'protein_id' in adata.var contains missing "
-            "values (NaN/None). All protein identifiers must "
-            "be non-null."
-        )
-        if raise_error:
-            raise ValueError(msg)
-        return False, None
-
-    if not _var_column_matches_axis(adata, "protein_id"):
-        msg = (
-            "Found a 'protein_id' column but it does not match AnnData.var_names."
-        )
-        if raise_error:
-            raise ValueError(msg)
-        return False, None
-
+    result = _check_protein_level(adata, raise_error)
+    if result is not None:
+        return result
     return True, "protein"
 
 
@@ -432,83 +463,98 @@ def check_proteodata(
         adata,
         raise_error=True,
         layers=layers,
-        )
+    )
+
+
+# ------------------------------------------------------------------
+# sanitize_obs_cols helpers
+# ------------------------------------------------------------------
+
+def _is_missing(x):
+    """Return True if *x* is a pandas-recognised missing value."""
+    try:
+        return pd.isna(x)
+    except Exception:
+        return False
+
+
+def _looks_like_sequence(x):
+    """Return True for list, tuple, set, or ndarray."""
+    return isinstance(x, (list, tuple, set, np.ndarray))
+
+
+def _to_jsonish(x, jsonize_complex):
+    """Convert *x* to a JSON-serialisable string representation."""
+    if _is_missing(x):
+        return np.nan
+
+    is_dict = isinstance(x, dict)
+    is_seq = _looks_like_sequence(x)
+    if jsonize_complex and (is_dict or is_seq):
+        if isinstance(x, set):
+            x = sorted(list(x))
+        try:
+            return json.dumps(
+                x, default=str, ensure_ascii=False,
+            )
+        except Exception:
+            return str(x)
+    return str(x)
+
+
+def _coerce_series(s, jsonize_complex):
+    """Coerce a single Series to an HDF5-writable dtype."""
+    if pd.api.types.is_bool_dtype(s):
+        return s.astype('boolean')
+    if pd.api.types.is_integer_dtype(s):
+        return s.astype('int64')
+    if pd.api.types.is_float_dtype(s):
+        return s.astype('float64')
+    if isinstance(s.dtype, pd.CategoricalDtype):
+        return s
+
+    if pd.api.types.is_object_dtype(s):
+        only_strings = s.map(
+            lambda x: isinstance(
+                x, (str, np.str_)
+            ) or _is_missing(x)
+        ).all()
+        if only_strings:
+            return s.astype('object')
+
+        out = s.map(
+            lambda x: _to_jsonish(x, jsonize_complex),
+        ).astype('object')
+        return out
+
+    return s
 
 
 def sanitize_obs_cols(
     adata,
     jsonize_complex=True,
-    #datetime_format='%Y-%m-%d %H:%M:%S'
 ):
-    '''Sanitize anndata columns (in-place)
+    '''Sanitize anndata columns (in-place).
 
-    Makes all columns of adata.obs HDF5-writable by converting unsupported types.
+    Makes all columns of adata.obs HDF5-writable by
+    converting unsupported types.
 
-    - Keeps numeric/boolean columns as pandas nullable dtypes.
-    #- Converts datetime columns to formatted string *object* dtype.
+    - Keeps numeric/boolean columns as pandas nullable
+      dtypes.
     - Object columns:
-        • If all entries are strings/missing → cast to object dtype.
-        • If mixed/complex → JSON-serialize (if jsonize_complex=True), then object dtype.
+        - If all entries are strings/missing: cast to
+          object dtype.
+        - If mixed/complex: JSON-serialize (if
+          jsonize_complex=True), then object dtype.
 
     Args:
-        jsonize_complex (bool): JSON-serialize lists/dicts/sets in object columns.
-        datetime_format (str): Format for datetime conversion.
+        jsonize_complex (bool): JSON-serialize
+            lists/dicts/sets in object columns.
     '''
-    def _is_missing(x):
-        try:
-            return pd.isna(x)
-        except Exception:
-            return False
-
-    def _looks_like_sequence(x):
-        return isinstance(x, (list, tuple, set, np.ndarray))
-
-    def _to_jsonish(x):
-
-        if _is_missing(x):
-            return np.nan
-
-        if jsonize_complex and (isinstance(x, dict) or _looks_like_sequence(x)):
-
-            if isinstance(x, set):
-                x = sorted(list(x))
-            try:
-                return json.dumps(x, default=str, ensure_ascii=False)
-            except Exception:
-                return str(x)
-        return str(x)
-
-    def _coerce_series(s):
-        if pd.api.types.is_bool_dtype(s):
-            return s.astype('boolean')
-        if pd.api.types.is_integer_dtype(s):
-            return s.astype('int64')
-        if pd.api.types.is_float_dtype(s):
-            return s.astype('float64')
-        if isinstance(s.dtype, pd.CategoricalDtype):
-            return s
-
-        # Datetime → formatted string (object dtype)
-        #if pd.api.types.is_datetime64_any_dtype(s):
-            #return s.dt.strftime(datetime_format).astype('object')
-
-        # Object or mixed columns
-        if pd.api.types.is_object_dtype(s):
-            only_strings = s.map(lambda x: isinstance(x, (str, np.str_)) or _is_missing(x)).all()
-            if only_strings:
-                return s.astype('object')
-
-            # Mixed/complex objects → JSON
-            out = s.map(_to_jsonish).astype('object')
-            return out
-
-        # Fallback untouched
-        return s
-
     if adata.obs is not None and len(adata.obs.columns):
         obs = adata.obs.copy()
         for c in obs.columns:
-            obs[c] = _coerce_series(obs[c])
+            obs[c] = _coerce_series(obs[c], jsonize_complex)
         adata.obs = obs
 
     return adata

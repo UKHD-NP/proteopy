@@ -64,7 +64,10 @@ class TestIsProteodata:
 
         assert is_proteodata(adata) == (False, None)
 
-        with pytest.raises(ValueError, match="does not match AnnData.var_names"):
+        with pytest.raises(
+            ValueError,
+            match="does not match AnnData.var_names",
+        ):
             is_proteodata(adata, raise_error=True)
 
     def test_peptide_multiple_protein_mapping_returns_false(self):
@@ -107,7 +110,10 @@ class TestIsProteodata:
 
         assert is_proteodata(adata) == (False, None)
 
-        with pytest.raises(ValueError, match="does not match AnnData.var_names"):
+        with pytest.raises(
+            ValueError,
+            match="does not match AnnData.var_names",
+        ):
             is_proteodata(adata, raise_error=True)
 
     def test_protein_id_must_be_unique(self):
@@ -124,7 +130,10 @@ class TestIsProteodata:
 
     def test_missing_required_columns_returns_false(self):
         proteins = ["PROT_A", "PROT_B"]
-        adata = AnnData(np.arange(4).reshape(2, 2), var=pd.DataFrame(index=proteins))
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            var=pd.DataFrame(index=proteins),
+        )
         adata.var["unrelated"] = ["foo", "bar"]
 
         assert is_proteodata(adata) == (False, None)
@@ -147,9 +156,9 @@ class TestIsProteodata:
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
                 {"sample_id": obs_names}, index=obs_names,
-                ),
+            ),
             var=pd.DataFrame(index=peptides),
-            )
+        )
         adata.var["peptide_id"] = ["PEP1", None]
         adata.var["protein_id"] = ["PROT_A", "PROT_B"]
 
@@ -158,7 +167,7 @@ class TestIsProteodata:
         with pytest.raises(
             ValueError,
             match="'peptide_id'.*missing values",
-            ):
+        ):
             is_proteodata(adata, raise_error=True)
 
     def test_nan_in_protein_id_peptide_level_returns_false(self):
@@ -168,9 +177,9 @@ class TestIsProteodata:
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
                 {"sample_id": obs_names}, index=obs_names,
-                ),
+            ),
             var=pd.DataFrame(index=peptides),
-            )
+        )
         adata.var["peptide_id"] = peptides
         adata.var["protein_id"] = ["PROT_A", np.nan]
 
@@ -179,7 +188,7 @@ class TestIsProteodata:
         with pytest.raises(
             ValueError,
             match="'protein_id'.*missing values",
-            ):
+        ):
             is_proteodata(adata, raise_error=True)
 
     def test_nan_in_protein_id_protein_level_returns_false(self):
@@ -189,9 +198,9 @@ class TestIsProteodata:
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
                 {"sample_id": obs_names}, index=obs_names,
-                ),
+            ),
             var=pd.DataFrame(index=proteins),
-            )
+        )
         adata.var["protein_id"] = ["PROT_A", None]
 
         assert is_proteodata(adata) == (False, None)
@@ -199,7 +208,7 @@ class TestIsProteodata:
         with pytest.raises(
             ValueError,
             match="'protein_id'.*missing values",
-            ):
+        ):
             is_proteodata(adata, raise_error=True)
 
     # -- layers parameter -------------------------------------
@@ -211,23 +220,25 @@ class TestIsProteodata:
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
                 {"sample_id": obs_names}, index=obs_names,
-                ),
+            ),
             var=pd.DataFrame(index=proteins),
-            )
+        )
         adata.var["protein_id"] = proteins
 
-        result = is_proteodata(adata, layers="nonexistent")
+        result = is_proteodata(
+            adata, layers="nonexistent",
+        )
         assert result == (False, None)
 
         with pytest.raises(
             ValueError,
             match="Layer 'nonexistent' not found",
-            ):
+        ):
             is_proteodata(
                 adata,
                 raise_error=True,
                 layers="nonexistent",
-                )
+            )
 
     def test_layers_with_infinite_values_returns_false(self):
         proteins = ["PROT_A", "PROT_B"]
@@ -237,9 +248,9 @@ class TestIsProteodata:
             X,
             obs=pd.DataFrame(
                 {"sample_id": obs_names}, index=obs_names,
-                ),
+            ),
             var=pd.DataFrame(index=proteins),
-            )
+        )
         adata.var["protein_id"] = proteins
         layer = X.copy()
         layer[0, 0] = np.inf
@@ -250,13 +261,13 @@ class TestIsProteodata:
 
         with pytest.raises(
             ValueError,
-            match="layers\\['raw'\\].*infinite values",
-            ):
+            match=r"layers\['raw'\].*infinite values",
+        ):
             is_proteodata(
                 adata,
                 raise_error=True,
                 layers="raw",
-                )
+            )
 
     def test_layers_valid_passes(self):
         proteins = ["PROT_A", "PROT_B"]
@@ -266,15 +277,15 @@ class TestIsProteodata:
             X,
             obs=pd.DataFrame(
                 {"sample_id": obs_names}, index=obs_names,
-                ),
+            ),
             var=pd.DataFrame(index=proteins),
-            )
+        )
         adata.var["protein_id"] = proteins
         adata.layers["raw"] = X.copy()
 
-        assert is_proteodata(adata, layers="raw") == (
-            True, "protein",
-            )
+        assert is_proteodata(
+            adata, layers="raw",
+        ) == (True, "protein")
 
     def test_layers_multiple_keys(self):
         proteins = ["PROT_A", "PROT_B"]
@@ -284,25 +295,24 @@ class TestIsProteodata:
             X,
             obs=pd.DataFrame(
                 {"sample_id": obs_names}, index=obs_names,
-                ),
+            ),
             var=pd.DataFrame(index=proteins),
-            )
+        )
         adata.var["protein_id"] = proteins
         adata.layers["raw"] = X.copy()
         bad_layer = X.copy()
         bad_layer[1, 1] = -np.inf
         adata.layers["bad"] = bad_layer
 
-        # First layer ok, second has inf
         with pytest.raises(
             ValueError,
-            match="layers\\['bad'\\].*infinite values",
-            ):
+            match=r"layers\['bad'\].*infinite values",
+        ):
             is_proteodata(
                 adata,
                 raise_error=True,
                 layers=["raw", "bad"],
-                )
+            )
 
     # -- check_proteodata with layers -------------------------
 
@@ -314,24 +324,22 @@ class TestIsProteodata:
             X,
             obs=pd.DataFrame(
                 {"sample_id": obs_names}, index=obs_names,
-                ),
+            ),
             var=pd.DataFrame(index=proteins),
-            )
+        )
         adata.var["protein_id"] = proteins
         adata.layers["raw"] = X.copy()
 
-        # Valid layer passes
-        assert check_proteodata(adata, layers="raw") == (
-            True, "protein",
-            )
+        assert check_proteodata(
+            adata, layers="raw",
+        ) == (True, "protein")
 
-        # Layer with inf raises
         bad_layer = X.copy()
         bad_layer[0, 0] = np.inf
         adata.layers["bad"] = bad_layer
 
         with pytest.raises(
             ValueError,
-            match="layers\\['bad'\\].*infinite values",
-            ):
+            match=r"layers\['bad'\].*infinite values",
+        ):
             check_proteodata(adata, layers="bad")

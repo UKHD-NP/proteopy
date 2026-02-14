@@ -28,12 +28,47 @@ Avoid prolixity:
 
 ### Function guidelines
 
-Use the funcion is_proteodata() found in proteopy/utils/anndata.py to check weather the supplied AnnData object conforms to the proteomics data assumptions for the proteopy package. The is_proteodata() is called at the beginning of the function and before returning the new anndata or modifying the supplied AnnData inplace.
-As a reminder, the proteomics data assumptions are that:
- - if the data is a protein-level proteomics dataset, it must contain the .var column `protein_id` which contains the same values and in the same order as the .var index and .var_names.
- - if the data is a peptide-level proteomics dataset, it must contain the .var columns `peptide_id` and `protein_id`. The `peptide_id` column contains the same values and in the same order as the .var index and .var_names. The `protein_id` are the proteins that the peptides map to. It must be single mapping, so no peptide should map to more than one protein_id.
+Use `check_proteodata()` from `proteopy/utils/anndata.py` to validate
+that an AnnData object conforms to ProteoPy assumptions. Call it at the
+beginning of every public function and again before returning a new or
+modified AnnData. Use `is_proteodata()` when you need to detect *whether*
+the data conforms and at which level (it returns
+`(True, "peptide")`, `(True, "protein")`, or `(False, None)`).
 
-If the function uses the AnnData.X matrix, always check if it is a scipy.sparse matrix. As a general practice, the matrix will be made non-sparse for its algorithm but if possible sparse operations on the sparse matrix will be used to obtain the same result. If the function modifies the AnnData.X matrix inplace or returns an transformed AnnData matrix and the input was a sparse matrix, it is ensured, that the output AnnData.X matrix is also sparse.
+Both functions enforce the following checks:
+ - **Structure**: obs/var indices must be unique and synchronised with
+   obs_names/var_names; `.X` must be 2-dimensional.
+ - **obs requirements**: `.obs` must contain a `sample_id` column.
+   Columns `protein_id` / `peptide_id` must *not* appear in `.obs`
+   (they belong in `.var`).
+ - **var requirements**: `sample_id` must *not* appear in `.var`
+   (it belongs in `.obs`).
+ - **Infinite values**: `.X` must not contain `np.inf` / `-np.inf`.
+   When the `layers` parameter is provided, the specified
+   `adata.layers` matrices are checked as well.
+ - **ID columns must not contain NaN**: neither `peptide_id` nor
+   `protein_id` may have missing values.
+ - **Protein-level**: `.var["protein_id"]` must exist and match
+   `.var_names` (same values, same order).
+ - **Peptide-level**: `.var["peptide_id"]` and `.var["protein_id"]`
+   must both exist. `peptide_id` must match `.var_names`; each
+   peptide must map to exactly one `protein_id` (no multi-mapping).
+
+Signature reference:
+```python
+is_proteodata(adata, *, raise_error=False, layers=None)
+    -> tuple[bool, str | None]
+check_proteodata(adata, *, layers=None)
+    -> tuple[bool, str | None]   # raises ValueError on failure
+```
+
+If the function uses the AnnData.X matrix, always check if it is a
+scipy.sparse matrix. As a general practice, the matrix will be made
+non-sparse for its algorithm but if possible sparse operations on the
+sparse matrix will be used to obtain the same result. If the function
+modifies the AnnData.X matrix inplace or returns a transformed AnnData
+matrix and the input was a sparse matrix, it is ensured that the output
+AnnData.X matrix is also sparse.
 
 
 General argument guidelines:
@@ -147,18 +182,18 @@ some_function(
     arg1=arg1,
     arg2=arg2,
     arg3=arg3,
-    )
+)
 
 def my_function(
     arg1,
     arg2,
     arg3,
-    ):
+):
     raise ValueError(
         "Line one\n"
         "Line two\n"
         "Line three"
-        )
+    )
 ```
 
 ---
@@ -181,20 +216,29 @@ from tests.utils.helpers import transform_dendogram_r2py # test helper
 
 #### 1) Validate proteomics assumptions
 Every public function that accepts an `AnnData` must call
-`proteopy/utils/anndata.py:check_proteodata()` at the beginning and again before returning
-(if a new `AnnData` is returned or the input is modified in-place).
+`proteopy/utils/anndata.py:check_proteodata()` at the beginning and
+again before returning (if a new `AnnData` is returned or the input is
+modified in-place). Pass the `layers` parameter when the function
+operates on specific `adata.layers` matrices.
 
-Assumptions enforced by `check_proteodata()`:
-- Protein-level datasets: `.var['protein_id']` must exist and match `.var_names`
-  (same values in the same order).
-- Peptide-level datasets: `.var['peptide_id']` and `.var['protein_id']` must exist.
-  - `.var['peptide_id']` matches `.var_names` (same values and order).
-  - `.var['protein_id']` contains the single-mapped protein for each peptide
-    (no peptide maps to multiple proteins).
+Checks enforced by `check_proteodata()` / `is_proteodata()`:
+- **Structure**: unique obs/var indices, 2-D `.X`, synchronised axes.
+- **obs**: `sample_id` column required; `protein_id`/`peptide_id`
+  must not appear in `.obs`.
+- **var**: `sample_id` must not appear in `.var`.
+- **Infinite values**: `.X` (and any requested layers) must be free
+  of `np.inf` / `-np.inf`.
+- **No NaN in ID columns**: `peptide_id` and `protein_id` must not
+  contain missing values.
+- **Protein-level**: `.var['protein_id']` must exist and match
+  `.var_names` (same values in the same order).
+- **Peptide-level**: `.var['peptide_id']` and `.var['protein_id']`
+  must exist. `peptide_id` matches `.var_names`. Each peptide maps
+  to exactly one `protein_id` (no multi-mapping).
 
-The helper function is_proteodata can also be useful to detect if the anndata is a
-proteodata dataset and at which level as it returns (bool, str) where the string is
-either 'peptide' or 'protein'. 
+Use `is_proteodata()` when you need to detect whether the data
+conforms and at which level; it returns `(True, "peptide")`,
+`(True, "protein")`, or `(False, None)`.
 
 #### 2) Handle sparse `.X` consistently
 If a function uses `AnnData.X`:
@@ -247,12 +291,21 @@ ProteoPy assumes that `AnnData.X` contains only the following data types:
 - `float` (floating-point numeric values)
 
 **Infinite value validation**:
-- The `is_proteodata()` and `check_proteodata()` functions automatically check for `np.inf` and `-np.inf`
-- A `ValueError` is raised if infinite values are detected in `AnnData.X`
-- Since all public functions must call `check_proteodata()` (see subsection 1 above), this validation is automatically enforced
-- No additional infinite value checking is needed in individual functions
+- `is_proteodata()` and `check_proteodata()` automatically check
+  `.X` for `np.inf` and `-np.inf`.
+- When the `layers` parameter is provided, the specified
+  `adata.layers` matrices are checked as well.
+- A `ValueError` is raised if infinite values are detected.
+- Since all public functions must call `check_proteodata()` (see
+  subsection 1 above), this validation is automatically enforced.
+- No additional infinite value checking is needed in individual
+  functions.
 
-**Rationale**: Infinite values can cause unexpected behavior in statistical computations, correlations, and normalization procedures. Centralized validation in `check_proteodata()` ensures consistent error handling across all public functions and guides users to clean their data appropriately.
+**Rationale**: Infinite values can cause unexpected behavior in
+statistical computations, correlations, and normalization procedures.
+Centralized validation in `check_proteodata()` ensures consistent
+error handling across all public functions and guides users to clean
+their data appropriately.
 
 ---
 
@@ -338,7 +391,7 @@ pip install -r requirements/requirements_development.txt
 ### Quality Checks
 ```bash
 flake8 .
-pylint $(git ls-files "*.py") --disable=all --enable=E,F --disable=E0401
+pylint $(git ls-files "*.py") --disable=all --enable=E,F
 pytest -v tests/
 ```
 
@@ -397,7 +450,7 @@ New assets must remain lightweight and include provenance notes.
 ## Coding Standards
 - Python version: 3.10–3.11
 - Indentation: 4 spaces
-- Line length: 72 characters for docstrings and 79 characters for code but if necessary 88 characters are allowed for e.g. long strings (Black formatter standard)
+- Line length: 72 characters for docstrings and 79 characters for code.
 - Naming conventions:
   - Functions and variables → `snake_case`
   - Classes → `CamelCase`
@@ -470,18 +523,18 @@ some_function(
     arg1=arg1,
     arg2=arg2,
     arg3=arg3,
-    )
+)
 
 def my_function(
     arg1,
     arg2,
     arg3,
-    ):
+):
     raise ValueError(
         "Line one\n"
         "Line two\n"
         "Line three"
-        )
+    )
 ```
 
 ---
@@ -504,20 +557,29 @@ from tests.utils.helpers import transform_dendogram_r2py # test helper
 
 #### 1) Validate proteomics assumptions
 Every public function that accepts an `AnnData` must call
-`proteopy/utils/anndata.py:check_proteodata()` at the beginning and again before returning
-(if a new `AnnData` is returned or the input is modified in-place).
+`proteopy/utils/anndata.py:check_proteodata()` at the beginning and
+again before returning (if a new `AnnData` is returned or the input is
+modified in-place). Pass the `layers` parameter when the function
+operates on specific `adata.layers` matrices.
 
-Assumptions enforced by `check_proteodata()`:
-- Protein-level datasets: `.var['protein_id']` must exist and match `.var_names`
-  (same values in the same order).
-- Peptide-level datasets: `.var['peptide_id']` and `.var['protein_id']` must exist.
-  - `.var['peptide_id']` matches `.var_names` (same values and order).
-  - `.var['protein_id']` contains the single-mapped protein for each peptide
-    (no peptide maps to multiple proteins).
+Checks enforced by `check_proteodata()` / `is_proteodata()`:
+- **Structure**: unique obs/var indices, 2-D `.X`, synchronised axes.
+- **obs**: `sample_id` column required; `protein_id`/`peptide_id`
+  must not appear in `.obs`.
+- **var**: `sample_id` must not appear in `.var`.
+- **Infinite values**: `.X` (and any requested layers) must be free
+  of `np.inf` / `-np.inf`.
+- **No NaN in ID columns**: `peptide_id` and `protein_id` must not
+  contain missing values.
+- **Protein-level**: `.var['protein_id']` must exist and match
+  `.var_names` (same values in the same order).
+- **Peptide-level**: `.var['peptide_id']` and `.var['protein_id']`
+  must exist. `peptide_id` matches `.var_names`. Each peptide maps
+  to exactly one `protein_id` (no multi-mapping).
 
-The helper function is_proteodata can also be useful to detect if the anndata is a
-proteodata dataset and at which level as it returns (bool, str) where the string is
-either 'peptide' or 'protein'. 
+Use `is_proteodata()` when you need to detect whether the data
+conforms and at which level; it returns `(True, "peptide")`,
+`(True, "protein")`, or `(False, None)`.
 
 #### 2) Handle sparse `.X` consistently
 If a function uses `AnnData.X`:

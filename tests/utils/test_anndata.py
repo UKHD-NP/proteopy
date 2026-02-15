@@ -147,6 +147,58 @@ class TestIsProteodata:
         with pytest.raises(TypeError, match="expects an AnnData object"):
             is_proteodata(object())
 
+    # -- sample_id must match obs_names -----------------------
+
+    def test_sample_id_matching_obs_names_passes(self):
+        proteins = ["PROT_A", "PROT_B"]
+        obs_names = ["obs0", "obs1"]
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            obs=pd.DataFrame(
+                {"sample_id": obs_names}, index=obs_names,
+            ),
+            var=pd.DataFrame(index=proteins),
+        )
+        adata.var["protein_id"] = proteins
+
+        assert is_proteodata(adata) == (True, "protein")
+
+    def test_sample_id_not_matching_obs_names_returns_false(self):
+        proteins = ["PROT_A", "PROT_B"]
+        obs_names = ["obs0", "obs1"]
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            obs=pd.DataFrame(
+                {"sample_id": ["wrong0", "wrong1"]},
+                index=obs_names,
+            ),
+            var=pd.DataFrame(index=proteins),
+        )
+        adata.var["protein_id"] = proteins
+
+        assert is_proteodata(adata) == (False, None)
+
+        with pytest.raises(
+            ValueError,
+            match="does not match.*obs_names",
+        ):
+            is_proteodata(adata, raise_error=True)
+
+    def test_sample_id_swapped_order_returns_false(self):
+        proteins = ["PROT_A", "PROT_B"]
+        obs_names = ["obs0", "obs1"]
+        adata = AnnData(
+            np.arange(4).reshape(2, 2),
+            obs=pd.DataFrame(
+                {"sample_id": ["obs1", "obs0"]},
+                index=obs_names,
+            ),
+            var=pd.DataFrame(index=proteins),
+        )
+        adata.var["protein_id"] = proteins
+
+        assert is_proteodata(adata) == (False, None)
+
     # -- NaN in ID columns ------------------------------------
 
     def test_nan_in_peptide_id_returns_false(self):

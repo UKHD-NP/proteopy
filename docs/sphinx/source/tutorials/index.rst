@@ -7,4 +7,5 @@ workflows.
 .. toctree::
    :maxdepth: 1
 
+   The proteodata format <proteodata_basics>
    workflow_protein-analysis_karayel-2020

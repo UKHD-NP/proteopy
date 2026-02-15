@@ -252,6 +252,20 @@ def _check_obs_requirements(adata, raise_error):
             raise_error,
         )
 
+    sample_ids = obs["sample_id"].to_numpy()
+    obs_names = adata.obs_names.to_numpy()
+    obs_index = obs.index.to_numpy()
+    if (
+        not np.array_equal(sample_ids, obs_names)
+        or not np.array_equal(sample_ids, obs_index)
+    ):
+        return _validation_fail(
+            "adata.obs['sample_id'] does not match "
+            "adata.obs_names. The 'sample_id' column "
+            "must be identical to the obs index.",
+            raise_error,
+        )
+
     misplaced_in_obs = [
         col for col in ("protein_id", "peptide_id")
         if col in obs.columns

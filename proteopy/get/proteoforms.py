@@ -61,7 +61,8 @@ def proteoforms_df(
     ]
 
     missing_columns = [
-        column for column in proteoform_columns if column not in adata.var.columns
+        column for column in proteoform_columns
+        if column not in adata.var.columns
     ]
 
     if missing_columns:

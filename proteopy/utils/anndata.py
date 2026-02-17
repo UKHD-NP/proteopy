@@ -255,10 +255,9 @@ def _check_obs_requirements(adata, raise_error):
     sample_ids = obs["sample_id"].to_numpy()
     obs_names = adata.obs_names.to_numpy()
     obs_index = obs.index.to_numpy()
-    if (
-        not np.array_equal(sample_ids, obs_names)
-        or not np.array_equal(sample_ids, obs_index)
-    ):
+    ids_match_names = np.array_equal(sample_ids, obs_names)
+    ids_match_index = np.array_equal(sample_ids, obs_index)
+    if not ids_match_names or not ids_match_index:
         return _validation_fail(
             "adata.obs['sample_id'] does not match "
             "adata.obs_names. The 'sample_id' column "

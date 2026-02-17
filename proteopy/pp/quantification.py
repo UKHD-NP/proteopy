@@ -11,7 +11,6 @@ from scipy import sparse
 from proteopy.utils.anndata import check_proteodata, is_proteodata
 
 
-
 def _aggregate_var_value(series):
     """Collapse a var-annotation series into a single value.
 
@@ -59,41 +58,76 @@ def _rebuild_adata(adata, X_new, var_new, inplace):
     return out
 
 
+def _apply_grouped_func(grouped, func):
+    """Dispatch aggregation for *func* (str or callable)."""
+    if isinstance(func, str):
+        if func == "sum":
+            return grouped.sum(min_count=1)
+        if func == "mean":
+            return grouped.mean()
+        if func == "median":
+            return grouped.median()
+        if func == "max":
+            return grouped.max()
+        raise ValueError(
+            "Unsupported func. Choose from "
+            "'sum', 'mean', 'median', or 'max'."
         )
+    if callable(func):
+        result = grouped.aggregate(func)
+        if isinstance(result, pd.Series):
+            result = result.to_frame().T
+        if not isinstance(result, pd.DataFrame):
+            raise TypeError(
+                "Callable `func` must return a "
+                "DataFrame or Series per group."
+            )
+        return result
+    raise TypeError(
+        "`func` must be either a string "
+        "identifier or a callable."
+    )
 
-    allowed = {"sum", "mean", "median", "max"}
-    if method not in allowed:
-        raise ValueError(
-            f"method must be one of {allowed!r}, "
-            f"got '{method}'."
+
+def _find_root(parent, x):
+    """Find root of *x* with path compression (iterative)."""
+    while parent[x] != x:
+        parent[x] = parent[parent[x]]
+        x = parent[x]
+    return x
+
+
+def _union_find_groups(peptides):
+    """Return ``{representative: [members]}`` via union-find
+    on substring containment."""
+    parent = {p: p for p in peptides}
+    rank = {p: 0 for p in peptides}
+
+    peps_by_len = sorted(peptides, key=len, reverse=True)
+    for i, longp in enumerate(peps_by_len):
+        for shortp in peps_by_len[i + 1:]:
+            if shortp in longp:
+                ra = _find_root(parent, longp)
+                rb = _find_root(parent, shortp)
+                if ra != rb:
+                    if rank[ra] < rank[rb]:
+                        ra, rb = rb, ra
+                    parent[rb] = ra
+                    if rank[ra] == rank[rb]:
+                        rank[ra] += 1
+
+    buckets = defaultdict(list)
+    for p in peptides:
+        buckets[_find_root(parent, p)].append(p)
+
+    groups = {}
+    for _, members in buckets.items():
+        rep = max(members, key=len)
+        groups[rep] = sorted(
+            members, key=lambda s: (-len(s), s),
         )
-    if zero_to_na and fill_na is not None:
-        raise ValueError(
-            "Cannot set both zero_to_na and fill_na."
-        )
-    if keep_var_cols is not None:
-        missing = [
-            c for c in keep_var_cols
-            if c not in adata.var.columns
-        ]
-        if missing:
-            raise KeyError(
-                f"keep_var_cols entries not found in "
-                f"adata.var: {missing}"
-            )
-        _reserved = {
-            "peptide_id", "protein_id",
-            "n_peptidoforms", "n_modifications",
-        }
-        overlap = [
-            c for c in keep_var_cols
-            if c in _reserved
-        ]
-        if overlap:
-            raise ValueError(
-                f"keep_var_cols must not include "
-                f"reserved columns: {overlap}"
-            )
+    return groups
+
 
 def _group_peptides(peptides: List[str]) -> Dict[str, List[str]]:
     """
@@ -107,49 +141,8 @@ def _group_peptides(peptides: List[str]) -> Dict[str, List[str]]:
         p for p in
         pd.Series(peptides).dropna().astype(str).tolist()
     ]
-    # remove duplicates, preserve order
     peptides = list(dict.fromkeys(peptides))
-
-    # --- union–find setup
-    parent = {p: p for p in peptides}
-    rank = {p: 0 for p in peptides}
-
-    def find(x):
-        while parent[x] != x:
-            parent[x] = parent[parent[x]]
-            x = parent[x]
-        return x
-
-    def union(a, b):
-        ra, rb = find(a), find(b)
-        if ra == rb:
-            return
-        if rank[ra] < rank[rb]:
-            parent[ra] = rb
-        elif rank[ra] > rank[rb]:
-            parent[rb] = ra
-        else:
-            parent[rb] = ra
-            rank[ra] += 1
-
-    # --- check containment (only compare longer → shorter)
-    peps_by_len = sorted(peptides, key=len, reverse=True)
-    for i, longp in enumerate(peps_by_len):
-        for shortp in peps_by_len[i + 1:]:
-            if shortp in longp:
-                union(longp, shortp)
-
-    # --- collect groups
-    buckets = defaultdict(list)
-    for p in peptides:
-        buckets[find(p)].append(p)
-
-    # --- representative = longest; sort members deterministically
-    groups = {}
-    for _, members in buckets.items():
-        rep = max(members, key=len)
-        groups[rep] = sorted(members, key=lambda s: (-len(s), s))
-    return groups
+    return _union_find_groups(peptides)
 
 
 def extract_peptide_groups(
@@ -264,38 +257,12 @@ def summarize_overlapping_peptides(
         columns=adata.var_names,
     )
 
-    # --- group columns by group_col and sum (NaN-aware; future-proof syntax)
+    # --- group columns and aggregate
     group_keys = adata.var[group_by].astype(str)
-    # vals.columns = group_keys.values  # Removed: do not mutate columns
-    grouped = vals.T.groupby(group_keys, sort=True, observed=True)
-    if isinstance(func, str):
-        if func == "sum":
-            agg_vals = grouped.sum(min_count=1).T
-        elif func == "mean":
-            agg_vals = grouped.mean().T
-        elif func == "median":
-            agg_vals = grouped.median().T
-        elif func == "max":
-            agg_vals = grouped.max().T
-        else:
-            raise ValueError(
-                "Unsupported func. Choose from "
-                "'sum', 'mean', 'median', or 'max'."
-            )
-    elif callable(func):
-        agg_vals = grouped.aggregate(func).T
-        if isinstance(agg_vals, pd.Series):
-            agg_vals = agg_vals.to_frame().T
-        if not isinstance(agg_vals, pd.DataFrame):
-            raise TypeError(
-                "Callable `func` must return a "
-                "DataFrame or Series per group."
-            )
-    else:
-        raise TypeError(
-            "`func` must be either a string "
-            "identifier or a callable."
-        )
+    grouped = vals.T.groupby(
+        group_keys, sort=True, observed=True,
+    )
+    agg_vals = _apply_grouped_func(grouped, func).T
 
     # --- build new var table (aggregate annotations)
     groups = adata.var.groupby(
@@ -321,13 +288,7 @@ def summarize_overlapping_peptides(
         for col in adata.var.columns:
             if col in (group_by, peptide_col):
                 continue
-            unique_vals = sorted(set(df_g[col].dropna().astype(str)))
-            if len(unique_vals) == 0:
-                rec[col] = np.nan
-            elif len(unique_vals) == 1:
-                rec[col] = unique_vals[0]
-            else:
-                rec[col] = ";".join(unique_vals)
+            rec[col] = _aggregate_var_value(df_g[col])
         records.append(rec)
 
     var_new = pd.DataFrame.from_records(records).set_index(peptide_col)
@@ -339,32 +300,10 @@ def summarize_overlapping_peptides(
     # --- ensure 'peptide_id' column always matches index
     var_new[peptide_col] = var_new.index
 
-    # --- rebuild AnnData (shape consistency guaranteed)
-    if inplace:
-        adata._init_as_actual(
-            X=agg_vals.values,
-            obs=adata.obs.copy(),
-            var=var_new,
-            uns=adata.uns,
-            obsm=adata.obsm,
-            varm={},     # drop since vars changed
-            varp={},
-            layers={},   # reset layers for safety
-            obsp=adata.obsp if hasattr(adata, "obsp") else None,
-        )
-        adata.var_names = var_new.index
-        return None
-    else:
-        out = ad.AnnData(
-            X=agg_vals.values,
-            obs=adata.obs.copy(),
-            var=var_new.copy(),
-            uns=adata.uns.copy(),
-            obsm=adata.obsm.copy(),
-            obsp=adata.obsp.copy() if hasattr(adata, "obsp") else None,
-        )
-        out.var_names = var_new.index
-        return out
+    # --- rebuild AnnData
+    return _rebuild_adata(
+        adata, agg_vals.values, var_new, inplace,
+    )
 
 
 def quantify_by_category(
@@ -410,97 +349,35 @@ def quantify_by_category(
         columns=adata.var_names,
     )
 
-    # --- Group columns by group_col and apply requested aggregation
+    # --- Group columns and aggregate
     group_keys = adata.var[group_by].astype(str)
-    grouped = vals.groupby(group_keys, axis=1, observed=True, sort=True)
-    if isinstance(func, str):
-        if func == "sum":
-            agg_vals = grouped.sum(min_count=1)
-        elif func == "median":
-            agg_vals = grouped.median()
-        elif func == "max":
-            agg_vals = grouped.max()
-        else:
-            raise ValueError(
-                f"Unsupported func '{func}'. Choose "
-                f"from 'sum', 'median', or 'max'."
-            )
-    elif callable(func):
-        agg_vals = grouped.aggregate(func)
-        if isinstance(agg_vals, pd.Series):
-            agg_vals = agg_vals.to_frame().T
-        if not isinstance(agg_vals, pd.DataFrame):
-            raise TypeError(
-                "Callable `func` must return a pandas "
-                "DataFrame when aggregated over groups."
-            )
-    else:
-        raise TypeError(
-            "`func` must be either a string "
-            "identifier or a callable."
-        )
+    grouped = vals.T.groupby(
+        group_keys, sort=True, observed=True,
+    )
+    agg_vals = _apply_grouped_func(grouped, func).T
 
     # --- Build new var table (aggregate annotations per group)
     records = []
-    for gkey, df_g in adata.var.groupby(group_by, sort=True, observed=True):
+    for gkey, df_g in adata.var.groupby(
+        group_by, sort=True, observed=True,
+    ):
         rec = {group_by: str(gkey)}
         for col in adata.var.columns:
             if col == group_by:
                 continue
-            non_na = df_g[col].dropna().astype(str)
-            uniq = sorted(set(non_na))
-            if len(uniq) == 0:
-                rec[col] = np.nan
-            elif len(uniq) == 1:
-                rec[col] = uniq[0]
-            else:
-                rec[col] = ";".join(uniq)
+            rec[col] = _aggregate_var_value(df_g[col])
         records.append(rec)
 
     var_new = pd.DataFrame.from_records(records).set_index(group_by)
-def _count_modifications(peptide_ids, pattern):
-    """Count unique (position, text) modification sites."""
-    all_mods = set()
-    for pid in peptide_ids:
-        removed = 0
-        for m in pattern.finditer(pid):
-            pos = m.start() - removed
-            all_mods.add((pos, m.group()))
-            removed += len(m.group())
-    return len(all_mods)
-
-
     # align var rows to aggregated matrix columns
     var_new = var_new.loc[agg_vals.columns]
     var_new[group_by] = var_new.index
     var_new.index.name = None
 
-    # --- Rebuild AnnData so X and var change together
-    if inplace:
-        adata._init_as_actual(
-            X=agg_vals.values,
-            obs=adata.obs.copy(),
-            var=var_new,
-            uns=adata.uns,
-            obsm=adata.obsm,
-            varm={},     # vars changed
-            varp={},
-            layers={},   # reset layers unless you implement layer aggregation
-            obsp=adata.obsp if hasattr(adata, "obsp") else None,
-        )
-        adata.var_names = var_new.index
-        return None
-    else:
-        out = ad.AnnData(
-            X=agg_vals.values,
-            obs=adata.obs.copy(),
-            var=var_new.copy(),
-            uns=adata.uns.copy(),
-            obsm=adata.obsm.copy(),
-            obsp=adata.obsp.copy() if hasattr(adata, "obsp") else None,
-        )
-        out.var_names = var_new.index
-        return out
+    # --- Rebuild AnnData
+    return _rebuild_adata(
+        adata, agg_vals.values, var_new, inplace,
+    )
 
 
 quantify_proteins = partial(

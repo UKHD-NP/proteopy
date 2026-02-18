@@ -1959,6 +1959,9 @@ def box(
     title: str | None = None,
     xlabel_rotation: float = 0,
     ylabel: str | None = None,
+    show_points: bool = False,
+    point_size: float = 3,
+    point_alpha: float = 0.7,
     show: bool = True,
     save: str | os.PathLike[str] | None = None,
     ax: bool = False,
@@ -2002,6 +2005,15 @@ def box(
         Rotation angle (degrees) for x-axis tick labels.
     ylabel : str | None, optional
         Label for the y-axis.
+    show_points : bool, optional
+        Overlay individual observations as a strip plot on top of
+        each box.
+    point_size : float, optional
+        Marker size for the individual points when
+        ``show_points`` is ``True``.
+    point_alpha : float, optional
+        Opacity for individual points when ``show_points`` is
+        ``True``.
     show : bool, optional
         Call ``matplotlib.pyplot.show()`` to display the plot.
     save : str | os.PathLike | None, optional
@@ -2203,6 +2215,19 @@ def box(
                 flierprops={'marker': '.', 'markersize': 1},
                 ax=_ax,
             )
+            if show_points:
+                sns.stripplot(
+                    data=sub,
+                    x=hue_col,
+                    y="intensity",
+                    order=group_order,
+                    color="black",
+                    alpha=point_alpha,
+                    size=point_size,
+                    jitter=0.2,
+                    dodge=False,
+                    ax=_ax,
+                )
             _ax.set_xlabel(group_by)
         else:
             sns.boxplot(
@@ -2211,6 +2236,16 @@ def box(
                 flierprops={'marker': '.', 'markersize': 1},
                 ax=_ax,
             )
+            if show_points:
+                sns.stripplot(
+                    data=sub,
+                    y="intensity",
+                    color="black",
+                    alpha=point_alpha,
+                    size=point_size,
+                    jitter=0.2,
+                    ax=_ax,
+                )
             _ax.set_xlabel("")
             _ax.set_xticks([])
 

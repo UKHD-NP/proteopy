@@ -1,6 +1,12 @@
 Installation
 ============
 
+.. attention::
+
+   ProteoPy is under rapid initial development. We recommend installing
+   the **development version** from GitHub to benefit from the latest
+   features and fixes. See `Development Version`_ below.
+
 ProteoPy requires Python 3.10 or later. We recommend installing ProteoPy in a
 dedicated virtual environment.
 
@@ -66,6 +72,9 @@ To install the development version from GitHub:
 .. code-block:: bash
 
    pip install git+https://github.com/UKHD-NP/proteopy.git
+
+   # Update to the latest commit
+   # pip install --force-reinstall git+https://github.com/UKHD-NP/proteopy.git
 
 Dependencies
 ------------

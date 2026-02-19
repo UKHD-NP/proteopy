@@ -2384,11 +2384,85 @@ def binary_heatmap(
         raise TypeError("`title` must be a string or None.")
     if not isinstance(show, bool):
         raise TypeError("`show` must be a boolean.")
+    if not isinstance(ax, bool):
         raise TypeError("`ax` must be a boolean.")
     if not isinstance(col_cluster, bool):
         raise TypeError("`col_cluster` must be a boolean.")
     if not isinstance(row_cluster, bool):
         raise TypeError("`row_cluster` must be a boolean.")
+    if not isinstance(ylabels, bool):
+        raise TypeError("`ylabels` must be a boolean.")
+    if order_by is not None and not isinstance(order_by, str):
+        raise TypeError("`order_by` must be a string or None.")
+    if order is not None:
+        if not isinstance(order, SequenceABC):
+            raise TypeError("`order` must be a sequence or None.")
+        if not all(isinstance(item, str) for item in order):
+            raise TypeError("All items in `order` must be strings.")
+    if order_by is not None and col_cluster:
+        raise ValueError(
+            "`order_by` and `col_cluster` are mutually exclusive; "
+            "choose one ordering method."
+        )
+    if isinstance(xtick_rotation, bool) or not isinstance(xtick_rotation, Real):
+        raise TypeError("`xtick_rotation` must be numeric.")
+    if isinstance(ytick_rotation, bool) or not isinstance(ytick_rotation, Real):
+        raise TypeError("`ytick_rotation` must be numeric.")
+    if (
+        figsize is None or not isinstance(figsize, SequenceABC)
+        or len(figsize) != 2
+    ):
+        raise TypeError("`figsize` must be a length-2 sequence of numbers.")
+    try:
+        figsize = (float(figsize[0]), float(figsize[1]))
+    except (TypeError, ValueError) as exc:
+        raise TypeError("`figsize` entries must be numeric.") from exc
+    if save is not None and not isinstance(save, (str, os.PathLike)):
+        raise TypeError("`save` must be a path-like string or None.")
+
+    # Get data
+    if layer is None:
+        X_src = adata.X
+    else:
+        if layer not in adata.layers:
+            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+        X_src = adata.layers[layer]
+
+    if sparse.issparse(X_src):
+        X = X_src.toarray()
+    else:
+        X = np.asarray(X_src, dtype=float)
+
+    # Handle order_by and order for observation ordering
+    if order_by is not None:
+        if order_by not in adata.obs.columns:
+            raise KeyError(f"'{order_by}' not found in adata.obs columns.")
+        
+        obs_col = adata.obs[order_by]
+        
+        # Determine the ordering of categories
+        if pd.api.types.is_categorical_dtype(obs_col):
+            if order is not None:
+                # Validate that all order items are in the categories
+                available_cats = set(obs_col.cat.categories)
+                missing = set(order) - available_cats
+                if missing:
+                    raise ValueError(
+                        f"Items in 'order' not found in '{order_by}' "
+                        f"categories: {sorted(missing)}"
+                    )
+                # Use the provided order, then remaining categories
+                cats_ordered = list(order)
+                seen = set(cats_ordered)
+                cats_ordered.extend(
+                    cat for cat in obs_col.cat.categories
+                    if cat not in seen
+                )
+            else:
+                # Use categorical order
+                cats_ordered = list(obs_col.cat.categories)
+        else:
+            # Non-categorical column
             unique_vals = pd.Series(obs_col.unique()).dropna()
             if order is not None:
                 # Validate that all order items are in the unique values

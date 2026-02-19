@@ -53,6 +53,8 @@ control, exploratory analysis, and statistical results.
    :nosignatures:
 
    proteopy.pl.proteoform_scores
+   proteopy.pl.peptides_on_sequence
+   proteopy.pl.peptides_on_prot_sequence
 
 .. rubric:: Differential Analysis
 

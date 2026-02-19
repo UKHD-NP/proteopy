@@ -31,3 +31,8 @@ from .clustering import (
     hclustv_elbow,
     hclustv_profile_intensities,
     )
+
+from .sequence import (
+    peptides_on_sequence,
+    peptides_on_prot_sequence,
+    )

@@ -71,9 +71,12 @@ jobs:
           # On clean files (manually increment)
           flake8 \
             proteopy/ann/proteins.py \
+            proteopy/pl/sequence.py \
+            proteopy/pp/quantification.py \
             proteopy/get/proteoforms.py \
             proteopy/utils/anndata.py \
             tests/__init__.py \
+            tests/pp/test_quantification.py \
             tests/read/__init__.py \
             tests/tl/__init__.py \
             tests/utils/__init__.py \

@@ -17,6 +17,7 @@ import matplotlib as mpl
 import anndata as ad
 import math
 import os
+import sys
 from scipy import sparse
 
 from proteopy.utils.anndata import check_proteodata
@@ -2291,7 +2292,7 @@ def binary_heatmap(
     threshold: float | int = 0,
     fill_na: float | int | None = None,
     order_by: str | None = None,
-    order: Sequence[str] | None = None,
+    order: Sequence[Any] | None = None,
     col_cluster: bool = False,
     row_cluster: bool = False,
     ylabels: bool = False,
@@ -2299,6 +2300,7 @@ def binary_heatmap(
     figsize: tuple[float, float] = (10, 8),
     xtick_rotation: float = 90,
     ytick_rotation: float = 0,
+    ylabel: str | None = "Feature",
     title: str | None = None,
     show: bool = True,
     save: str | os.PathLike[str] | None = None,
@@ -2326,10 +2328,10 @@ def binary_heatmap(
     order_by : str, optional
         Column in ``adata.obs`` used to group and order observations (samples).
         When ``None``, observations follow ``adata.obs_names`` order.
-    order : Sequence[str], optional
-        Explicit order of categories when ``order_by`` is set. When ``None`` and
-        ``order_by`` is categorical, uses category order; otherwise uses sorted
-        order.
+    order : Sequence[Any], optional
+        Explicit order of categories when ``order_by`` is set.
+        When ``None`` and ``order_by`` is categorical, uses category order;
+        otherwise uses sorted order.
     col_cluster : bool, optional
         Perform hierarchical clustering on samples (columns/x-axis) and display
         the dendrogram when ``True``. Mutually exclusive with ``order_by``.
@@ -2347,6 +2349,8 @@ def binary_heatmap(
         Rotation angle for sample tick labels.
     ytick_rotation : float, optional
         Rotation angle for feature tick labels.
+    ylabel : str | None, optional
+        Label for the heatmap y-axis. Set to ``None`` to hide the label.
     title : str | None, optional
         Optional title placed above the heatmap.
     show : bool, optional
@@ -2362,6 +2366,43 @@ def binary_heatmap(
     Axes | None
         Handle to the created plot object when ``ax`` is ``True``; otherwise
         ``None``.
+
+    Examples
+    --------
+    Basic binary presence heatmap from ``adata.X``:
+
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.karayel_2020()
+    >>> pr.pl.binary_heatmap(adata, threshold=0)
+
+    Order samples by an observation annotation and customize labels:
+
+    >>> pr.pl.binary_heatmap(
+    ...     adata,
+    ...     order_by="condition",
+    ...     order=["control", "treated"],
+    ...     ylabel="Peptides",
+    ...     xtick_rotation=45,
+    ... )
+
+    Plot from a layer and save the figure:
+
+    >>> pr.pl.binary_heatmap(
+    ...     adata,
+    ...     layer="log2_intensity",
+    ...     fill_na=0,
+    ...     save="binary_heatmap.pdf",
+    ... )
+
+    Enable hierarchical clustering for rows and columns:
+
+    >>> pr.pl.binary_heatmap(
+    ...     adata,
+    ...     fill_na=0,
+    ...     row_cluster=True,
+    ...     col_cluster=True,
+    ...     title="Binary presence with clustering",
+    ... )
     """
 
     check_proteodata(adata)
@@ -2382,6 +2423,8 @@ def binary_heatmap(
             raise ValueError("`fill_na` must be finite.")
     if title is not None and not isinstance(title, str):
         raise TypeError("`title` must be a string or None.")
+    if ylabel is not None and not isinstance(ylabel, str):
+        raise TypeError("`ylabel` must be a string or None.")
     if not isinstance(show, bool):
         raise TypeError("`show` must be a boolean.")
     if not isinstance(ax, bool):
@@ -2397,21 +2440,28 @@ def binary_heatmap(
     if order is not None:
         if not isinstance(order, SequenceABC):
             raise TypeError("`order` must be a sequence or None.")
-        if not all(isinstance(item, str) for item in order):
-            raise TypeError("All items in `order` must be strings.")
+        if isinstance(order, (str, bytes)):
+            raise TypeError(
+                "`order` must be a sequence of category labels, not a string."
+            )
     if order_by is not None and col_cluster:
         raise ValueError(
             "`order_by` and `col_cluster` are mutually exclusive; "
             "choose one ordering method."
         )
-    if isinstance(xtick_rotation, bool) or not isinstance(xtick_rotation, Real):
-        raise TypeError("`xtick_rotation` must be numeric.")
-    if isinstance(ytick_rotation, bool) or not isinstance(ytick_rotation, Real):
-        raise TypeError("`ytick_rotation` must be numeric.")
-    if (
-        figsize is None or not isinstance(figsize, SequenceABC)
-        or len(figsize) != 2
+    if not isinstance(xtick_rotation, Real) or isinstance(
+        xtick_rotation,
+        bool,
     ):
+        raise TypeError("`xtick_rotation` must be numeric.")
+    if not isinstance(ytick_rotation, Real) or isinstance(
+        ytick_rotation,
+        bool,
+    ):
+        raise TypeError("`ytick_rotation` must be numeric.")
+    if figsize is None or not isinstance(figsize, SequenceABC):
+        raise TypeError("`figsize` must be a length-2 sequence of numbers.")
+    if len(figsize) != 2:
         raise TypeError("`figsize` must be a length-2 sequence of numbers.")
     try:
         figsize = (float(figsize[0]), float(figsize[1]))
@@ -2437,9 +2487,9 @@ def binary_heatmap(
     if order_by is not None:
         if order_by not in adata.obs.columns:
             raise KeyError(f"'{order_by}' not found in adata.obs columns.")
-        
+
         obs_col = adata.obs[order_by]
-        
+
         # Determine the ordering of categories
         if pd.api.types.is_categorical_dtype(obs_col):
             if order is not None:
@@ -2464,6 +2514,10 @@ def binary_heatmap(
         else:
             # Non-categorical column
             unique_vals = pd.Series(obs_col.unique()).dropna()
+            try:
+                default_order = sorted(unique_vals)
+            except TypeError:
+                default_order = unique_vals.tolist()
             if order is not None:
                 # Validate that all order items are in the unique values
                 available_vals = set(unique_vals)
@@ -2477,19 +2531,19 @@ def binary_heatmap(
                 cats_ordered = list(order)
                 seen = set(cats_ordered)
                 cats_ordered.extend(
-                    val for val in sorted(unique_vals)
+                    val for val in default_order
                     if val not in seen
                 )
             else:
                 # Use sorted order
-                cats_ordered = sorted(unique_vals)
-        
+                cats_ordered = default_order
+
         # Build observation index order based on categories
         obs_index_ordered = []
         for cat in cats_ordered:
             indices = adata.obs.index[obs_col == cat].tolist()
             obs_index_ordered.extend(indices)
-        
+
         # Reorder the matrix and obs_names
         idx_map = {name: i for i, name in enumerate(adata.obs_names)}
         reorder_indices = [idx_map[name] for name in obs_index_ordered]
@@ -2497,7 +2551,6 @@ def binary_heatmap(
         obs_names_ordered = obs_index_ordered
     else:
         obs_names_ordered = adata.obs_names
-
 
     # Binary heatmap expects complete data unless fill_na
     if fill_na is not None:
@@ -2515,7 +2568,10 @@ def binary_heatmap(
         columns=obs_names_ordered,
     )
 
-    cbar_kws = {"ticks": [0, 1]}
+    cbar_kws = {
+        "ticks": [0, 1],
+        "orientation": "horizontal",
+    }
 
     # Resolve exactly two colors mapped to absent/present states.
     labels = [0, 1]
@@ -2528,17 +2584,46 @@ def binary_heatmap(
     else:
         cmap_resolved = mpl.colors.ListedColormap(palette)
 
-    grid = sns.clustermap(
-        plot_df,
-        row_cluster=row_cluster,
-        col_cluster=col_cluster,
-        cmap=cmap_resolved,
-        vmin=0,
-        vmax=1,
-        figsize=figsize,
-        cbar_kws=cbar_kws,
+    if row_cluster or col_cluster:
+        cluster_sizes = []
+        if row_cluster:
+            cluster_sizes.append(plot_df.shape[0])
+        if col_cluster:
+            cluster_sizes.append(plot_df.shape[1])
+
+        current_limit = sys.getrecursionlimit()
+        target_limit = max(
+            current_limit,
+            int(4 * max(cluster_sizes) + 1000),
+        )
+    else:
+        current_limit = None
+        target_limit = None
+
+    try:
+        if target_limit is not None and target_limit > current_limit:
+            sys.setrecursionlimit(target_limit)
+
+        grid = sns.clustermap(
+            plot_df,
+            row_cluster=row_cluster,
+            col_cluster=col_cluster,
+            cmap=cmap_resolved,
+            vmin=0,
+            vmax=1,
+            figsize=figsize,
+            cbar_kws=cbar_kws,
+        )
+
+        grid.fig.subplots_adjust(right=0.70, bottom=0.12)
+        grid.ax_cbar.set_position([0.75, 0.04, 0.18, 0.03])
+    finally:
+        if target_limit is not None and current_limit is not None:
+            if sys.getrecursionlimit() != current_limit:
+                sys.setrecursionlimit(current_limit)
+    grid.ax_heatmap.set_ylabel(
+        ylabel if ylabel is not None else ""
     )
-    grid.ax_heatmap.set_ylabel("Feature")
     if title:
         grid.ax_heatmap.set_title(title)
     plt.setp(
@@ -2546,7 +2631,9 @@ def binary_heatmap(
     )
     if ylabels:
         plt.setp(
-            grid.ax_heatmap.get_yticklabels(), rotation=ytick_rotation, ha="right"
+            grid.ax_heatmap.get_yticklabels(),
+            rotation=ytick_rotation,
+            ha="left",
         )
     else:
         grid.ax_heatmap.set_yticks([])

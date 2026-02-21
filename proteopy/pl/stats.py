@@ -1457,6 +1457,10 @@ def hclustv_profiles_heatmap(
     color_scheme: str | dict | Sequence | Colormap | None = None,
     row_cluster: bool = True,
     col_cluster: bool = True,
+    cbar_pos: tuple[float, float, float, float] | None = (
+        0.02, 0.8, 0.05, 0.18
+    ),
+    tree_kws: dict | None = None,
     xticklabels: bool = True,
     yticklabels: bool = False,
     figsize: tuple[float, float] = (10.0, 8.0),
@@ -1525,6 +1529,13 @@ def hclustv_profiles_heatmap(
         Palette specification for the margin color bar, forwarded to
         :func:`proteopy.utils.matplotlib._resolve_color_scheme`. Ignored
         when neither ``margin_color`` nor ``order_by`` is set.
+    cbar_pos : tuple of (left, bottom, width, height), optional
+        Position of the colorbar axes in the figure. Setting to
+        ``None`` will disable the colorbar.
+    tree_kws : dict, optional
+        Keyword arguments passed to
+        :class:`matplotlib.collections.LineCollection` for the
+        dendrogram lines (e.g. ``colors``, ``linewidths``).
     row_cluster : bool
         Perform hierarchical clustering on variables (rows).
     col_cluster : bool
@@ -1778,8 +1789,7 @@ def hclustv_profiles_heatmap(
         )
 
     # Create clustermap
-    g = sns.clustermap(
-        z_df_filled,
+    clustermap_kws = dict(
         method=linkage_method,
         metric=scipy_metric,
         row_cluster=row_cluster,
@@ -1789,9 +1799,16 @@ def hclustv_profiles_heatmap(
         figsize=figsize,
         xticklabels=xticklabels,
         yticklabels=yticklabels,
-        cbar_kws={"label": "Z-score"},
         col_colors=col_colors,
+        tree_kws=tree_kws,
     )
+    if cbar_pos is not None:
+        clustermap_kws["cbar_pos"] = cbar_pos
+        clustermap_kws["cbar_kws"] = {"label": "Z-score"}
+    else:
+        clustermap_kws["cbar_pos"] = None
+
+    g = sns.clustermap(z_df_filled, **clustermap_kws)
 
     g.ax_heatmap.set_xlabel("")
 

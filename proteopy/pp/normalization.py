@@ -8,8 +8,9 @@ from proteopy.utils.array import is_log_transformed
 
 def normalize_median(
     adata,
-    method: str,
+    *,
     log_space: bool,
+    target: str = "median",
     fill_na: float | None = None,
     zeros_to_na: bool = False,
     batch_id: str | None = None,
@@ -19,17 +20,19 @@ def normalize_median(
     """
     Median normalization of intensities.
 
+    NAs are ignored when computing sample medians.
+
     Parameters
     ----------
     adata : AnnData
         Input AnnData.
-    method : {'max_ref', 'median_ref'}
-        How to choose the reference across sample medians. ``'max_ref'`` uses
-        the maximum sample median, ``'median_ref'`` uses the median of sample
-        medians.
     log_space : bool
         Whether the input intensities are log-transformed. Mismatches with
         automatic detection raise unless ``force=True``.
+    target : {'max', 'median'}
+        How to compute the normalization target from sample medians.
+        ``'max'`` uses the maximum sample median, ``'median'`` uses the
+        median of sample medians. Defaults to ``'median'``.
     fill_na : float, optional
         Temporarily replace non-finite entries with this value for the median
         computation only; original values are restored afterward.
@@ -43,32 +46,45 @@ def normalize_median(
     force : bool, default False
         Proceed even if ``log_space`` disagrees with automatic log detection.
 
-    Notes
-    -----
-    Median normalization:
-        ``log_space=True``
-            ``X + ref - sample_median``
-        ``log_space=False``
-            ``X * ref / sample_median``
-        ``'max_ref'``
-            reference = max of sample medians (within batch if per_batch)
-        ``'median_ref'``
-            reference = median of sample medians (within batch if per_batch)
-
     Returns
     -------
     AnnData or None
         Normalized AnnData when ``inplace`` is False; otherwise None.
     pandas.DataFrame, optional
         Per-sample factors when ``inplace`` is False.
+
+    Notes
+    -----
+    Median normalization:
+        ``log_space=True``
+            ``X + target - sample_median``
+        ``log_space=False``
+            ``X * target / sample_median``
+        ``'max'``
+            target = max of sample medians (within batch if per_batch)
+        ``'median'``
+            target = median of sample medians (within batch if per_batch)
+
+    Examples
+    --------
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.karayel_2020()
+
+    Normalize using the median of sample medians (default):
+
+    >>> pr.pp.normalize_median(adata, log_space=False)
+
+    Normalize using the maximum of sample medians:
+
+    >>> pr.pp.normalize_median(adata, target='max', log_space=False)
     """
     check_proteodata(adata)
     per_batch = batch_id
 
-    method = method.lower()
-    allowed_methods = {"max_ref", "median_ref"}
-    if method not in allowed_methods:
-        raise ValueError(f"method must be one of {allowed_methods!r}")
+    target = target.lower()
+    allowed_targets = {"max", "median"}
+    if target not in allowed_targets:
+        raise ValueError(f"target must be one of {allowed_targets!r}")
 
     if fill_na is not None and zeros_to_na:
         raise ValueError('Cannot set both zeros_to_na and fill_na to True.')
@@ -109,26 +125,26 @@ def normalize_median(
 
     def _normalize_samples(
         X_work,
-        method,
+        target,
         log_space,
         ):
         """Normalize a subset of samples and return normalized values and factors."""
         with np.errstate(invalid='ignore'):
             sample_medians = np.nanmedian(X_work, axis=1)
 
-        if method == 'median_ref':
-            ref = float(np.nanmedian(sample_medians))
-        elif method == 'max_ref':
-            ref = float(np.nanmax(sample_medians))
+        if target == 'median':
+            target_val = float(np.nanmedian(sample_medians))
+        elif target == 'max':
+            target_val = float(np.nanmax(sample_medians))
         else:
-            raise ValueError("method must be one of {'median_ref','max_ref'}")
+            raise ValueError("target must be one of {'median', 'max'}")
 
         if log_space:
-            factors = (ref - sample_medians)[:, None]
+            factors = (target_val - sample_medians)[:, None]
             sub_norm = X_work + factors
         else:
             with np.errstate(divide='ignore', invalid='ignore'):
-                factors = (ref / sample_medians)[:, None]
+                factors = (target_val / sample_medians)[:, None]
             sub_norm = X_work * factors
 
         return sub_norm, np.squeeze(factors)
@@ -139,7 +155,7 @@ def normalize_median(
     if per_batch is None:
         idx = np.arange(n_samples)
         X_work = X_new[idx, :]
-        sub_norm, sub_fac = _normalize_samples(X_work, method, log_space)
+        sub_norm, sub_fac = _normalize_samples(X_work, target, log_space)
         all_norm[idx, :] = sub_norm
         all_factors[idx] = sub_fac if log_space else np.squeeze(sub_fac)
     else:
@@ -151,7 +167,7 @@ def normalize_median(
             if idx.size == 0:
                 continue
             X_work = X_new[idx, :]
-            sub_norm, sub_fac = _normalize_samples(X_work, method, log_space)
+            sub_norm, sub_fac = _normalize_samples(X_work, target, log_space)
             all_norm[idx, :] = sub_norm
             all_factors[idx] = sub_fac if log_space else np.squeeze(sub_fac)
 

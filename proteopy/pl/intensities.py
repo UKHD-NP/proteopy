@@ -20,7 +20,7 @@ import os
 import sys
 from scipy import sparse
 
-from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.anndata import check_proteodata, is_proteodata
 from proteopy.utils.matplotlib import _resolve_color_scheme
 from proteopy.utils.array import is_log_transformed
 from proteopy.utils.functools import partial_with_docsig
@@ -2286,6 +2286,7 @@ def box(
         return axes_out[0] if len(axes_out) == 1 else axes_out
     return None
 
+
 def binary_heatmap(
     adata: ad.AnnData,
     layer: str | None = None,
@@ -2296,18 +2297,19 @@ def binary_heatmap(
     col_cluster: bool = False,
     row_cluster: bool = False,
     ylabels: bool = False,
-    color_scheme: Any | None = "Greys",
+    var_id_key: str | None = None,
+    cmap: Any | None = "coolwarm",
     figsize: tuple[float, float] = (10, 8),
     xtick_rotation: float = 90,
     ytick_rotation: float = 0,
-    ylabel: str | None = "Feature",
+    ylabel: str | None = None,
     title: str | None = None,
     show: bool = True,
     save: str | os.PathLike[str] | None = None,
     ax: bool = False,
 ) -> Axes | None:
     """
-    Plot a binary presence heatmap of intensities across samples and features.
+    Plot a binary detection heatmap of intensities across samples and features.
 
     Values greater than ``threshold`` are encoded as 1 (present) and values
     less than or equal to ``threshold`` are encoded as 0 (absent). Missing
@@ -2340,9 +2342,16 @@ def binary_heatmap(
         the dendrogram when ``True``.
     ylabels : bool, optional
         Display y-axis tick labels and ticks when ``True``.
-    color_scheme : Any, optional
-        Passed through :func:`proteopy.utils.matplotlib._resolve_color_scheme`
-        for labels ``[0, 1]``. Defaults to ``\"Greys\"``.
+    var_id_key : str | None, optional
+        Column in ``adata.var`` used as row labels. When ``None`` (default),
+        the key is derived automatically from the proteodata level:
+        ``"peptide_id"`` for peptide-level data and ``"protein_id"`` for
+        protein-level data. Falls back to ``adata.var_names`` when the
+        derived key is absent.
+    cmap : Any | None, optional
+        Colormap passed directly to :func:`seaborn.clustermap`. Accepts any
+        value recognised by Matplotlib (name string, ``Colormap`` instance,
+        etc.). Defaults to ``\"coolwarm\"``.
     figsize : tuple of float, optional
         Figure size passed to Matplotlib.
     xtick_rotation : float, optional
@@ -2350,7 +2359,9 @@ def binary_heatmap(
     ytick_rotation : float, optional
         Rotation angle for feature tick labels.
     ylabel : str | None, optional
-        Label for the heatmap y-axis. Set to ``None`` to hide the label.
+        Label for the heatmap y-axis. When ``None`` (default), the label is
+        derived automatically from the proteodata level (``"Peptide"`` or
+        ``"Protein"``). Pass ``""`` to hide the label entirely.
     title : str | None, optional
         Optional title placed above the heatmap.
     show : bool, optional
@@ -2369,7 +2380,7 @@ def binary_heatmap(
 
     Examples
     --------
-    Basic binary presence heatmap from ``adata.X``:
+    Basic binary detection heatmap from ``adata.X``:
 
     >>> import proteopy as pr
     >>> adata = pr.datasets.karayel_2020()
@@ -2401,11 +2412,24 @@ def binary_heatmap(
     ...     fill_na=0,
     ...     row_cluster=True,
     ...     col_cluster=True,
-    ...     title="Binary presence with clustering",
+    ...     title="Binary detection with clustering",
     ... )
     """
 
     check_proteodata(adata)
+
+    _, _level = is_proteodata(adata)
+
+    # Derive var_id_key from proteodata level when not explicitly provided
+    if var_id_key is None:
+        if _level == "peptide":
+            var_id_key = "peptide_id"
+        elif _level == "protein":
+            var_id_key = "protein_id"
+
+    # Derive ylabel from proteodata level when not explicitly provided
+    if ylabel is None:
+        ylabel = _level.capitalize() if _level else ""
 
     # Validate input and parameters
     if isinstance(threshold, bool) or not isinstance(threshold, Real):
@@ -2425,6 +2449,8 @@ def binary_heatmap(
         raise TypeError("`title` must be a string or None.")
     if ylabel is not None and not isinstance(ylabel, str):
         raise TypeError("`ylabel` must be a string or None.")
+    if var_id_key is not None and not isinstance(var_id_key, str):
+        raise TypeError("`var_id_key` must be a string or None.")
     if not isinstance(show, bool):
         raise TypeError("`show` must be a boolean.")
     if not isinstance(ax, bool):
@@ -2562,29 +2588,29 @@ def binary_heatmap(
 
     # Convert numbers to binary mask
     binary = (X > threshold).astype(int)
+    # pick row labels from var_id_key if available, otherwise use var_names
+    if var_id_key is not None and var_id_key in adata.var.columns:
+        row_index = adata.var[var_id_key]
+    else:
+        row_index = adata.var_names
+    # create DataFrame oriented for seaborn (features as rows)
     plot_df = pd.DataFrame(
         binary.T,
-        index=adata.var_names,
+        index=row_index,
         columns=obs_names_ordered,
     )
 
+    # colorbar configuration (binary heatmap uses only 0/1 ticks)
     cbar_kws = {
         "ticks": [0, 1],
         "orientation": "horizontal",
     }
 
-    # Resolve exactly two colors mapped to absent/present states.
-    labels = [0, 1]
-    try:
-        palette = _resolve_color_scheme(color_scheme, labels)
-    except (TypeError, ValueError) as exc:
-        raise exc
-    if palette is None:
-        cmap_resolved = "Greys"
-    else:
-        cmap_resolved = mpl.colors.ListedColormap(palette)
+    # resolve colormap, falling back to default
+    cmap_resolved = cmap if cmap is not None else "coolwarm"
 
     if row_cluster or col_cluster:
+        # estimate recursion limit required for computing dendrograms
         cluster_sizes = []
         if row_cluster:
             cluster_sizes.append(plot_df.shape[0])
@@ -2604,6 +2630,7 @@ def binary_heatmap(
         if target_limit is not None and target_limit > current_limit:
             sys.setrecursionlimit(target_limit)
 
+        # draw the clustermap / heatmap
         grid = sns.clustermap(
             plot_df,
             row_cluster=row_cluster,
@@ -2613,6 +2640,7 @@ def binary_heatmap(
             vmax=1,
             figsize=figsize,
             cbar_kws=cbar_kws,
+            tree_kws={'linewidths': 1},
         )
 
         grid.fig.subplots_adjust(right=0.70, bottom=0.12)
@@ -2621,17 +2649,24 @@ def binary_heatmap(
         if target_limit is not None and current_limit is not None:
             if sys.getrecursionlimit() != current_limit:
                 sys.setrecursionlimit(current_limit)
-    grid.ax_heatmap.set_ylabel(
-        ylabel if ylabel is not None else ""
-    )
+    grid.ax_heatmap.set_ylabel(ylabel)
     if title:
         grid.ax_heatmap.set_title(title)
     plt.setp(
         grid.ax_heatmap.get_xticklabels(), rotation=xtick_rotation, ha="right"
     )
     if ylabels:
-        plt.setp(
-            grid.ax_heatmap.get_yticklabels(),
+        n_rows = plot_df.shape[0]
+        if row_cluster and grid.dendrogram_row is not None:
+            ordered_labels = [
+                plot_df.index[i] for i in grid.dendrogram_row.reordered_ind
+            ]
+        else:
+            ordered_labels = list(plot_df.index)
+        # Force a tick for every row; seaborn places centres at i + 0.5
+        grid.ax_heatmap.set_yticks([i + 0.5 for i in range(n_rows)])
+        grid.ax_heatmap.set_yticklabels(
+            ordered_labels,
             rotation=ytick_rotation,
             ha="left",
         )
@@ -2647,12 +2682,5 @@ def binary_heatmap(
         plt.close(grid.fig)
 
     if ax:
-        return g.ax_heatmap
-    if not save and not show and not ax:
-        warnings.warn(
-            "Plot created but not displayed, saved, or returned. "
-            "Set show=True, save to a path, or ax=True.",
-            UserWarning,
-        )
-        plt.close(g)
+        return grid.ax_heatmap
     return None

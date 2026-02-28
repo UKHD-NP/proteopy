@@ -29,6 +29,11 @@ SUPPORTED_METHODS = {
         "executor": "_execute_two_group_ttest",
         "equal_var": False,
     },
+    "anova": {
+        "space": "log",
+        "type": "1vrest",
+        "executor": "_execute_anova",
+    },
 }
 
 SUPPORTED_CORRECTIONS = [
@@ -430,10 +435,165 @@ def _execute_one_vs_rest_ttest(
     return all_results
 
 
+def _perform_anova(
+    X: np.ndarray,
+    obs_column: pd.Series,
+    groups_to_test: list,
+) -> dict:
+    """
+    Perform one-way ANOVA across groups for each variable.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Expression matrix (observations x variables).
+    obs_column : pd.Series
+        Column from adata.obs containing group labels.
+    groups_to_test : list
+        List of group labels to include in the ANOVA.
+
+    Returns
+    -------
+    dict
+        Results dictionary containing 'fstat', 'pval', and
+        'mean_{group}' for each group.
+
+    Raises
+    ------
+    ValueError
+        If any group has fewer than MIN_SAMPLES_PER_GROUP samples
+        or contains NA values.
+    """
+    group_arrays = {}
+    for group in groups_to_test:
+        idxs = (obs_column == group).values
+        X_group = X[idxs, :]
+
+        n_samples = X_group.shape[0]
+        if n_samples < MIN_SAMPLES_PER_GROUP:
+            raise ValueError(
+                f"Group '{group}' has {n_samples} samples, "
+                f"but at least {MIN_SAMPLES_PER_GROUP} are "
+                "required for ANOVA."
+            )
+
+        if np.isnan(X_group).any():
+            raise ValueError(
+                f"Expression matrix for group '{group}' "
+                "contains NA values. Please impute or filter "
+                "missing values before running differential "
+                "abundance analysis."
+            )
+
+        group_arrays[group] = X_group
+
+    # Run one-way ANOVA per variable
+    fstats, pvals = stats.f_oneway(
+        *[group_arrays[g] for g in groups_to_test]
+    )
+
+    results = {
+        'fstat': fstats,
+        'pval': pvals,
+    }
+
+    # Add per-group means
+    for group in groups_to_test:
+        mean_vals = group_arrays[group].mean(axis=0)
+        if hasattr(mean_vals, 'A1'):
+            mean_vals = mean_vals.A1
+        results[f'mean_{sanitize_string(str(group))}'] = mean_vals
+
+    return results
+
+
+def _execute_anova(
+    X: np.ndarray,
+    obs_column: pd.Series,
+    setup: dict,
+    group_by: str,
+    method: str,
+    effective_space: str,
+    **kwargs,
+) -> list[tuple[dict, str]]:
+    """
+    Execute one-way ANOVA for differential abundance.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Processed expression matrix (observations x variables).
+    obs_column : pd.Series
+        Column from adata.obs containing group labels.
+    setup : dict
+        Setup dictionary containing optional 'groups' key:
+
+        - ``"groups"``: Either ``"all"`` to test all unique groups,
+          or a list of group labels to test. Defaults to ``"all"``.
+    group_by : str
+        Name of the grouping column (for error messages).
+    method : str
+        Name of the method (for error messages).
+    effective_space : str
+        The space of the data ('log' or 'linear').
+    **kwargs
+        Additional method config (ignored).
+
+    Returns
+    -------
+    list[tuple[dict, str]]
+        A list containing a single (results_dict, group_label)
+        tuple. results_dict contains 'fstat', 'pval', and
+        'mean_{group}' for each group.
+
+    Raises
+    ------
+    ValueError
+        If setup contains unexpected keys, fewer than 3 groups
+        are specified, or data validation fails.
+    """
+    _validate_setup_1vrest(setup, group_by, obs_column)
+
+    unique_groups = list(obs_column.unique())
+
+    # Determine which groups to test
+    groups_spec = setup.get("groups", "all")
+    if groups_spec == "all":
+        groups_to_test = unique_groups
+    else:
+        groups_to_test = groups_spec
+
+    if len(groups_to_test) < 3:
+        raise ValueError(
+            f"ANOVA requires at least 3 groups, but only "
+            f"{len(groups_to_test)} were specified. Use "
+            f"'ttest_two_sample' or 'welch' for two-group "
+            f"comparisons."
+        )
+
+    results = _perform_anova(
+        X=X,
+        obs_column=obs_column,
+        groups_to_test=groups_to_test,
+    )
+
+    # Build group label
+    sorted_groups = sorted(str(g) for g in groups_to_test)
+    if set(groups_to_test) == set(unique_groups):
+        group_label = "all"
+    else:
+        group_label = sanitize_string(
+            "_".join(sorted_groups)
+        )
+
+    return [(results, group_label)]
+
+
 # Dispatcher mapping executor names to functions
 METHOD_EXECUTORS = {
     "_execute_two_group_ttest": _execute_two_group_ttest,
     "_execute_one_vs_rest_ttest": _execute_one_vs_rest_ttest,
+    "_execute_anova": _execute_anova,
 }
 
 
@@ -469,6 +629,12 @@ def differential_abundance(
           t-test assuming equal variances.
         - ``"welch"``: Welch's t-test without equal variance
           assumption. More robust when group variances differ.
+        - ``"anova"``: One-way ANOVA testing whether any group
+          differs from the others. Requires at least 3 groups.
+          Only supports ``setup`` with ``"groups"`` key (or
+          ``None``/``{}`` for all groups). Results contain
+          ``fstat`` instead of ``tstat``/``logfc``, plus
+          per-group mean columns (``mean_{group}``).
     group_by : str
         Column in ``adata.obs`` containing group labels for comparison.
     setup : dict | None, optional
@@ -728,18 +894,20 @@ def differential_abundance(
         )
 
     # Determine executor
+    method_config = SUPPORTED_METHODS[method]
     if method == 'ttest_two_sample' or method == 'welch':
         # Determine comparison mode based on setup contents
         has_group_keys = "group1" in setup and "group2" in setup
         is_one_vs_rest = not has_group_keys
 
         # Select executor based on mode
-        method_config = SUPPORTED_METHODS[method]
         if is_one_vs_rest:
             executor = METHOD_EXECUTORS["_execute_one_vs_rest_ttest"]
         else:
             executor_name = method_config["executor"]
             executor = METHOD_EXECUTORS[executor_name]
+    elif method == 'anova':
+        executor = METHOD_EXECUTORS["_execute_anova"]
     else:
         raise ValueError('Not implemented yet')
 

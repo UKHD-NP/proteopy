@@ -5,6 +5,7 @@ from .intensities import (
     intensity_hist,
     abundance_rank,
     box,
+    binary_heatmap,
     )
 
 from .stats import (

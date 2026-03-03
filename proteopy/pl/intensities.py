@@ -2296,6 +2296,7 @@ def binary_heatmap(
     order: Sequence[Any] | None = None,
     col_cluster: bool = False,
     row_cluster: bool = False,
+    hide_fully_detected: bool = False,
     ylabels: bool = False,
     var_id_key: str | None = None,
     cmap: Any | None = "coolwarm",
@@ -2306,8 +2307,8 @@ def binary_heatmap(
     title: str | None = None,
     show: bool = True,
     save: str | os.PathLike[str] | None = None,
-    ax: bool = False,
-) -> Axes | None:
+    ax: Axes | None = None,
+) -> Axes:
     """
     Plot a binary detection heatmap of intensities across samples and features.
 
@@ -2340,6 +2341,9 @@ def binary_heatmap(
     row_cluster : bool, optional
         Perform hierarchical clustering on features (rows/y-axis) and display
         the dendrogram when ``True``.
+    hide_fully_detected : bool, optional
+        When ``True``, vars detected in every sample (all values are greater
+        than the threshold) are excluded from the plot.
     ylabels : bool, optional
         Display y-axis tick labels and ticks when ``True``.
     var_id_key : str | None, optional
@@ -2368,15 +2372,17 @@ def binary_heatmap(
         If True, call :func:`matplotlib.pyplot.show` after plotting.
     save : str | PathLike, optional
         Path to save the figure. ``None`` skips saving.
-    ax : bool, optional
-        When ``True``, return the axes (heatmap) or ClusterGrid (clustermap)
-        object instead of closing it.
+    ax : Axes, optional
+        Matplotlib Axes object. Since this function uses
+        :func:`seaborn.clustermap`, which creates its own figure, a
+        provided Axes is not drawn into directly. When ``None``, a
+        new figure is created internally.
 
     Returns
     -------
-    Axes | None
-        Handle to the created plot object when ``ax`` is ``True``; otherwise
-        ``None``.
+    Axes
+        The heatmap :class:`~matplotlib.axes.Axes` of the
+        clustermap.
 
     Examples
     --------
@@ -2394,7 +2400,18 @@ def binary_heatmap(
     ...     order=["Progenitor", "ProE&EBaso", "LBaso", "Poly", "Ortho"],
     ...     row_cluster=True,
     ...     fill_na=0,
-    ...     ylabel="Peptides",
+    ...     xtick_rotation=45,
+    ... )
+
+    Hide proteins detected in all samples:
+
+    >>> pr.pl.binary_heatmap(
+    ...     adata,
+    ...     hide_fully_detected=True,
+    ...     order_by="cell_type",
+    ...     order=["Progenitor", "ProE&EBaso", "LBaso", "Poly", "Ortho"],
+    ...     row_cluster=True,
+    ...     fill_na=0,
     ...     xtick_rotation=45,
     ... )
     """
@@ -2436,12 +2453,16 @@ def binary_heatmap(
         raise TypeError("`var_id_key` must be a string or None.")
     if not isinstance(show, bool):
         raise TypeError("`show` must be a boolean.")
-    if not isinstance(ax, bool):
-        raise TypeError("`ax` must be a boolean.")
+    if ax is not None and not isinstance(ax, Axes):
+        raise TypeError("`ax` must be a Matplotlib Axes or None.")
     if not isinstance(col_cluster, bool):
         raise TypeError("`col_cluster` must be a boolean.")
     if not isinstance(row_cluster, bool):
         raise TypeError("`row_cluster` must be a boolean.")
+    if not isinstance(hide_fully_detected, bool):
+        raise TypeError(
+            "`hide_fully_detected` must be a boolean."
+        )
     if not isinstance(ylabels, bool):
         raise TypeError("`ylabels` must be a boolean.")
     if order_by is not None and not isinstance(order_by, str):
@@ -2561,9 +2582,16 @@ def binary_heatmap(
     binary = (X > threshold).astype(int)
     # pick row labels from var_id_key if available, otherwise use var_names
     if var_id_key is not None and var_id_key in adata.var.columns:
-        row_index = adata.var[var_id_key]
+        row_index = adata.var[var_id_key].values
     else:
-        row_index = adata.var_names
+        row_index = np.array(adata.var_names)
+
+    # filter out rows detected in every sample
+    if hide_fully_detected:
+        keep = ~(binary == 1).all(axis=0)
+        binary = binary[:, keep]
+        row_index = row_index[keep]
+
     # create DataFrame oriented for seaborn (features as rows)
     plot_df = pd.DataFrame(
         binary.T,
@@ -2649,9 +2677,7 @@ def binary_heatmap(
         grid.fig.savefig(save, dpi=300, bbox_inches="tight")
     if show:
         plt.show()
-    elif not ax:
+    elif ax is None:
         plt.close(grid.fig)
 
-    if ax:
-        return grid.ax_heatmap
-    return None
+    return grid.ax_heatmap

@@ -125,10 +125,11 @@ this number. If None, use the internal function defaults.
         If True, save to a default filename.
         If str/Path, save to that path. If False, do not save.
         Default=None (do not include this line in docstrings)
-    ax : bool
-        If `True`, returns the underlying Matplotlib Axes object instead of displaying
-        the plot. Useful for further customization or integration into larger figures.
-        Default=False (do not include this line in docstrings)
+    ax : matplotlib.axes.Axes | None
+        Matplotlib Axes object to plot onto. If `None`, a new figure and axes are
+        created. Useful for embedding plots into subplot grids or further customization.
+        The function always returns the Axes object used for plotting.
+        Default=None (do not include this line in docstrings)
     show_zeros : bool
         Don't display zeros if False.
         Default=True (do not include this line in docstrings)
@@ -340,8 +341,8 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `save: str | Path | None`
   Save the figure: str/Path for a specific path, None to skip saving (default=None).  
 
-- `ax: bool`
-  Return the underlying Matplotlib Axes object instead of displaying the plot (default=None).
+- `ax: matplotlib.axes.Axes | None`
+  Matplotlib Axes object to plot onto. If `None`, a new figure and axes are created. The function always returns the Axes object used for plotting (default=None).
 
 - `show_zeros: bool`
   Display zeros in the visualization; if False, hide or mask zeros where applicable (default=True).
@@ -661,8 +662,8 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `save: str | Path | None`
   Save the figure: str/Path for a specific path, None to skip saving (default=None).  
 
-- `ax: bool`
-  Return the underlying Matplotlib Axes object instead of displaying the plot (default=None).
+- `ax: matplotlib.axes.Axes | None`
+  Matplotlib Axes object to plot onto. If `None`, a new figure and axes are created. The function always returns the Axes object used for plotting (default=None).
 
 - `show_zeros: bool`
   Display zeros in the visualization; if False, hide or mask zeros where applicable (default=True).

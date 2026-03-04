@@ -9,6 +9,7 @@ from typing import Dict, Set, Optional
 # -----------------------
 
 _NUMPY_START = re.compile(r"^\s*Parameters\s*\Z", re.IGNORECASE)
+_NUMPY_EXAMPLES = re.compile(r"^\s*Examples?\s*\Z", re.IGNORECASE)
 _GOOGLE_START = re.compile(r"^\s*Args:\s*\Z")
 _REST_PARAM  = lambda name: re.compile(rf"^\s*:param\s+{re.escape(name)}\s*:")
 _REST_TYPE   = lambda name: re.compile(rf"^\s*:type\s+{re.escape(name)}\s*:")
@@ -144,12 +145,85 @@ def _replace_doc_header(lines, new_header: str):
         return header_lines + [""] + tail
     return tail
 
+def _replace_doc_examples(lines, new_examples: str):
+    examples_text = dedent(new_examples).strip()
+    examples_lines = examples_text.splitlines() if examples_text else []
+
+    # Find the Examples section
+    examples_idx = None
+    for idx, line in enumerate(lines):
+        if _NUMPY_EXAMPLES.match(line):
+            examples_idx = idx
+            break
+
+    if examples_idx is None:
+        # No existing Examples section; append new one at the end
+        if examples_lines:
+            result = list(lines)
+            # Strip trailing blank lines
+            while result and result[-1].strip() == "":
+                result.pop()
+            return (
+                result
+                + [""]
+                + ["Examples"]
+                + ["--------"]
+                + examples_lines
+            )
+        return list(lines)
+
+    # Find the end of the Examples section: skip underline then
+    # consume everything until the next NumPy section header or EOF
+    underline_re = re.compile(r"^\s*-+\s*\Z")
+
+    end_idx = examples_idx + 1
+    n = len(lines)
+    # Skip the underline
+    if end_idx < n and underline_re.match(lines[end_idx]):
+        end_idx += 1
+
+    # Consume the body of the Examples section
+    while end_idx < n:
+        ln = lines[end_idx]
+        # Check if this is the start of a new NumPy section
+        # (non-indented text followed by an underline on the next)
+        if (
+            ln.strip()
+            and not ln.startswith(" ")
+            and end_idx + 1 < n
+            and underline_re.match(lines[end_idx + 1])
+        ):
+            break
+        end_idx += 1
+
+    before = lines[:examples_idx]
+    after = lines[end_idx:]
+
+    # Strip trailing blank lines from before
+    while before and before[-1].strip() == "":
+        before.pop()
+
+    if examples_lines:
+        return (
+            before
+            + [""]
+            + ["Examples"]
+            + ["--------"]
+            + examples_lines
+            + ([""] + after if after else [])
+        )
+    # Empty examples text: remove the Examples section entirely
+    return before + after
+
+
 def _prune_docstring(doc: str,
                      fixed_names: Set[str],
                      add_note: bool,
                      fixed_map: Dict[str, object],
                      func_name: str,
-                     docstr_header: Optional[str]) -> str:
+                     docstr_header: Optional[str],
+                     docstr_examples: Optional[str] = None,
+                     ) -> str:
     if doc:
         lines = dedent(doc).splitlines()
     else:
@@ -163,6 +237,9 @@ def _prune_docstring(doc: str,
 
     if docstr_header is not None:
         lines = _replace_doc_header(lines, docstr_header)
+
+    if docstr_examples is not None:
+        lines = _replace_doc_examples(lines, docstr_examples)
 
     if not lines and docstr_header:
         lines = dedent(docstr_header).strip().splitlines()
@@ -215,6 +292,7 @@ def partial_with_docsig(
     *args,
     add_fixed_note: bool = True,
     docstr_header: Optional[str] = None,
+    docstr_examples: Optional[str] = None,
     **kwargs,
 ):
     """
@@ -236,6 +314,9 @@ def partial_with_docsig(
     docstr_header : str, optional
         When provided, replace the original docstring header (up to the
         Parameters section) with this text.
+    docstr_examples : str, optional
+        When provided, replace the Examples section of the docstring
+        with this text. If no Examples section exists, one is appended.
     **kwargs
         Keyword args to fix.
 
@@ -267,6 +348,7 @@ def partial_with_docsig(
         fixed_map=fixed_map,
         func_name=getattr(func, "__name__", "<callable>"),
         docstr_header=docstr_header,
+        docstr_examples=docstr_examples,
     )
 
     return p

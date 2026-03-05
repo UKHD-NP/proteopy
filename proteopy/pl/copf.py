@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import anndata as ad
 from matplotlib.axes import Axes
+from adjustText import adjust_text
 
 from proteopy.utils.anndata import check_proteodata
 
@@ -19,10 +20,14 @@ def proteoform_scores(
     pval_threshold: float | int | None = None,
     score_threshold: float | int | None = None,
     log_scores: bool = False,
+    protein_id_key: str | None = None,
+    highlight_prots: list[str] | None = None,
+    protein_label_fontsize: int | float = 8,
+    protein_label_color: str = "black",
     show: bool = True,
     save: str | Path | None = None,
-    ax: bool = False,
-) -> Axes | None:
+    ax: Axes | None = None,
+) -> Axes:
     """Scatter plot of COPF proteoform scores vs. p-values.
 
     Parameters
@@ -40,12 +45,66 @@ def proteoform_scores(
     log_scores : bool
         Plot p-values on a log-scaled y-axis when ``True``; otherwise use a
         linear scale.
+    protein_id_key : str | None
+        Column in ``.var`` whose values are used as display labels
+        instead of ``protein_id``. 1-to-1 mapping between ``protein_id`` and
+        ``protein_id_key`` is enforced.
+    highlight_prots : list[str] | None
+        Protein IDs to highlight with text labels on the scatter
+        plot. When ``protein_id_key`` is set, values must come
+        from the ``protein_id_key`` column.
+    protein_label_fontsize : int | float
+        Font size for the highlight labels.
+    protein_label_color : str
+        Color for the highlight labels and connector lines.
     show : bool
         Call :func:`matplotlib.pyplot.show` when ``True``.
     save : str | Path | None
         File path to save the figure. ``None`` skips saving.
-    ax : bool
-        Return the created :class:`matplotlib.axes.Axes` instead of ``None``.
+    ax : matplotlib.axes.Axes | None
+        Matplotlib Axes object to plot onto. If ``None``, a new
+        figure and axes are created.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The Axes object used for plotting.
+
+    Examples
+    --------
+    Basic scatter plot of proteoform scores:
+
+    >>> import proteopy as pr
+    >>> adata = pr.read.long(...)
+    >>> pr.tl.pairwise_peptide_correlations(adata)
+    >>> pr.tl.peptide_dendograms_by_correlation(
+    ...     adata,
+    ...     method='agglomerative-hierarchical-clustering',
+    ... )
+    >>> pr.tl.peptide_clusters_from_dendograms(
+    ...     adata,
+    ...     n_clusters=2,
+    ...     min_peptides_per_cluster=2,
+    ... )
+    >>> pr.tl.proteoform_scores(adata, alpha=0.4)
+    >>> pr.pl.proteoform_scores(adata)
+
+    Highlight specific proteins by ``protein_id``:
+
+    >>> pr.pl.proteoform_scores(
+    ...     adata,
+    ...     highlight_prots=["P12345", "Q67890"],
+    ... )
+
+    Highlight proteins using an alternative label column:
+
+    >>> pr.pl.proteoform_scores(
+    ...     adata,
+    ...     protein_id_key="gene_name",
+    ...     highlight_prots=["GAPDH", "ACTB"],
+    ...     protein_label_color="red",
+    ...     protein_label_fontsize=10,
+    ... )
     """
 
     check_proteodata(adata)
@@ -160,7 +219,11 @@ def proteoform_scores(
     var["is_above_threshold"] = mask
     var["plot_pval"] = plot_pvals
 
-    _fig, _ax = plt.subplots()
+    if ax is not None:
+        _ax = ax
+        _fig = _ax.get_figure()
+    else:
+        _fig, _ax = plt.subplots()
     sns.scatterplot(
         data=var,
         x="proteoform_score",
@@ -173,6 +236,116 @@ def proteoform_scores(
         legend=False,
         ax=_ax,
     )
+
+    # -- Highlight selected proteins with text labels --------
+    if highlight_prots is not None:
+        if not isinstance(highlight_prots, list) or not all(
+            isinstance(v, str) for v in highlight_prots
+        ):
+            raise TypeError("`highlight_prots` must be a list of strings.")
+
+        # Build protein_id <-> display label mapping.
+        if protein_id_key is not None:
+            if protein_id_key not in adata.var.columns:
+                raise ValueError(
+                    f"Column '{protein_id_key}' not found "
+                    "in `adata.var`."
+                )
+            # Validate 1-to-1 mapping.
+            mapping_df = adata.var[
+                ["protein_id", protein_id_key]
+            ].drop_duplicates()
+            dup_proteins = (
+                mapping_df
+                .groupby("protein_id")[protein_id_key]
+                .nunique()
+            )
+            bad = dup_proteins[dup_proteins > 1]
+            if not bad.empty:
+                raise ValueError(
+                    "1-to-1 mapping violation between "
+                    f"'protein_id' and '{protein_id_key}' "
+                    "for protein(s): "
+                    f"{sorted(bad.index.tolist())}"
+                )
+            pid_to_label = dict(
+                zip(
+                    mapping_df["protein_id"],
+                    mapping_df[protein_id_key],
+                )
+            )
+            label_to_pid = dict(
+                zip(
+                    mapping_df[protein_id_key],
+                    mapping_df["protein_id"],
+                )
+            )
+
+            # highlight_prots may contain protein_id_key
+            # values — resolve them to protein_ids.
+            known_labels = set(mapping_df[protein_id_key])
+            resolved_pids = set()
+            unknown = (set(highlight_prots) - known_labels)
+            if unknown:
+                raise ValueError(
+                    "The following values from "
+                    "`highlight_prots` are not found in "
+                    f"`adata.var['{protein_id_key}']`: "
+                    f"{sorted(unknown)}"
+                )
+            highlight_pids = {
+                label_to_pid[v] for v in highlight_prots
+            }
+        else:
+            pid_to_label = None
+            known_ids = set(adata.var["protein_id"])
+            unknown = set(highlight_prots) - known_ids
+            if unknown:
+                raise ValueError(
+                    "The following protein IDs from "
+                    "`highlight_prots` are not found in "
+                    "`adata.var['protein_id']`: "
+                    f"{sorted(unknown)}"
+                )
+            highlight_pids = set(highlight_prots)
+
+        # Map var index back to protein_id for the
+        # deduplicated var DataFrame.
+        pid_series = adata.var.loc[var.index, "protein_id"]
+        highlight_mask = pid_series.isin(highlight_pids)
+        var_highlight = var.loc[highlight_mask.values]
+
+        if not var_highlight.empty:
+            texts = []
+            for idx in var_highlight.index:
+                pid = pid_series.loc[idx]
+                if pid_to_label is not None:
+                    label = pid_to_label[pid]
+                else:
+                    label = pid
+                texts.append(
+                    _ax.text(
+                        var_highlight.loc[idx, "proteoform_score"],
+                        var_highlight.loc[idx, "plot_pval"],
+                        label,
+                        fontsize=protein_label_fontsize,
+                        color=protein_label_color,
+                    )
+                )
+            adjust_text(
+                texts,
+                x=var["proteoform_score"].values,
+                y=var["plot_pval"].values,
+                ax=_ax,
+                force_points=(2.0, 2.0),
+                force_text=(1.0, 1.0),
+                expand=(2.0, 2.0),
+                arrowprops=dict(
+                    arrowstyle="-",
+                    color="grey",
+                    lw=0.5,
+                ),
+            )
 
     if score_threshold is not None:
         _ax.axvline(
@@ -193,13 +366,11 @@ def proteoform_scores(
 
     if save is not None:
         if not isinstance(save, (str, Path)):
-            raise TypeError("`save` must be a path-like object or None.")
+            raise TypeError(
+                "`save` must be a path-like object or None."
+            )
         _fig.savefig(save, dpi=300, bbox_inches="tight")
     if show:
         plt.show()
-    if ax:
-        return _ax
-    if not (show or save or ax):
-        raise ValueError(
-            "Function does nothing: set one of `show`, `save`, or `ax`."
-        )
+
+    return _ax

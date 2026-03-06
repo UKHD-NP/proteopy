@@ -137,23 +137,26 @@ def _group_peptides(peptides: List[str]) -> Dict[str, List[str]]:
     Returns {representative_longest: [members...]} with
     members sorted by (-len, lexicographically).
     """
-    peptides = [
-        p for p in
-        pd.Series(peptides).dropna().astype(str).tolist()
-    ]
-    peptides = list(dict.fromkeys(peptides))
+    peptides = (
+        pd.Series(peptides).dropna().astype(str)
+        .unique().tolist()
+    )
     return _union_find_groups(peptides)
 
 
 def extract_peptide_groups(
     adata,
     peptide_col: str = "peptide_id",
+    group_by: str | None = None,
     inplace: bool = True,
 ):
     """
-    Create a new column ``adata.var['peptide_group']``
-    with all overlapping (substring) peptide_ids joined
-    by ``';'`` for each row in ``adata.var``.
+    Create new columns ``adata.var['peptide_group_id']``
+    and ``adata.var['peptide_group_nr']``.
+    ``peptide_group_id`` contains all overlapping (substring)
+    peptide_ids joined by ``';'``. ``peptide_group_nr``
+    is a unique integer identifier for each group,
+    numbered across all groups in order of appearance.
 
     Parameters
     ----------
@@ -162,111 +165,195 @@ def extract_peptide_groups(
         sequences (already normalized).
     peptide_col : str
         Column in `adata.var` containing peptide sequences.
+    group_by : str or None, optional
+        Column in ``adata.var`` to partition peptides
+        before grouping. When set (e.g. ``'protein_id'``),
+        substring containment is only evaluated among
+        peptides that share the same value in this column.
+        When ``None``, all peptides are grouped globally.
     inplace : bool
-        If True, modifies `adata` in place. If False, returns a modified copy.
+        If True, modifies `adata` in place. If False,
+        returns a modified copy.
 
     Returns
     -------
-    If inplace=True: None
-    If inplace=False: AnnData (modified copy)
+    None or AnnData
+        ``None`` if *inplace* is True, otherwise a
+        modified copy.
     """
     if peptide_col not in adata.var.columns:
-        raise KeyError(f"'{peptide_col}' not found in adata.var")
+        raise KeyError(
+            f"'{peptide_col}' not found in adata.var"
+        )
+    has_group_by = group_by is not None
+    if has_group_by and group_by not in adata.var.columns:
+        raise KeyError(
+            f"'{group_by}' not found in adata.var"
+        )
 
-    peptides = adata.var[peptide_col].astype(str).tolist()
-    groups = _group_peptides(peptides)
+    pep_series = adata.var[peptide_col].astype(str)
 
-    # map each peptide to its group string
-    pep_to_group = {
-        p: ";".join(groups.get(rep, [rep]))
-        for rep, members in groups.items()
-        for p in members
+    if group_by is None:
+        groups = _group_peptides(pep_series.tolist())
+        pep_to_group = {
+            p: ";".join(members)
+            for members in groups.values()
+            for p in members
+        }
+    else:
+        pep_to_group = {}
+        for _, sub_df in adata.var.groupby(
+            group_by, observed=True,
+        ):
+            sub_peps = (
+                sub_df[peptide_col].astype(str).tolist()
+            )
+            groups = _group_peptides(sub_peps)
+            for members in groups.values():
+                label = ";".join(members)
+                for p in members:
+                    pep_to_group[p] = label
+
+    group_col = pep_series.map(pep_to_group)
+
+    group_to_nr = {
+        g: i for i, g in enumerate(group_col.unique())
     }
-    group_col = (
-        adata.var[peptide_col]
-        .map(pep_to_group)
-        .fillna(adata.var[peptide_col])
-    )
+    group_nr_col = group_col.map(group_to_nr)
 
     if inplace:
-        adata.var["peptide_group"] = group_col.values
+        adata.var["peptide_group_id"] = group_col.values
+        adata.var["peptide_group_nr"] = (
+            group_nr_col.values
+        )
         return None
     else:
         adata_copy = adata.copy()
-        adata_copy.var["peptide_group"] = group_col.values
+        adata_copy.var["peptide_group_id"] = (
+            group_col.values
+        )
+        adata_copy.var["peptide_group_nr"] = (
+            group_nr_col.values
+        )
         return adata_copy
 
 
 def summarize_overlapping_peptides(
     adata: ad.AnnData,
-    peptide_col: str = "peptide_id",
-    group_by: str = "peptide_group",
+    group_by: str | None = "protein_id",
     layer: str | None = None,
     func: Union[str, Callable] = "sum",
+    zero_to_na: bool = False,
+    fill_na: float | int | None = None,
+    skip_na: bool = True,
     inplace: bool = True,
 ):
     """
-    Aggregate intensities across peptides sharing the
-    same ``group_col``.
+    Aggregate intensities across overlapping peptides.
 
-    - Sums intensities in ``adata.X`` within each group
-      (NaN-aware).
-    - Uses the longest peptide_id in each group as the
-      new var_name.
-    - Keeps both the representative peptide_id as a column
-      and index.
-    - Retains the grouping key as ``'peptide_group'``.
+    Calls :func:`extract_peptide_groups` internally to
+    identify overlapping (substring-contained) peptides,
+    then aggregates intensities within each group.
+
+    - Uses the longest ``peptide_id`` in each group as
+      the new var_name.
+    - Keeps both the representative ``peptide_id`` as a
+      column and index.
+    - Retains the grouping key as ``'peptide_group_id'``.
     - Concatenates differing ``.var`` annotations using
       ``';'``.
 
     Parameters
     ----------
     adata : AnnData
-        Input AnnData with quantitative data and
-        annotations.
-    peptide_col : str
-        Column in ``adata.var`` containing peptide
-        identifiers (or will be created from var_names).
-    group_by : str
-        Column in ``adata.var`` specifying grouping
-        (e.g. ``'peptide_group'`` or ``'proteoform_id'``).
+        :class:`~anndata.AnnData` with peptide-level data.
+    group_by : str or None, optional
+        Column in ``adata.var`` to partition peptides
+        before grouping. Passed to
+        :func:`extract_peptide_groups`. When set (e.g.
+        ``'protein_id'``), substring containment is only
+        evaluated among peptides sharing the same value
+        in this column. When ``None``, all peptides are
+        grouped globally.
     layer : str, optional
         Key in ``adata.layers`` specifying which matrix
         to aggregate; defaults to ``.X``.
     func : {'sum', 'mean', 'median', 'max'} or Callable
-        Aggregation applied across peptides in each group.
-    inplace : bool
-        If True, modifies adata in place. Otherwise returns a new AnnData.
+        Aggregation applied across peptides in each
+        group.
+    zero_to_na : bool, optional
+        If True, replace zeros with ``np.nan`` before
+        aggregation.
+    fill_na : float or int, optional
+        Replace ``np.nan`` values with this constant
+        before aggregation.
+    skip_na : bool, optional
+        If True, ignore ``np.nan`` during aggregation.
+        If False, any ``np.nan`` in a group produces
+        ``np.nan`` in the result.
+    inplace : bool, optional
+        If True, modifies adata in place. Otherwise
+        returns a new AnnData.
 
     Returns
     -------
     AnnData | None
-        Aggregated AnnData if inplace=False, else modifies in place.
+        Aggregated AnnData if inplace=False, else
+        modifies in place.
     """
-    # --- safety checks
-    if group_by not in adata.var.columns:
-        raise KeyError(f"'{group_by}' not found in adata.var")
-    if peptide_col not in adata.var.columns:
-        # fallback: use var_names as peptide identifiers
-        adata.var[peptide_col] = adata.var_names.astype(str)
+    if zero_to_na and fill_na is not None:
+        raise ValueError(
+            "Cannot set both zero_to_na and fill_na."
+        )
+
+    # --- extract peptide groups
+    if not inplace:
+        adata = adata.copy()
+    extract_peptide_groups(
+        adata, group_by=group_by, inplace=True,
+    )
+
+    group_col = "peptide_group_nr"
+    peptide_col = "peptide_id"
 
     # --- matrix as DataFrame (obs × vars)
+    X = (
+        adata.layers[layer] if layer is not None
+        else adata.X
+    )
+    if sparse.issparse(X):
+        X = X.toarray()
+    X = np.asarray(X, dtype=float)
+
+    if zero_to_na:
+        X = X.copy()
+        X[X == 0] = np.nan
+    if fill_na is not None:
+        X = X.copy()
+        X[np.isnan(X)] = fill_na
+
     vals = pd.DataFrame(
-        adata.layers[layer] if layer is not None else adata.X,
+        X,
         index=adata.obs_names,
         columns=adata.var_names,
     )
 
     # --- group columns and aggregate
-    group_keys = adata.var[group_by].astype(str)
+    group_keys = adata.var[group_col].astype(str)
     grouped = vals.T.groupby(
         group_keys, sort=True, observed=True,
     )
     agg_vals = _apply_grouped_func(grouped, func).T
 
+    if not skip_na:
+        has_nan = vals.isna().T.groupby(
+            group_keys, sort=True, observed=True,
+        ).any().T
+        agg_vals[has_nan] = np.nan
+
     # --- build new var table (aggregate annotations)
     groups = adata.var.groupby(
-        group_by, sort=True, observed=True,
+        group_col, sort=True, observed=True,
     )
     records, group_to_peptide = [], {}
 
@@ -279,23 +366,28 @@ def summarize_overlapping_peptides(
         group_to_peptide[str(gkey)] = longest_pep
 
         rec = {
-            group_by: str(gkey),
+            group_col: str(gkey),
             peptide_col: longest_pep,
             "n_grouped": len(df_g),
         }
 
         # aggregate all other var columns
         for col in adata.var.columns:
-            if col in (group_by, peptide_col):
+            if col in (group_col, peptide_col):
                 continue
             rec[col] = _aggregate_var_value(df_g[col])
         records.append(rec)
 
-    var_new = pd.DataFrame.from_records(records).set_index(peptide_col)
+    var_new = (
+        pd.DataFrame.from_records(records)
+        .set_index(peptide_col)
+    )
 
-    # --- rename aggregated matrix columns from group key → longest peptide
-    agg_vals.columns = [group_to_peptide[k] for k in agg_vals.columns]
-    var_new = var_new.loc[agg_vals.columns]  # ensure same order
+    # --- rename aggregated matrix columns
+    agg_vals.columns = [
+        group_to_peptide[k] for k in agg_vals.columns
+    ]
+    var_new = var_new.loc[agg_vals.columns]
 
     # --- ensure 'peptide_id' column always matches index
     var_new[peptide_col] = var_new.index

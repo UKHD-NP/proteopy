@@ -86,7 +86,7 @@ def proteoform_scores(
     ...     n_clusters=2,
     ...     min_peptides_per_cluster=2,
     ... )
-    >>> pr.tl.proteoform_scores(adata, alpha=0.4)
+    >>> pr.tl.proteoform_scores(adata, min_pval_adj=0.4)
     >>> pr.pl.proteoform_scores(adata)
 
     Highlight specific proteins by ``protein_id``:

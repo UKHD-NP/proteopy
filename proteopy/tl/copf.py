@@ -531,7 +531,8 @@ def proteoform_scores_(
 
 def proteoform_scores(
     adata,
-    alpha=None,
+    min_pval_adj=None,
+    min_score=None,
     summary_func=np.mean,
     noise=NOISE,
     inplace=True,
@@ -590,21 +591,33 @@ def proteoform_scores(
 
     # Perform multiple-testing correction
 
-    if not alpha:
-        alpha = 0.05 # Just placeholder
-
     mask_nonan = proteoform_scores['proteoform_score_pval'].notna()
     pvals = proteoform_scores.loc[mask_nonan, 'proteoform_score_pval']
 
-    rejected, corrected_pvals, _, _ = multipletests(pvals, alpha=alpha, method='fdr_bh')
+    bh_alpha = min_pval_adj if min_pval_adj is not None else 0.05
+    _, corrected_pvals, _, _ = multipletests(
+        pvals,
+        alpha=bh_alpha,
+        method='fdr_bh',
+    )
 
     proteoform_scores['proteoform_score_pval_adj'] = np.nan
     proteoform_scores['is_proteoform'] = np.nan
-    
-    proteoform_scores.loc[pvals.index, 'proteoform_score_pval_adj'] = corrected_pvals
 
-    if alpha:
-        proteoform_scores.loc[pvals.index, 'is_proteoform'] = rejected.astype(int)
+    proteoform_scores.loc[
+        pvals.index, 'proteoform_score_pval_adj'
+    ] = corrected_pvals
+
+    if min_pval_adj is not None or min_score is not None:
+        is_pf = pd.Series(True, index=pvals.index)
+        if min_pval_adj is not None:
+            is_pf &= corrected_pvals <= min_pval_adj
+        if min_score is not None:
+            scores = proteoform_scores.loc[pvals.index, 'proteoform_score']
+            is_pf &= scores >= min_score
+        proteoform_scores.loc[
+            pvals.index, 'is_proteoform'
+        ] = is_pf.astype(int).values
 
     # --- drop existing score columns before merge (safe for re-runs) ---
     score_cols = [

@@ -11,6 +11,8 @@ from proteopy.utils.string import sanitize_string
 STAT_TEST_METHOD_LABELS = {
     "ttest_two_sample": "Two-sample t-test",
     "welch": "Welch's t-test",
+    "anova_oneway": "One-way ANOVA",
+    "anova_oneway_welch": "Welch's one-way ANOVA",
 }
 
 
@@ -341,7 +343,13 @@ def parse_stat_test_varm_slot(
         else:
             layer = layer_part
 
-    if design_part.endswith("_vs_rest"):
+    if test_type.startswith("anova"):
+        design = design_part
+        if design_part == "all":
+            design_label = "all groups"
+        else:
+            design_label = _pretty_design_label(design_part)
+    elif design_part.endswith("_vs_rest"):
         group = design_part[: -len("_vs_rest")]
         if not group:
             raise ValueError("Design is missing the group label.")
@@ -358,7 +366,8 @@ def parse_stat_test_varm_slot(
         )
     else:
         raise ValueError(
-            "Design must use '<group1>_vs_<group2>' or '<group>_vs_rest'."
+            "Design must use '<group1>_vs_<group2>' or "
+            "'<group>_vs_rest'."
         )
 
     test_info = {

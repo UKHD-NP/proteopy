@@ -475,6 +475,14 @@ def _perform_anova(
         If any group has fewer than MIN_SAMPLES_PER_GROUP samples
         or contains NA values.
     """
+    if not equal_var:
+        raise NotImplementedError(
+            "Welch's ANOVA (equal_var=False) is not yet "
+            "available. This feature will be supported in a "
+            "future release. Use 'anova_oneway' (equal_var="
+            "True) instead."
+        )
+
     group_arrays = {}
     for group in groups_to_test:
         idxs = (obs_column == group).values
@@ -501,7 +509,7 @@ def _perform_anova(
     # Run one-way ANOVA per variable
     fstats, pvals = stats.f_oneway(
         *[group_arrays[g] for g in groups_to_test],
-        equal_var=equal_var,
+        # equal_var=equal_var,
     )
 
     results = {

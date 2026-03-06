@@ -154,19 +154,25 @@ def differential_abundance_df(
 
     result = pd.concat(frames, ignore_index=True)
 
-    # Reorder columns: var_id, test_type, group_by, design, then the rest
-    col_order = ["var_id", "test_type", "group_by",
-                 "design", "mean1", "mean2", "logfc", "tstat",
-                 "pval", "pval_adj", "is_diff_abundant"]
-    # Include any extra columns that might be present
-    extra_cols = [c for c in result.columns if c not in col_order]
-    result = result[col_order + extra_cols]
+    # Reorder columns: known leading cols first, then the rest
+    leading = ["var_id", "test_type", "group_by", "design"]
+    ordered = [c for c in leading if c in result.columns]
+    remaining = [
+        c for c in result.columns if c not in ordered
+    ]
+    result = result[ordered + remaining]
 
     # Apply filters
-    if min_logfc is not None:
-        result = result[result["logfc"] >= min_logfc]
-    if max_logfc is not None:
-        result = result[result["logfc"] <= max_logfc]
+    if min_logfc is not None or max_logfc is not None:
+        if "logfc" not in result.columns:
+            raise ValueError(
+                "logfc filtering is not applicable for "
+                "ANOVA results (no logfc column)."
+            )
+        if min_logfc is not None:
+            result = result[result["logfc"] >= min_logfc]
+        if max_logfc is not None:
+            result = result[result["logfc"] <= max_logfc]
     if max_pval is not None:
         pval_col = "pval_adj" if "pval_adj" in result.columns else "pval"
         result = result[result[pval_col] <= max_pval]
@@ -233,9 +239,13 @@ def tests(adata: AnnData) -> pd.DataFrame:
         try:
             parsed = parse_stat_test_varm_slot(key, adata=adata)
             design = parsed["design"]
-            design_mode = (
-                "one_vs_rest" if design.endswith("_vs_rest") else "one_vs_one"
-            )
+            test_type = parsed["test_type"]
+            if test_type.startswith("anova"):
+                design_mode = "all"
+            elif design.endswith("_vs_rest"):
+                design_mode = "one_vs_rest"
+            else:
+                design_mode = "one_vs_one"
             records.append({
                 "key": key,
                 "test_type": parsed["test_type"],

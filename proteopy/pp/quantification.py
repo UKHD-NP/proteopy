@@ -398,11 +398,77 @@ def summarize_overlapping_peptides(
     )
 
 
+def _validate_quantify_by_category_input(
+    adata, group_by, proteodata_target_level,
+):
+    """Validate arguments for ``quantify_by_category``."""
+    if group_by is None or group_by not in adata.var.columns:
+        raise KeyError(
+            f"'{group_by}' not found in adata.var"
+        )
+    _allowed_levels = {None, "protein", "peptide"}
+    if proteodata_target_level not in _allowed_levels:
+        raise ValueError(
+            f"proteodata_target_level must be one of "
+            f"{_allowed_levels!r}, got "
+            f"'{proteodata_target_level}'."
+        )
+
+
+def _build_var_table_category(adata, group_by):
+    """Build aggregated ``.var`` for ``quantify_by_category``.
+    """
+    records = []
+    for gkey, df_g in adata.var.groupby(
+        group_by, sort=True, observed=True,
+    ):
+        rec = {group_by: str(gkey)}
+        for col in adata.var.columns:
+            if col == group_by:
+                continue
+            rec[col] = _aggregate_var_value(df_g[col])
+        records.append(rec)
+
+    var_new = (
+        pd.DataFrame.from_records(records)
+        .set_index(group_by)
+    )
+    var_new[group_by] = var_new.index
+    var_new.index.name = None
+    return var_new
+
+
+def _apply_target_level(var_new, proteodata_target_level):
+    """Adjust ``.var`` columns for the requested
+    proteodata level."""
+    if proteodata_target_level == "protein":
+        if "protein_id" in var_new.columns:
+            var_new = var_new.rename(
+                columns={
+                    "protein_id": "protein_id_old",
+                },
+            )
+        var_new["protein_id"] = var_new.index
+        if "peptide_id" in var_new.columns:
+            var_new = var_new.drop(columns="peptide_id")
+    elif proteodata_target_level == "peptide":
+        if "protein_id" not in var_new.columns:
+            raise ValueError(
+                "proteodata_target_level='peptide' "
+                "requires a 'protein_id' column in "
+                "the resulting .var annotations, but "
+                "none was found."
+            )
+        var_new["peptide_id"] = var_new.index
+    return var_new
+
+
 def quantify_by_category(
     adata: ad.AnnData,
     group_by: str = None,
     layer=None,
     func: Union[str, Callable] = "sum",
+    proteodata_target_level: str | None = None,
     inplace: bool = True,
 ) -> Optional[ad.AnnData]:
     """
@@ -415,28 +481,48 @@ def quantify_by_category(
     Parameters
     ----------
     adata : AnnData
-        Input AnnData with .X (obs x vars) and .var annotations.
+        Input AnnData with .X (obs x vars) and .var
+        annotations.
     group_by : str
-        Column in adata.var to group by (e.g. 'protein_id').
+        Column in adata.var to group by
+        (e.g. 'protein_id').
     layer : str, optional
         Key in ``adata.layers``; when set, quantification
         uses that layer instead of ``adata.X``.
     func : {'sum', 'median', 'max'} | Callable
         Aggregation to apply across grouped variables.
+    proteodata_target_level : {'protein', 'peptide'} or \
+None, optional
+        Set the proteodata level of the output. When
+        ``None`` the data level and columns are left as
+        is. When ``'protein'``, a ``protein_id`` column
+        matching the new var index is added so the result
+        satisfies protein-level proteodata requirements;
+        any pre-existing ``protein_id`` column is renamed
+        to ``protein_id_old`` and any ``peptide_id``
+        column is removed. When ``'peptide'``, a
+        ``peptide_id`` column matching the new var index
+        is added so the result satisfies peptide-level
+        proteodata requirements; a ``protein_id`` column
+        must already exist in the inherited annotations.
     inplace : bool
-        If True, modify `adata` in place; else return a new AnnData.
+        If True, modify `adata` in place; else return a
+        new AnnData.
 
     Returns
     -------
     AnnData | None
-        Aggregated AnnData if inplace=False; otherwise None.
+        Aggregated AnnData if inplace=False; otherwise
+        None.
     """
-    if group_by is None or group_by not in adata.var.columns:
-        raise KeyError(f"'{group_by}' not found in adata.var")
+    _validate_quantify_by_category_input(
+        adata, group_by, proteodata_target_level,
+    )
 
     # --- Matrix as DataFrame (obs × vars)
     vals = pd.DataFrame(
-        adata.layers[layer] if layer is not None else adata.X,
+        adata.layers[layer] if layer is not None
+        else adata.X,
         index=adata.obs_names,
         columns=adata.var_names,
     )
@@ -448,23 +534,16 @@ def quantify_by_category(
     )
     agg_vals = _apply_grouped_func(grouped, func).T
 
-    # --- Build new var table (aggregate annotations per group)
-    records = []
-    for gkey, df_g in adata.var.groupby(
-        group_by, sort=True, observed=True,
-    ):
-        rec = {group_by: str(gkey)}
-        for col in adata.var.columns:
-            if col == group_by:
-                continue
-            rec[col] = _aggregate_var_value(df_g[col])
-        records.append(rec)
-
-    var_new = pd.DataFrame.from_records(records).set_index(group_by)
-    # align var rows to aggregated matrix columns
+    # --- Build new var table
+    var_new = _build_var_table_category(
+        adata, group_by,
+    )
     var_new = var_new.loc[agg_vals.columns]
-    var_new[group_by] = var_new.index
-    var_new.index.name = None
+
+    # --- Apply proteodata_target_level conformance
+    var_new = _apply_target_level(
+        var_new, proteodata_target_level,
+    )
 
     # --- Rebuild AnnData
     return _rebuild_adata(
@@ -475,11 +554,13 @@ def quantify_by_category(
 quantify_proteins = partial(
     quantify_by_category,
     group_by='protein_id',
+    proteodata_target_level='protein',
 )
 
 quantify_proteoforms = partial(
     quantify_by_category,
     group_by='proteoform_id',
+    proteodata_target_level='protein',
 )
 
 

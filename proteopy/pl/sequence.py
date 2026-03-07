@@ -471,7 +471,10 @@ def peptides_on_sequence(
     add_sequences : dict[str, dict] | None
         Additional named sequences to overlay (e.g., domains).
         Each value must be a dict with a ``"group"`` key and
-        either a ``"seq"`` or ``"seq_coord"`` key.
+        either a ``"seq"`` or ``"seq_coord"`` key. Coordinates
+        are 0-based throughout. ``"seq_coord"`` must be a
+        half-open ``[start, end)`` tuple where ``start >= 0``
+        and ``end <= len(ref_sequence)``.
     allow_overlaps : bool
         When ``False``, raise ``ValueError`` if two sequences in
         the same group overlap positionally.
@@ -677,7 +680,10 @@ def peptides_on_prot_sequence(
         Additional named sequences to overlay (e.g.,
         domains). Each value must be a dict with a
         ``"group"`` key and either a ``"seq"`` or
-        ``"seq_coord"`` key.
+        ``"seq_coord"`` key. Coordinates are 0-based
+        throughout. ``"seq_coord"`` must be a half-open
+        ``[start, end)`` tuple where ``start >= 0`` and
+        ``end <= len(ref_sequence)``.
     allow_overlaps : bool
         When ``False``, raise ``ValueError`` if two
         sequences in the same group overlap positionally.

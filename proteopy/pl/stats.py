@@ -852,14 +852,14 @@ def n_cat1_per_cat2_hist(
     ----------
     adata : AnnData
         Annotated data matrix.
-    second_category : str
-        Column name identifying the primary category. Resolved from
-        ``adata.obs`` when ``axis == 0`` and ``adata.var`` when ``axis == 1``.
-        Passing ``"index"`` is not supported.
     first_category : str
         Column providing the secondary category from the same axis as
         ``second_category``. Pass ``"index"`` to use ``adata.obs_names`` (``axis
         == 0``) or ``adata.var_names`` (``axis == 1``).
+    second_category : str
+        Column name identifying the primary category. Resolved from
+        ``adata.obs`` when ``axis == 0`` and ``adata.var`` when ``axis == 1``.
+        Passing ``"index"`` is not supported.
     axis : int
         ``0`` to work on ``adata.obs``, ``1`` to work on ``adata.var``.
     bin_width : float | None
@@ -976,8 +976,8 @@ n_peptides_per_protein = partial_with_docsig(
 
 n_proteoforms_per_protein = partial_with_docsig(
     n_cat1_per_cat2_hist,
-    second_category="proteoform_id",
-    first_category="protein_id",
+    first_category="proteoform_id",
+    second_category="protein_id",
     axis=1,
     docstr_header=docstr_header,
 )

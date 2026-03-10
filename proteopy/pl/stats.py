@@ -933,6 +933,11 @@ def n_cat1_per_cat2_hist(
         )
 
     fig, _ax = plt.subplots(figsize=figsize)
+    if bin_width is None:
+        edges = np.histogram_bin_edges(counts.values, bins="auto")
+        auto_width = edges[1] - edges[0]
+        bin_width = max(auto_width, 1.0)
+
     if first_category == "index":
         entry_label = "observations" if axis == 0 else "variables"
     else:

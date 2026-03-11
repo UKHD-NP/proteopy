@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from proteopy.utils.string import detect_separator
+from proteopy.utils.string import detect_separator_from_extension
 
 
 def load_dataframe(
@@ -31,6 +31,6 @@ def load_dataframe(
         # Input is a file path
         file_path = Path(data)
         if sep is None:
-            sep = detect_separator(file_path)
+            sep = detect_separator_from_extension(file_path)
         df = pd.read_csv(file_path, sep=sep)
         return df

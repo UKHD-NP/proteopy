@@ -34,7 +34,7 @@ def sanitize_string(s: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_]", "_", str(s))
 
 
-def detect_separator(file_path: str | Path) -> str:
+def detect_separator_from_extension(file_path: str | Path) -> str:
     """Detect CSV/TSV separator from file extension.
 
     Parameters

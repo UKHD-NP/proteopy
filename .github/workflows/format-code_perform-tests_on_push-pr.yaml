@@ -72,6 +72,7 @@ jobs:
           flake8 \
             proteopy/ann/proteins.py \
             proteopy/datasets/williams_2018.py \
+            proteopy/download/williams_2018.py \
             proteopy/pl/sequence.py \
             proteopy/pp/quantification.py \
             proteopy/get/proteoforms.py \

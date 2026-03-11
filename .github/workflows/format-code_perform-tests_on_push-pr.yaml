@@ -71,6 +71,7 @@ jobs:
           # On clean files (manually increment)
           flake8 \
             proteopy/ann/proteins.py \
+            proteopy/datasets/williams_2018.py \
             proteopy/pl/sequence.py \
             proteopy/pp/quantification.py \
             proteopy/get/proteoforms.py \

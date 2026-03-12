@@ -1,5 +1,7 @@
 ### Custom ###
 
+data/
+docs/literature
 
 ### Python ###
 
@@ -29,7 +31,6 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -80,7 +81,7 @@ instance/
 # Sphinx documentation
 docs/_build/
 docs/sphinx/build/
-docs/sphinx/source/api/generated/*.rst
+docs/sphinx/source/api/generated/
 
 # PyBuilder
 .pybuilder/
@@ -233,18 +234,6 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
-
-# pkgdown site
-docs/
-
-# Sphinx documentation:
-!docs/
-!docs/conf.py
-!docs/*.rst
-!docs/**/*.rst
-!docs/**/*.md
-!docs/Makefile
-!docs/make.bat
 
 # translation temp files
 po/*~

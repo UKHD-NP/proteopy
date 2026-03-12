@@ -74,6 +74,7 @@ jobs:
             proteopy/datasets/williams_2018.py \
             proteopy/datasets/karayel_2020.py \
             proteopy/download/williams_2018.py \
+            proteopy/download/karayel_2020.py \
             proteopy/pl/sequence.py \
             proteopy/pp/quantification.py \
             proteopy/get/proteoforms.py \

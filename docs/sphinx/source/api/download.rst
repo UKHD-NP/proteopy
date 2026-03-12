@@ -39,6 +39,7 @@ used in proteomics quality control:
    :toctree: generated/
    :nosignatures:
 
+   proteopy.download.karayel_2020
    proteopy.download.williams_2018
 
 .. toctree::

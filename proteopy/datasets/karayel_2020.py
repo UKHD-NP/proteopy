@@ -1,30 +1,3 @@
-"""Karayel 2020 human erythropoiesis proteomics dataset.
-
-This module provides access to the protein-level DIA-MS proteomics dataset
-from Karayel et al. (2020) studying dynamic phosphosignaling networks
-during human erythropoiesis. The study quantified ~7,400 proteins from
-CD34+ hematopoietic stem/progenitor cells (HSPCs) isolated from healthy
-donors, across five differentiation stages of erythroid development.
-
-Cells were FACS-sorted using CD235a, CD49d, and Band 3 surface markers.
-The data is sourced from the PRIDE archive (`PXD017276
-<https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=PXD017276>`_)
-and includes
-measurements from the following erythroid differentiation stages:
-
-- Progenitor: CFU-E progenitor cells (CD34+ HSPCs, negative fraction)
-- ProE&EBaso: Proerythroblasts and early basophilic erythroblasts
-- LBaso: Late basophilic erythroblasts
-- Poly: Polychromatic erythroblasts
-- Ortho: Orthochromatic erythroblasts
-
-Reference
----------
-Karayel et al. (2020) Integrative proteomics reveals principles of
-dynamic phosphosignaling networks in human erythropoiesis.
-Molecular Systems Biology 16: e9813.
-DOI: 10.15252/msb.20209813
-"""
 import re
 from pathlib import Path
 
@@ -32,7 +5,10 @@ import numpy as np
 import pandas as pd
 import pooch
 
+import anndata as ad
 import proteopy as pp
+from proteopy.utils.anndata import check_proteodata
+
 
 def _parse_sample_id(col: str) -> str:
     """Parse and clean sample identifiers from raw column names.
@@ -67,49 +43,69 @@ def _parse_sample_id(col: str) -> str:
     col = col.replace("_181226121547", "")
     return col
 
-def karayel_2020():
+
+def karayel_2020(
+    fill_na: float | int | None = None,
+) -> ad.AnnData:
     """Load Karayel 2020 erythropoiesis proteomics dataset.
 
-    Download and process the protein-level DIA-MS dataset from Karayel
-    et al. (2020) studying CD34+ hematopoietic stem cell differentiation
-    during erythropoiesis. The dataset contains quantitative proteomics
-    measurements across five cell types representing sequential stages
-    of erythroid development.
+    Download and process the protein-level DIA-MS dataset from
+    Karayel et al. [1]_ studying dynamic phosphosignaling
+    networks during human erythropoiesis. The study quantified
+    ~7,400 proteins from CD34+ hematopoietic stem/progenitor
+    cells (HSPCs) isolated from healthy donors, across five
+    sequential erythroid differentiation stages with four
+    biological replicates each (20 samples total). Cells were
+    FACS-sorted using CD235a, CD49d, and Band 3 surface
+    markers. The differentiation stages are:
 
-    The function downloads data from the PRIDE archive (`PXD017276
-    <https://proteomecentral.proteomexchange.org/cgi/GetDataset?ID=PXD017276>`_),
-    processes sample identifiers, maps technical names to biological
-    cell types, and excludes day 7 samples. Protein quantities marked
-    as 'Filtered' in the original data are converted to ``np.nan``.
+    - Progenitor: CFU-E progenitor cells
+      (CD34+ HSPCs, negative fraction)
+    - ProE&EBaso: Proerythroblasts and early basophilic
+      erythroblasts
+    - LBaso: Late basophilic erythroblasts
+    - Poly: Polychromatic erythroblasts
+    - Ortho: Orthochromatic erythroblasts
+
+    Data are sourced from the PRIDE archive (`PXD017276
+    <https://proteomecentral.proteomexchange.org/cgi/
+    GetDataset?ID=PXD017276>`_). Protein quantities marked
+    as ``Filtered`` in the original data are converted to
+    ``np.nan``. Samples collected at day 7 are excluded.
 
     Sample annotation (``.obs``) includes:
-        - ``sample_id``: Unique sample identifier (cell_type_replicate)
-        - ``cell_type``: Differentiation stage (Progenitor, ProE&EBaso,
-          LBaso, Poly, Ortho)
-        - ``replicate``: Technical replicate identifier
+
+    - ``sample_id``: Unique identifier (cell_type_replicate).
+    - ``cell_type``: Differentiation stage abbreviation.
+    - ``replicate``: Technical replicate identifier.
 
     Variable annotation (``.var``) includes:
-        - ``protein_id``: Protein group identifier (matches
-          ``.var_names``)
-        - ``gene_name``: Associated gene name(s)
+
+    - ``protein_id``: Protein group identifier (matches
+      ``.var_names``).
+    - ``gene_name``: Associated gene name(s).
+
+    Parameters
+    ----------
+    fill_na : float | int | None, optional
+        If not ``None``, replace ``np.nan`` in ``.X``
+        with this value.
 
     Returns
     -------
-    ad.AnnData
-        AnnData object containing protein-level quantification data.
-        ``.X`` contains protein intensities (samples × proteins) with
-        missing values as ``np.nan``. Day 7 samples are excluded from
-        the dataset.
+    AnnData
+        Protein-level quantification data. ``.X`` contains
+        protein intensities (samples x proteins).
 
     Raises
     ------
     urllib.error.URLError
-        If download from PRIDE archive fails.
+        If the download from the PRIDE archive fails.
 
     Examples
     --------
-    >>> import proteopy as pp
-    >>> adata = pp.datasets.karayel_2020()
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.karayel_2020()
     >>> adata
     AnnData object with n_obs × n_vars
         obs: 'sample_id', 'cell_type', 'replicate'
@@ -118,51 +114,56 @@ def karayel_2020():
     >>> adata.obs['cell_type'].unique()
     ['Progenitor', 'ProE&EBaso', 'LBaso', 'Poly', 'Ortho']
 
-    Notes
-    -----
-    The dataset represents five stages of erythroid differentiation:
-
-    1. Progenitor: CD34+ hematopoietic stem cells
-    2. ProE&EBaso: Proerythroblasts and early basophilic erythroblasts
-    3. LBaso: Late basophilic erythroblasts
-    4. Poly: Polychromatic erythroblasts
-    5. Ortho: Orthochromatic erythroblasts
-
-    Samples collected at day 7 (_D7) are filtered out during processing.
-
-    Reference
-    ---------
-    Karayel Ö, Xu P, Bludau I, Velan Bhoopalan S, Yao Y, Ana Rita FC, Santos A,
-    Schulman BA, Alpi AF, Weiss MJ, and Mann M. Integrative proteomics reveals
-    principles of dynamic phosphosignaling networks in human erythropoiesis.
-    Molecular Systems Biology, 2020. URL:
-    https://doi.org/10.15252/msb.20209813, doi:10.15252/msb.20209813.
+    References
+    ----------
+    .. [1] Karayel Ö, Xu P, Bludau I, Velan Bhoopalan S,
+       Yao Y, Ana Rita FC, Santos A, Schulman BA, Alpi AF,
+       Weiss MJ, and Mann M. "Integrative proteomics
+       reveals principles of dynamic phosphosignaling
+       networks in human erythropoiesis."
+       *Molecular Systems Biology*, 16(12):MSB20209813,
+       2020. :doi:`10.15252/msb.20209813`.
     """
+    if fill_na is not None and (
+        isinstance(fill_na, bool)
+        or not isinstance(fill_na, (int, float))
+    ):
+        raise TypeError(
+            f"fill_na must be float, int, or None, "
+            f"got {type(fill_na).__name__}"
+        )
+
+    # Download from PRIDE archive
     url = (
         "https://ftp.pride.ebi.ac.uk/pride/data/archive/2020/10/"
         "PXD017276/20190213_CD34_Phospho_study_DIA_proteome_Report.csv"
-        )
+    )
     file_path = pooch.retrieve(
         url=url,
-        known_hash=None,  # TODO
+        known_hash=(
+            "sha256:"
+            "b69cb93a0d1ef03efb3e29ddc4fcf1d28b09"
+            "73de8105b919a04fb710dfe66326"
+        ),
         fname="karayel_2020_proteome_report.csv",
         path=pooch.os_cache("proteopy"),
-        )
+    )
     df = pd.read_csv(file_path)
 
     quant_cols = [c for c in df.columns if c.endswith(".PG.Quantity")]
-    # Replace 'Filtered' with np.nan before melting
     df[quant_cols] = df[quant_cols].replace("Filtered", np.nan).astype(float)
 
+    # Wide to long format
     long = (
         df[["PG.ProteinGroups"] + quant_cols]
         .melt(
             id_vars="PG.ProteinGroups",
             var_name="raw_col",
             value_name="intensity",
-            )
         )
+    )
 
+    # Clean sample IDs and map to cell type names
     long["sample_id"] = long["raw_col"].map(_parse_sample_id)
     long = long.drop(columns=["raw_col"])
     long = long.rename(columns={"PG.ProteinGroups": "protein_id"})
@@ -173,37 +174,45 @@ def karayel_2020():
         .str.replace('P3', 'LBaso', regex=False)
         .str.replace('P4', 'Poly', regex=False)
         .str.replace('P5', 'Ortho', regex=False)
-        )
+    )
 
-    Karayel_2020_quant = long[~long["sample_id"].str.contains('_D7')]
+    # Exclude day 7 samples
+    karayel_2020_quant = long[~long["sample_id"].str.contains('_D7')]
 
-    Karayel_2020_meta_obs = (
-        Karayel_2020_quant[['sample_id']]
+    # Build sample annotation
+    karayel_2020_meta_obs = (
+        karayel_2020_quant[['sample_id']]
         .drop_duplicates()
         .reset_index(drop=True)
-        )
-    Karayel_2020_meta_obs["cell_type"] = (
-        Karayel_2020_meta_obs["sample_id"].str.split("_").str[0]
-        )
-    Karayel_2020_meta_obs["replicate"] = (
-        Karayel_2020_meta_obs["sample_id"].str.split("_").str[-1]
-        )
+    )
+    karayel_2020_meta_obs["cell_type"] = (
+        karayel_2020_meta_obs["sample_id"].str.split("_").str[0]
+    )
+    karayel_2020_meta_obs["replicate"] = (
+        karayel_2020_meta_obs["sample_id"].str.split("_").str[-1]
+    )
 
-    Karayel_2020_meta_var = (
+    # Build protein annotation
+    karayel_2020_meta_var = (
         df[['PG.ProteinGroups', 'PG.Genes']]
         .drop_duplicates()
         .reset_index(drop=True)
-        )
-    Karayel_2020_meta_var = Karayel_2020_meta_var.rename(columns={
+    )
+    karayel_2020_meta_var = karayel_2020_meta_var.rename(columns={
         'PG.ProteinGroups': 'protein_id',
         'PG.Genes': 'gene_name'
     })
 
+    # Assemble AnnData
     adata = pp.read.long(
-        intensities=Karayel_2020_quant,
+        intensities=karayel_2020_quant,
         level='protein',
-        sample_annotation=Karayel_2020_meta_obs,
-        var_annotation=Karayel_2020_meta_var,
+        sample_annotation=karayel_2020_meta_obs,
+        var_annotation=karayel_2020_meta_var,
     )
 
+    if fill_na is not None:
+        adata.X[np.isnan(adata.X)] = fill_na
+
+    check_proteodata(adata)
     return adata

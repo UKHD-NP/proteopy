@@ -38,7 +38,7 @@ def williams_2018(
     Variable annotation (``.var``) includes:
         - ``peptide_id``: Peptide sequence (matches ``.var_names``)
         - ``protein_id``: UniProt protein identifier
-        - ``gene_symbol``: Gene symbol
+        - ``gene_id``: Gene symbol
 
     Data are sourced from the Elsevier supplementary archive
     (DOI: 10.1074/mcp.RA118.000554).
@@ -67,7 +67,7 @@ def williams_2018(
     >>> adata
     AnnData object with n_obs x n_vars
         obs: 'sample_id', 'tissue', 'mouse_id'
-        var: 'peptide_id', 'protein_id', 'gene_symbol'
+        var: 'peptide_id', 'protein_id', 'gene_id'
 
     References
     ----------
@@ -118,7 +118,7 @@ def williams_2018(
     meta_cols = {
         "Unnamed: 0": "peptide_id",
         "Unnamed: 3": "protein_id",
-        "Unnamed: 4": "gene_symbol",
+        "Unnamed: 4": "gene_id",
     }
 
     # Select intensity columns: named cols where row 0 == "Intensity",
@@ -147,19 +147,19 @@ def williams_2018(
         df["peptide_id"].str.split("_").str[1]
     )
 
-    # Verify protein_id and gene_symbol are consistent
+    # Verify protein_id and gene_id are consistent
     # across charge states of the same peptide
     meta_check = (
-        df.groupby("peptide_id")[["protein_id", "gene_symbol"]]
+        df.groupby("peptide_id")[["protein_id", "gene_id"]]
         .nunique()
     )
     inconsistent = meta_check[
         (meta_check["protein_id"] > 1)
-        | (meta_check["gene_symbol"] > 1)
+        | (meta_check["gene_id"] > 1)
     ]
     if not inconsistent.empty:
         raise ValueError(
-            "Inconsistent protein_id or gene_symbol "
+            "Inconsistent protein_id or gene_id "
             "across charge states for peptides:\n"
             f"{inconsistent.index.tolist()}"
         )
@@ -167,11 +167,11 @@ def williams_2018(
     # Sum intensities across charge states of the same peptide
     sample_cols = [
         c for c in df.columns
-        if c not in ("peptide_id", "protein_id", "gene_symbol")
+        if c not in ("peptide_id", "protein_id", "gene_id")
     ]
     df[sample_cols] = df[sample_cols].astype(float)
     var = (
-        df.groupby("peptide_id")[["protein_id", "gene_symbol"]]
+        df.groupby("peptide_id")[["protein_id", "gene_id"]]
         .first()
     )
     var["peptide_id"] = var.index

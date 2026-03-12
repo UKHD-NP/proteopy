@@ -83,7 +83,7 @@ def karayel_2020(
 
     - ``protein_id``: Protein group identifier (matches
       ``.var_names``).
-    - ``gene_name``: Associated gene name(s).
+    - ``gene_id``: Associated gene name(s).
 
     Parameters
     ----------
@@ -109,7 +109,7 @@ def karayel_2020(
     >>> adata
     AnnData object with n_obs × n_vars
         obs: 'sample_id', 'cell_type', 'replicate'
-        var: 'protein_id', 'gene_name'
+        var: 'protein_id', 'gene_id'
 
     >>> adata.obs['cell_type'].unique()
     ['Progenitor', 'ProE&EBaso', 'LBaso', 'Poly', 'Ortho']
@@ -200,7 +200,7 @@ def karayel_2020(
     )
     karayel_2020_meta_var = karayel_2020_meta_var.rename(columns={
         'PG.ProteinGroups': 'protein_id',
-        'PG.Genes': 'gene_name'
+        'PG.Genes': 'gene_id'
     })
 
     # Assemble AnnData

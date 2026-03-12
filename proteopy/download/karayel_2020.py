@@ -144,7 +144,7 @@ def karayel_2020(
         ``sample_id``, ``protein_id``, ``intensity``.
     var_annotation_path : str | Path, optional
         Destination path for the protein annotation file.
-        Columns: ``protein_id``, ``gene_name``.
+        Columns: ``protein_id``, ``gene_id``.
     sample_annotation_path : str | Path, optional
         Destination path for the sample annotation file.
         Columns: ``sample_id``, ``cell_type``, ``replicate``.
@@ -245,7 +245,7 @@ def karayel_2020(
 
     # Save .var annotation
     df_var = adata.var[
-        ["protein_id", "gene_name"]
+        ["protein_id", "gene_id"]
     ].copy()
     var_annotation_path.parent.mkdir(
         parents=True, exist_ok=True,

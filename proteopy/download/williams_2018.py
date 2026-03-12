@@ -126,7 +126,7 @@ def williams_2018(
         ``sample_id``, ``peptide_id``, ``intensity``.
     var_annotation_path : str | Path, optional
         Destination path for the peptide annotation file. Columns:
-        ``peptide_id``, ``protein_id``, ``gene_symbol``.
+        ``peptide_id``, ``protein_id``, ``gene_id``.
     sample_annotation_path : str | Path, optional
         Destination path for the sample annotation file. Columns:
         ``sample_id``, ``tissue``, ``mouse_id``.
@@ -226,7 +226,7 @@ def williams_2018(
 
     # Save .var annotation
     df_var = adata.var[
-        ["peptide_id", "protein_id", "gene_symbol"]
+        ["peptide_id", "protein_id", "gene_id"]
     ].copy()
     var_annotation_path.parent.mkdir(
         parents=True, exist_ok=True,

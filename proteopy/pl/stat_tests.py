@@ -9,12 +9,14 @@ from scipy import sparse
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import seaborn as sns
-from adjustText import adjust_text
 import anndata as ad
 
 from proteopy.utils.anndata import check_proteodata
 from proteopy.utils.parsers import parse_stat_test_varm_slot
 from proteopy.utils.matplotlib import _resolve_color_scheme
+from proteopy.utils.stat_tests import (
+    volcano_plot as _volcano_plot,
+)
 
 
 def _stat_test_title_from_varm_slot(
@@ -166,8 +168,9 @@ def volcano_plot(
     label_col: str | None = None,
     figsize: tuple[float, float] = (6.0, 5.0),
     xlabel: str | None = None,
+    ylabel: str | None = None,
     alt_color: pd.Series | list[bool] | np.ndarray | None = None,
-    ylabel_logscale: bool = True,
+    yscale_log: bool = True,
     title: str | None = None,
     show: bool = True,
     save: str | Path | None = None,
@@ -221,6 +224,11 @@ def volcano_plot(
     xlabel : str | None, optional
         Label for the x-axis. Defaults to the value of ``fc_col`` if
         ``None``.
+    ylabel : str | None, optional
+        Label for the y-axis. When ``None``, defaults to the
+        p-value column name (e.g., ``"pval_adj"``) if
+        ``yscale_log=True``, or ``"-log10(pval_adj)"`` if
+        ``yscale_log=False``.
     alt_color : pd.Series | list[bool] | np.ndarray | None, optional
         Boolean mask (length ``n_vars``) for alternative coloring
         scheme. When provided, this COMPLETELY OVERRIDES the default
@@ -230,7 +238,7 @@ def volcano_plot(
         and ``pval_thresh``) are still visualized as dashed lines
         but do not influence point colors. ``None`` uses the default
         significance-based coloring (gray, blue, red).
-    ylabel_logscale : bool, optional
+    yscale_log : bool, optional
         Controls y-axis representation of p-values. When ``True``,
         plot raw p-values on a log10-scaled y-axis (inverted so
         smaller p-values appear higher); y-axis label shows
@@ -332,241 +340,96 @@ def volcano_plot(
     # Validate varm slot exists and contains a DataFrame
     if varm_slot not in adata.varm:
         raise KeyError(
-            f"varm_slot '{varm_slot}' not found in adata.varm."
+            f"varm_slot '{varm_slot}' not found in "
+            f"adata.varm."
         )
 
     results = adata.varm[varm_slot]
     if not isinstance(results, pd.DataFrame):
         raise TypeError(
-            "Expected adata.varm[varm_slot] to be a pandas DataFrame."
+            "Expected adata.varm[varm_slot] to be a pandas "
+            "DataFrame."
         )
 
     # Validate required columns exist
     if fc_col not in results.columns:
         raise KeyError(
-            f"Column '{fc_col}' not found in varm slot '{varm_slot}'."
+            f"Column '{fc_col}' not found in varm slot "
+            f"'{varm_slot}'."
         )
 
-    # Prioritize adjusted p-values, fall back to unadjusted if needed.
-    # This allows the function to work with test results that may not
-    # include multiple testing correction.
+    # Prioritize adjusted p-values, fall back to unadjusted
+    # if needed. This allows the function to work with test
+    # results that may not include multiple testing correction.
     if pval_col in results.columns:
         pval_col_used = pval_col
     elif "pval" in results.columns:
         pval_col_used = "pval"
     else:
         raise KeyError(
-            f"Columns '{pval_col}' or 'pval' not found in '{varm_slot}'."
+            f"Columns '{pval_col}' or 'pval' not found in "
+            f"'{varm_slot}'."
         )
 
-    if label_col is not None and label_col not in adata.var.columns:
+    if (
+        label_col is not None
+        and label_col not in adata.var.columns
+    ):
         raise KeyError(
             f"Column '{label_col}' not found in adata.var."
         )
 
-    # Extract only needed columns and filter invalid values
-    plot_df = results.loc[:, [fc_col, pval_col_used]].copy()
-    plot_df = plot_df.dropna(subset=[fc_col, pval_col_used])
+    # Extract arrays from varm DataFrame
+    fc_arr = results[fc_col].to_numpy()
+    pvals_arr = results[pval_col_used].to_numpy()
 
-    # Remove infinite values (inf, -inf) that cannot be plotted
-    finite_mask = np.isfinite(plot_df[fc_col]) & np.isfinite(
-        plot_df[pval_col_used]
-    )
-    if not finite_mask.all():
-        warnings.warn(
-            "Dropping entries with non-finite fold changes or p-values.",
-            RuntimeWarning,
-        )
-        plot_df = plot_df.loc[finite_mask]
-
-    # Remove non-positive p-values that cannot be log-transformed
-    if (plot_df[pval_col_used] <= 0).any():
-        warnings.warn(
-            "Dropping non-positive p-values before log transform.",
-            RuntimeWarning,
-        )
-        plot_df = plot_df.loc[plot_df[pval_col_used] > 0]
-
-    if plot_df.empty:
-        raise ValueError("No valid results available for plotting.")
-
-    # Prepare plotting arrays
-    fc_vals = plot_df[fc_col].to_numpy()
-    pvals = plot_df[pval_col_used].to_numpy()
-    neg_log_p = -np.log10(pvals)
-    # Choose y-axis representation based on ylabel_logscale parameter.
-    # Both approaches produce visually similar plots: log-scale shows
-    # raw p-values with inverted axis, linear shows -log10 transform.
-    y_vals = pvals if ylabel_logscale else neg_log_p
-    # Keep y_map for label positioning (needed later if labels added).
-    # This ensures labels use the same y-coordinates as the scatter
-    # points regardless of the scale chosen.
-    y_map = pd.Series(y_vals, index=plot_df.index)
-
-    # Create masks for significance-based coloring.
-    # Proteins must satisfy BOTH p-value AND fold change thresholds
-    # to be considered significantly upregulated or downregulated.
-    sig_mask = pvals <= pval_thresh
-    up_mask = sig_mask & (fc_vals >= fc_thresh)
-    down_mask = sig_mask & (fc_vals <= -fc_thresh)
-    other_mask = ~(up_mask | down_mask)  # All non-significant proteins
-
-    # Process alternative color scheme if provided.
-    # When alt_color is set, it completely overrides significance-based
-    # coloring. The masks are still used for threshold line drawing.
-    alt_mask = None
-    if alt_color is not None:
-        alt_series = _normalize_alt_color(alt_color, adata, plot_df.index)
-        alt_mask = alt_series.to_numpy()
-
-    # Create scatter plot with significance-based or alternative coloring
-    fig, _ax = plt.subplots(figsize=figsize)
-    if alt_mask is None:
-        # Default coloring: gray (non-sig), blue (down), red (up)
-        _ax.scatter(
-            fc_vals[other_mask],
-            y_vals[other_mask],
-            color="grey",
-            alpha=0.5,
-            s=12,
-        )
-        _ax.scatter(
-            fc_vals[down_mask],
-            y_vals[down_mask],
-            color="#1f77b4",  # Blue for downregulated
-            alpha=0.8,
-            s=14,
-        )
-        _ax.scatter(
-            fc_vals[up_mask],
-            y_vals[up_mask],
-            color="#d62728",  # Red for upregulated
-            alpha=0.8,
-            s=14,
-        )
-    else:
-        # Alternative coloring: gray (False) vs purple (True)
-        # This completely overrides significance-based coloring
-        _ax.scatter(
-            fc_vals[~alt_mask],
-            y_vals[~alt_mask],
-            color="grey",
-            alpha=0.5,
-            s=12,
-        )
-        _ax.scatter(
-            fc_vals[alt_mask],
-            y_vals[alt_mask],
-            color="#8E54E5",  # Light purple for highlighted proteins
-            alpha=0.8,
-            s=14,
-        )
-
-    # Add threshold lines (vertical for fold change, horizontal for
-    # p-value). These dashed lines visualize the significance cutoffs.
-    _ax.axvline(fc_thresh, color="black", linestyle="--", linewidth=1)
-    _ax.axvline(-fc_thresh, color="black", linestyle="--", linewidth=1)
-    if ylabel_logscale:
-        # Log-scale y-axis: plot raw p-values, invert so smaller
-        # p-values appear higher (more significant = higher on plot)
-        _ax.axhline(
-            pval_thresh, color="black", linestyle="--", linewidth=1
-        )
-        _ax.set_yscale("log", base=10)
-        _ax.invert_yaxis()
-    else:
-        # Linear y-axis: plot -log10(p-value), where larger values
-        # represent more significant (smaller) p-values
-        _ax.axhline(
-            -np.log10(pval_thresh),
-            color="black",
-            linestyle="--",
-            linewidth=1,
-        )
-
-    # Set axis labels and title
-    _ax.set_xlabel(xlabel or fc_col)
-    if ylabel_logscale:
-        _ax.set_ylabel(pval_col_used)
-    else:
-        _ax.set_ylabel(f"-log10({pval_col_used})")
-    if title is None:
-        title = _stat_test_title_from_varm_slot(adata, varm_slot)
-    _ax.set_title(title)
-
-    # Add automatic labeling for top hits if requested.
-    # This implements the top_labels selection algorithm described in
-    # the docstring: N proteins per side, ranked by p-value then |FC|.
+    # Resolve labels (full length, filtering done by helper)
+    labels = None
     if top_labels is not None:
-        if not isinstance(top_labels, int) or top_labels <= 0:
-            raise ValueError("top_labels must be a positive integer.")
-
-        # Get label source (var_names or specified column in var)
         if label_col is None:
-            labels = adata.var_names.to_series()
+            labels = adata.var_names.to_numpy()
         else:
-            labels = adata.var[label_col]
+            labels = adata.var[label_col].to_numpy()
 
-        # Align labels to plotting data (subset after filtering) and
-        # prepare a working DataFrame with labels and metrics
-        label_series = labels.reindex(plot_df.index)
-        label_df = plot_df.copy()
-        label_df["label"] = label_series
-        label_df = label_df.dropna(subset=["label"])
-        label_df["abs_fc"] = label_df[fc_col].abs()
-        # Only label proteins that meet BOTH significance thresholds.
-        # This ensures we only highlight genuinely significant hits.
-        label_df = label_df[
-            (label_df[pval_col_used] <= pval_thresh)
-            & (label_df["abs_fc"] >= fc_thresh)
-        ]
-
-        # Select top N proteins per side (positive/negative FC).
-        # Ranking criteria (in order of priority):
-        # 1. Smallest p-value (most statistically significant)
-        # 2. Largest absolute fold change (largest effect size)
-        pos_df = label_df[label_df[fc_col] > 0].sort_values(
-            by=[pval_col_used, "abs_fc"],
-            ascending=[True, False],
-        ).head(top_labels)
-        neg_df = label_df[label_df[fc_col] < 0].sort_values(
-            by=[pval_col_used, "abs_fc"],
-            ascending=[True, False],
-        ).head(top_labels)
-        label_df = pd.concat([pos_df, neg_df])
-
-        # Add text labels at protein positions and adjust to avoid
-        # overlap using the adjustText library
-        texts = []
-        for _, row in label_df.iterrows():
-            texts.append(
-                _ax.text(
-                    row[fc_col],
-                    y_map.loc[row.name],
-                    str(row["label"]),
-                    fontsize=8,
-                )
-            )
-        if texts:
-            # Automatically adjust label positions with arrows pointing
-            # to original data points
-            adjust_text(
-                texts,
-                ax=_ax,
-                arrowprops=dict(arrowstyle="->", color="0.4", lw=0.7),
-            )
-
-    if save:
-        fig.savefig(save, dpi=300, bbox_inches="tight")
-    if show:
-        plt.show()
-    if ax:
-        return _ax
-    if not save and not show and not ax:
-        raise ValueError(
-            "Args show, ax and save all set to False, function does nothing.",
+    # Normalize alt_color via existing helper (full length,
+    # filtering done by _volcano_plot)
+    alt_arr = None
+    if alt_color is not None:
+        alt_series = _normalize_alt_color(
+            alt_color, adata, results.index,
         )
-    return None
+        alt_arr = alt_series.to_numpy()
+
+    # Resolve title from varm slot metadata
+    if title is None:
+        title = _stat_test_title_from_varm_slot(
+            adata, varm_slot,
+        )
+
+    # Resolve ylabel using the actual p-value column name
+    if ylabel is None:
+        if yscale_log:
+            ylabel = pval_col_used
+        else:
+            ylabel = f"-log10({pval_col_used})"
+
+    return _volcano_plot(
+        fc_vals=fc_arr,
+        pvals=pvals_arr,
+        fc_thresh=fc_thresh,
+        pval_thresh=pval_thresh,
+        labels=labels,
+        top_labels=top_labels,
+        figsize=figsize,
+        xlabel=xlabel or fc_col,
+        ylabel=ylabel,
+        alt_color=alt_arr,
+        yscale_log=yscale_log,
+        title=title,
+        show=show,
+        save=save,
+        ax=ax,
+    )
 
 
 def differential_abundance_box(

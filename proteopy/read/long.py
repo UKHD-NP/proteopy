@@ -19,8 +19,39 @@ def _peptides_long_from_df(
     fill_na: float | None = None,
     column_map: Dict[str, str] | None = None,
     sort_obs_by_annotation: bool = False,
+    verbose: bool = False,
     ) -> ad.AnnData:
-    """Convert pre-loaded peptide-level tables into an AnnData container."""
+    """Convert pre-loaded peptide-level tables into an AnnData container.
+
+    Requires ``intensities_df`` to contain columns for ``sample_id``,
+    ``intensity``, and ``peptide_id``. The ``protein_id`` column is
+    resolved with the following priority:
+
+    1. If ``protein_id`` is present in ``intensities_df``, it is used
+       directly. When ``peptide_annotation_df`` also contains
+       ``protein_id``, the intensities copy takes precedence and a
+       message is printed when ``verbose=True``.
+    2. If ``protein_id`` is absent from ``intensities_df``, it is
+       looked up from ``peptide_annotation_df``, which must then be
+       supplied and contain both ``peptide_id`` and ``protein_id``
+       columns. Any peptide present in ``intensities_df`` but absent
+       from the annotation raises a ``ValueError``.
+
+    ``sample_annotation_df``, when provided, must contain a
+    ``sample_id`` column. Its remaining columns are merged into
+    ``adata.obs``.
+
+    ``peptide_annotation_df``, when provided, must contain a
+    ``peptide_id`` column. Its remaining columns (excluding
+    ``protein_id`` if already resolved from ``intensities_df``) are
+    merged into ``adata.var``. Duplicates in either annotation are
+    deduplicated by keeping the first occurrence.
+
+    Column names may deviate from these defaults by supplying
+    ``column_map`` (e.g. ``{"peptide_id": "Modified.Sequence"}``).
+    All canonical keys (``peptide_id``, ``protein_id``,
+    ``sample_id``, ``intensity``) are supported.
+    """
     # Normalize user-specified column names so downstream code can rely on a
     # fixed set of canonical fields (peptide_id, protein_id, sample_id,
     # intensity) regardless of the input header names.
@@ -45,18 +76,83 @@ def _peptides_long_from_df(
 
     df = intensities_df.copy()
 
-    required_actual_columns = {column_aliases[key] for key in column_aliases}
-    missing_columns = required_actual_columns.difference(df.columns)
-    if missing_columns:
+    # sample_id, intensity, and peptide_id must be in intensities_df.
+    # protein_id can come from intensities_df or peptide_annotation_df.
+    required_in_intensities = {
+        column_aliases[k]
+        for k in ("sample_id", "intensity", "peptide_id")
+        }
+    missing_in_intensities = (
+        required_in_intensities.difference(df.columns)
+        )
+    if missing_in_intensities:
         raise ValueError(
-            "DataFrame is missing required columns: "
-            f"{', '.join(sorted(missing_columns))}"
+            "Intensities DataFrame is missing required "
+            "columns: "
+            f"{', '.join(sorted(missing_in_intensities))}"
             )
 
-    # Rename columns now so all later checks (duplicates, mapping) operate on
-    # canonical labels instead of alias-specific column names.
-    rename_map_main = {actual: canonical for canonical, actual in column_aliases.items()}
+    protein_id_col = column_aliases["protein_id"]
+    protein_id_in_intensities = protein_id_col in df.columns
+    if not protein_id_in_intensities:
+        if peptide_annotation_df is None:
+            raise ValueError(
+                f"Column '{protein_id_col}' (protein_id) is "
+                "missing from the intensities DataFrame and "
+                "no peptide_annotation_df was provided."
+                )
+        if protein_id_col not in peptide_annotation_df.columns:
+            raise ValueError(
+                f"Column '{protein_id_col}' (protein_id) is "
+                "missing from both the intensities DataFrame "
+                "and the peptide annotation DataFrame."
+                )
+
+    # Rename columns now so all later checks (duplicates, mapping)
+    # operate on canonical labels instead of alias-specific column
+    # names.
+    rename_map_main = {
+        actual: canonical
+        for canonical, actual in column_aliases.items()
+        }
     df = df.rename(columns=rename_map_main)
+
+    # When protein_id is absent from the intensities df, merge it
+    # from the peptide annotation df so downstream logic is uniform.
+    if not protein_id_in_intensities:
+        ann_df = peptide_annotation_df.copy()
+        rename_map_ann = {
+            column_aliases[key]: key
+            for key in ("peptide_id", "protein_id")
+            if column_aliases[key] in ann_df.columns
+            and column_aliases[key] != key
+            }
+        ann_df = ann_df.rename(columns=rename_map_ann)
+        protein_map = (
+            ann_df[["peptide_id", "protein_id"]]
+            .drop_duplicates(
+                subset=["peptide_id"], keep="first"
+                )
+            )
+        df = df.merge(protein_map, on="peptide_id", how="left")
+        n_unresolved = df["protein_id"].isna().sum()
+        if n_unresolved:
+            raise ValueError(
+                f"{n_unresolved} peptide(s) in the intensities"
+                " DataFrame could not be mapped to a "
+                "protein_id using the peptide annotation "
+                "DataFrame."
+                )
+    elif (
+        verbose
+        and peptide_annotation_df is not None
+        and protein_id_col in peptide_annotation_df.columns
+    ):
+        print(
+            "protein_id found in both intensities and "
+            "peptide annotation DataFrames; using "
+            "intensities DataFrame."
+            )
 
     try:
         df["intensity"] = pd.to_numeric(df["intensity"], errors="raise")
@@ -265,7 +361,12 @@ def _peptides_long_from_df(
         var=var,
         )
     adata.strings_to_categoricals()
-    check_proteodata(adata)
+    _, detected_level = check_proteodata(adata)
+    if detected_level != "peptide":
+        raise ValueError(
+            "Expected peptide-level proteodata but "
+            f"detected '{detected_level}'."
+            )
 
     return adata
 
@@ -279,7 +380,26 @@ def _proteins_long_from_df(
     column_map: Dict[str, str] | None = None,
     sort_obs_by_annotation: bool = False,
     ) -> ad.AnnData:
-    """Convert pre-loaded protein-level tables into an AnnData container."""
+    """Convert pre-loaded protein-level tables into an AnnData container.
+
+    Requires ``intensities_df`` to contain columns for ``sample_id``,
+    ``intensity``, and ``protein_id``. All three are mandatory; a
+    ``ValueError`` is raised if any are absent.
+
+    ``sample_annotation_df``, when provided, must contain a
+    ``sample_id`` column. Its remaining columns are merged into
+    ``adata.obs``.
+
+    ``protein_annotation_df``, when provided, must contain a
+    ``protein_id`` column. Its remaining columns are merged into
+    ``adata.var``. Duplicates in either annotation are deduplicated
+    by keeping the first occurrence.
+
+    Column names may deviate from these defaults by supplying
+    ``column_map`` (e.g. ``{"protein_id": "Protein.Ids"}``).
+    Supported canonical keys are ``protein_id``, ``sample_id``,
+    and ``intensity``.
+    """
     # Normalize user-specified column names so downstream code can rely on a
     # fixed set of canonical fields (protein_id, sample_id, intensity)
     # regardless of the input header names.
@@ -513,7 +633,12 @@ def _proteins_long_from_df(
         var=var,
         )
     adata.strings_to_categoricals()
-    check_proteodata(adata)
+    _, detected_level = check_proteodata(adata)
+    if detected_level != "protein":
+        raise ValueError(
+            "Expected protein-level proteodata but "
+            f"detected '{detected_level}'."
+            )
 
     return adata
 
@@ -528,8 +653,36 @@ def long(
     fill_na: float | None = None,
     column_map: Dict[str, str] | None = None,
     sort_obs_by_annotation: bool = False,
+    verbose: bool = False,
     ) -> ad.AnnData:
     """Read long-format peptide or protein files into an AnnData container.
+
+    The ``intensities`` table must be in long format with one row per
+    (sample, feature) measurement. Required columns differ by level:
+
+    - **Peptide level**: ``sample_id``, ``intensity``, and
+      ``peptide_id`` must be present. ``protein_id`` may come from
+      the intensities table or from ``var_annotation``; see below.
+    - **Protein level**: ``sample_id``, ``intensity``, and
+      ``protein_id`` must all be present.
+
+    At peptide level, ``protein_id`` is resolved in two steps. If
+    the intensities table already contains ``protein_id``, it is
+    used directly. Otherwise, ``var_annotation`` must be supplied
+    and contain both ``peptide_id`` and ``protein_id``; the mapping
+    is joined onto the intensities table before pivoting. Peptides
+    that cannot be resolved to a ``protein_id`` raise a
+    ``ValueError``.
+
+    ``sample_annotation``, when supplied, must contain a
+    ``sample_id`` column and is merged into ``adata.obs``.
+
+    ``var_annotation``, when supplied, must contain a ``peptide_id``
+    column (peptide level) or a ``protein_id`` column (protein level)
+    and is merged into ``adata.var``.
+
+    Column names that differ from the defaults above can be mapped
+    to the canonical names via ``column_map``.
 
     Parameters
     ----------
@@ -548,17 +701,22 @@ def long(
     sample_annotation : str | Path | pd.DataFrame, optional
         Optional obs annotations. Accepts a file path or DataFrame.
     var_annotation : str | Path | pd.DataFrame, optional
-        Optional var annotations merged into ``adata.var``. Accepts a file
-        path or DataFrame. Interpreted as peptide annotations when
-        ``level="peptide"`` and as protein annotations when ``level="protein"``.
+        Optional var annotations merged into ``adata.var``. Accepts a
+        file path or DataFrame. Interpreted as peptide annotations when
+        ``level="peptide"`` and as protein annotations when
+        ``level="protein"``.
     fill_na : float, optional
         Optional replacement value for missing intensity entries.
     column_map : dict, optional
         Optional mapping that specifies custom column names for the expected
         keys: peptide_id, protein_id, sample_id, intensity.
     sort_obs_by_annotation : bool, default False
-        When True, reorder observations to match the order of samples in the
-        annotation (if supplied) or the original intensity table.
+        When True, reorder observations to match the order of
+        samples in the annotation (if supplied) or the original
+        intensity table.
+    verbose : bool, optional
+        If True, print status messages describing input data
+        resolution (e.g., which DataFrame supplies protein_id).
 
     Returns
     -------
@@ -598,6 +756,7 @@ def long(
             fill_na=fill_na,
             column_map=column_map,
             sort_obs_by_annotation=sort_obs_by_annotation,
+            verbose=verbose,
             )
         return adata
     else:

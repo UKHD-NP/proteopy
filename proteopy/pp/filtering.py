@@ -470,7 +470,7 @@ def remove_contaminants(
     contaminant_path,
     protein_key="protein_id",
     header_parser: Callable[[str], str] | None = None,
-    inplace=False,
+    inplace=True,
     ):
     """
     Remove variables whose protein identifier matches a contaminant FASTA entry.

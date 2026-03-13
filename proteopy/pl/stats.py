@@ -9,7 +9,7 @@ import anndata as ad
 from pandas.api.types import is_string_dtype, is_categorical_dtype
 from scipy import sparse
 from scipy.spatial.distance import squareform
-from scipy.cluster.hierarchy import linkage
+from scipy.cluster.hierarchy import leaves_list, linkage
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
@@ -32,6 +32,9 @@ def completeness(
     zero_to_na: bool = False,
     groups: Iterable[Any] | str | None = None,
     group_by: str | None = None,
+    min_count: int | None = None,
+    min_fraction: float | None = None,
+    bin_width: float = 0.01,
     xlabel_rotation: float = 0.0,
     figsize: tuple[float, float] = (6.0, 5.0),
     show: bool = True,
@@ -41,165 +44,284 @@ def completeness(
     """
     Plot a histogram of completeness across observations or variables.
 
+    When ``group_by`` is ``None``, shows the distribution of per-item
+    completeness fractions (fraction of non-missing values). When
+    ``group_by`` is provided, shows the distribution of the fraction of
+    groups in which each item is "detected" (has at least ``min_count``
+    or ``min_fraction`` non-missing values within the group).
+
     Parameters
     ----------
     adata : AnnData
         :class:`~anndata.AnnData` object with proteomics annotations.
     axis
-        `0` plots completeness per variable, `1` per observation.
+        ``0`` plots completeness per variable, ``1`` per observation.
     layer
-        Name of the layer to use instead of `.X`. Defaults to `.X`.
+        Name of the layer to use instead of ``.X``.
     zero_to_na
         Treat zero entries as missing values when True.
     groups
-        Optional iterable of group labels to include.
+        Optional iterable of group labels to include when ``group_by``
+        is provided. Groups not in this list are excluded.
     group_by
-        Column name in `.var` (axis 0) or `.obs` (axis 1) used to stratify
-        completeness into groups. Triggers a boxplot when provided.
+        Column in ``.obs`` (axis 0) or ``.var`` (axis 1) used to define
+        groups. When provided, the plot shows the fraction of groups in
+        which each item is detected.
+    min_count : int or None, optional
+        Minimum number of non-missing values within a group for an item
+        to be considered detected. Mutually exclusive with
+        ``min_fraction``.
+    min_fraction : float or None, optional
+        Minimum fraction of non-missing values within a group for an
+        item to be considered detected. Mutually exclusive with
+        ``min_count``.
+    bin_width : float, optional
+        Width of each histogram bin on the fraction axis. Bins span
+        from 0.0 to 1.0 + ``bin_width``. Defaults to 0.01.
     xlabel_rotation
         Rotation angle in degrees applied to x-axis tick labels.
     figsize
         Tuple ``(width, height)`` controlling figure size in inches.
     show
-        Display the plot with `plt.show()` when True.
+        Display the plot with ``plt.show()`` when True.
     ax
-        Return the Matplotlib Axes object instead of displaying the plot.
+        Return the Matplotlib Axes object instead of displaying the
+        plot.
     save
-        File path or truthy value to trigger `fig.savefig`.
+        File path to save the figure. If ``None`` or ``False``, do not
+        save.
     """
     check_proteodata(adata)
 
     if axis not in (0, 1):
-        raise ValueError("`axis` must be either 0 (var) or 1 (obs).")
+        raise ValueError(
+            "`axis` must be either 0 (var) or 1 (obs)."
+        )
+
+    if min_count is not None and min_fraction is not None:
+        raise ValueError(
+            "`min_count` and `min_fraction` are mutually exclusive. "
+            "Provide one or neither."
+        )
 
     if layer is None:
         matrix = adata.X
     else:
         if layer not in adata.layers:
-            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+            raise KeyError(
+                f"Layer '{layer}' not found in adata.layers."
+            )
         matrix = adata.layers[layer]
 
     if matrix is None:
-        raise ValueError("Selected matrix is empty; cannot compute completeness.")
+        raise ValueError(
+            "Selected matrix is empty; cannot compute "
+            "completeness."
+        )
 
     n_obs, n_vars = matrix.shape
-    axis_length = n_obs if axis == 0 else n_vars
-
-    if axis_length == 0:
-        raise ValueError("Cannot compute completeness on empty axis.")
-
-    if sparse.issparse(matrix):
-        matrix_coo = matrix.tocoo()
-        data = matrix_coo.data
-        rows = matrix_coo.row
-        cols = matrix_coo.col
-
-        if zero_to_na:
-            valid_mask = (~np.isnan(data)) & (data != 0)
-            if axis == 0:
-                counts = np.bincount(
-                    cols[valid_mask],
-                    minlength=n_vars,
-                )
-            else:
-                counts = np.bincount(
-                    rows[valid_mask],
-                    minlength=n_obs,
-                )
-        else:
-            nan_mask = np.isnan(data)
-            if axis == 0:
-                nan_counts = np.bincount(
-                    cols[nan_mask],
-                    minlength=n_vars,
-                )
-                counts = n_obs - nan_counts
-            else:
-                nan_counts = np.bincount(
-                    rows[nan_mask],
-                    minlength=n_obs,
-                )
-                counts = n_vars - nan_counts
-    else:
-        values = np.asarray(matrix)
-        valid_mask = ~np.isnan(values)
-        if zero_to_na:
-            valid_mask &= values != 0
-        counts = valid_mask.sum(axis=axis)
-
-    counts = np.asarray(counts, dtype=float)
-    completeness = counts / axis_length
 
     if axis == 0:
-        index = adata.var_names
         axis_labels = ("var", "obs")
-        grouping_frame = adata.var
-    else:
-        index = adata.obs_names
-        axis_labels = ("obs", "var")
+        n_items = n_vars
+        axis_length = n_obs
         grouping_frame = adata.obs
+    else:
+        axis_labels = ("obs", "var")
+        n_items = n_obs
+        axis_length = n_vars
+        grouping_frame = adata.var
 
-    completeness_series = pd.Series(completeness, index=index)
+    if axis_length == 0:
+        raise ValueError(
+            "Cannot compute completeness on empty axis."
+        )
+
+    def _count_nonmissing(mat, ax, zero_to_na):
+        """Count non-missing values along the given axis."""
+        if sparse.issparse(mat):
+            mat_coo = mat.tocoo()
+            data = mat_coo.data
+            rows = mat_coo.row
+            cols = mat_coo.col
+            if zero_to_na:
+                valid = (~np.isnan(data)) & (data != 0)
+                if ax == 0:
+                    return np.bincount(
+                        cols[valid],
+                        minlength=mat.shape[1],
+                    )
+                else:
+                    return np.bincount(
+                        rows[valid],
+                        minlength=mat.shape[0],
+                    )
+            else:
+                nan_mask = np.isnan(data)
+                if ax == 0:
+                    nan_c = np.bincount(
+                        cols[nan_mask],
+                        minlength=mat.shape[1],
+                    )
+                    return mat.shape[0] - nan_c
+                else:
+                    nan_c = np.bincount(
+                        rows[nan_mask],
+                        minlength=mat.shape[0],
+                    )
+                    return mat.shape[1] - nan_c
+        else:
+            values = np.asarray(mat)
+            valid_mask = ~np.isnan(values)
+            if zero_to_na:
+                valid_mask &= values != 0
+            return valid_mask.sum(axis=ax)
+
+    bin_edges = np.arange(
+        0.0, 1.0 + bin_width * 2, bin_width,
+    )
 
     if group_by is None:
+        # --- Ungrouped: histogram of completeness fractions ---
+        counts = np.asarray(
+            _count_nonmissing(matrix, axis, zero_to_na),
+            dtype=float,
+        )
+        fractions = counts / axis_length
+
         fig, _ax = plt.subplots(figsize=figsize)
-        sns.histplot(
-            completeness_series,
-            ax=_ax,
-        )
+        sns.histplot(fractions, bins=bin_edges, ax=_ax)
         _ax.set_xlabel(
-            f"Fraction of non-missing {axis_labels[1]} values per {axis_labels[0]}",
+            f"Fraction of non-missing {axis_labels[1]} values "
+            f"per {axis_labels[0]}",
         )
-        plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation)
+
+        # Draw threshold line if min_count or min_fraction given
+        if min_count is not None:
+            vline_pos = min_count / axis_length
+            _ax.axvline(
+                vline_pos, color="red", linestyle="--",
+                label=(
+                    f"min_count={min_count} "
+                    f"({vline_pos:.2f})"
+                ),
+            )
+            _ax.legend()
+        elif min_fraction is not None:
+            _ax.axvline(
+                min_fraction, color="red", linestyle="--",
+                label=f"min_fraction={min_fraction}",
+            )
+            _ax.legend()
+
+        plt.setp(
+            _ax.get_xticklabels(), rotation=xlabel_rotation,
+        )
     else:
+        # --- Grouped: histogram of detection fractions ---
         if group_by not in grouping_frame.columns:
             raise KeyError(
                 f"Column '{group_by}' not found in "
-                f"{'.var' if axis == 0 else '.obs'}",
+                f"{'.obs' if axis == 0 else '.var'}",
             )
-        group_series = grouping_frame[group_by].reindex(index, copy=False)
-        plot_df = pd.DataFrame(
-            {
-                "completeness": completeness_series,
-                group_by: group_series,
-            },
-            index=index,
-        )
-        plot_df = plot_df.dropna(subset=[group_by])
 
+        group_series = grouping_frame[group_by]
+
+        # Filter to requested groups
         if groups is not None:
             if isinstance(groups, str):
                 groups = [groups]
             else:
                 groups = list(groups)
-            plot_df = plot_df[plot_df[group_by].isin(groups)]
-            order = [grp for grp in groups if grp in plot_df[group_by].unique()]
+            group_mask = group_series.isin(groups)
+            if not group_mask.any():
+                raise ValueError(
+                    "No data available for the requested "
+                    "grouping combination.",
+                )
         else:
-            order = None
-
-        if plot_df.empty:
-            raise ValueError(
-                "No data available for the requested grouping combination.",
+            group_mask = pd.Series(
+                True, index=grouping_frame.index,
             )
 
-        if isinstance(plot_df[group_by].dtype, pd.CategoricalDtype):
-            plot_df[group_by] = plot_df[group_by].cat.remove_unused_categories()
-            if order is None:
-                order = list(plot_df[group_by].cat.categories)
+        unique_groups = (
+            group_series[group_mask].dropna().unique()
+        )
+        n_groups = len(unique_groups)
+
+        if n_groups == 0:
+            raise ValueError(
+                "No groups found for the given `group_by` "
+                "column.",
+            )
+
+        # Default threshold: min_count=1
+        use_fraction = min_fraction is not None
+        if not use_fraction and min_count is None:
+            min_count = 1
+
+        # For each group, determine which items are "detected"
+        detected_count = np.zeros(n_items, dtype=int)
+
+        for g in unique_groups:
+            if axis == 0:
+                # group_by in .obs => subset rows
+                g_mask = (
+                    (group_series == g) & group_mask
+                ).values
+                sub_matrix = matrix[g_mask, :]
+                group_size = g_mask.sum()
+                counts_g = np.asarray(
+                    _count_nonmissing(
+                        sub_matrix, 0, zero_to_na,
+                    ),
+                    dtype=float,
+                )
+            else:
+                # group_by in .var => subset columns
+                g_mask = (
+                    (group_series == g) & group_mask
+                ).values
+                sub_matrix = matrix[:, g_mask]
+                group_size = g_mask.sum()
+                counts_g = np.asarray(
+                    _count_nonmissing(
+                        sub_matrix, 1, zero_to_na,
+                    ),
+                    dtype=float,
+                )
+
+            if use_fraction:
+                detected = (
+                    counts_g / group_size >= min_fraction
+                )
+            else:
+                detected = counts_g >= min_count
+
+            detected_count += detected.astype(int)
+
+        detection_fractions = detected_count / n_groups
 
         fig, _ax = plt.subplots(figsize=figsize)
-        sns.boxplot(
-            data=plot_df,
-            x=group_by,
-            y="completeness",
-            order=order,
-            ax=_ax,
+        sns.histplot(
+            detection_fractions, bins=bin_edges, ax=_ax,
         )
-        _ax.set_ylabel(
-            f"Fraction of non-missing {axis_labels[1]} values per {axis_labels[0]}",
+
+        if use_fraction:
+            threshold_label = (
+                f"min_fraction={min_fraction}"
+            )
+        else:
+            threshold_label = f"min_count={min_count}"
+
+        _ax.set_xlabel(
+            f"Fraction of '{group_by}' groups where "
+            f"{axis_labels[0]} is detected "
+            f"({threshold_label})",
         )
-        _ax.set_xlabel(group_by)
-        plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation)
+        plt.setp(
+            _ax.get_xticklabels(), rotation=xlabel_rotation,
+        )
 
     if save:
         fig.savefig(save, dpi=300, bbox_inches="tight")
@@ -209,7 +331,8 @@ def completeness(
         return _ax
     if not save and not show and not ax:
         raise ValueError(
-            "Args show, ax and save all set to False, function does nothing.",
+            "Args show, ax and save all set to False, "
+            "function does nothing.",
         )
 
 docstr_header="Plot a histogram of completeness per variable.\n"
@@ -235,9 +358,11 @@ def n_var_per_sample(
     ascending: bool = False,
     zero_to_na: bool = False,
     layer: str | None = None,
+    percentage: bool = False,
+    print_stats: bool = False,
     figsize: tuple[float, float] = (6.0, 4.0),
     level: str | None = None,
-    ylabel: str = "Nr. vars detected",
+    ylabel: str | None = None,
     xlabel_rotation: float = 90,
     order_by_label_rotation: float = 0,
     show: bool = True,
@@ -273,6 +398,12 @@ def n_var_per_sample(
     layer : str | None
         Name of an alternate matrix in ``adata.layers``.
         Defaults to ``adata.X``.
+    percentage : bool
+        Display y-axis values as a percentage of total
+        variables instead of raw counts.
+    print_stats : bool
+        If ``True``, print the statistics represented in
+        the plot as a :class:`~pandas.DataFrame`.
     figsize : tuple[float, float]
         Figure size supplied to :func:`matplotlib.pyplot.subplots`.
     level : str | None
@@ -280,8 +411,10 @@ def n_var_per_sample(
         ``"peptide"`` counts detected peptides.
         ``"protein"`` aggregates peptides to proteins.
         ``None`` follows the intrinsic level of the data.
-    ylabel : str
-        Label applied to the y-axis.
+    ylabel : str | None
+        Label applied to the y-axis. When ``None``, a default
+        label is chosen based on whether ``percentage`` is
+        enabled.
     xlabel_rotation : float
         Rotation in degrees applied to x tick labels.
     order_by_label_rotation : float
@@ -318,6 +451,37 @@ def n_var_per_sample(
     def _append_unique(seq, value) -> None:
         if not _contains_value(seq, value):
             seq.append(value)
+
+    def _summary_stats(series):
+        return pd.DataFrame({
+            "mean_count": [series.mean()],
+            "std_count": [series.std()],
+            "median_count": [series.median()],
+            "min_count": [series.min()],
+            "max_count": [series.max()],
+        })
+
+    def _add_pct_cols(df, total):
+        for col in [
+            "mean", "std", "median", "min", "max",
+        ]:
+            df[f"{col}_pct"] = (
+                df[f"{col}_count"] / total * 100
+            )
+        return df
+
+    def _print_stats_df(df):
+        print(df.to_string(
+            index=False, float_format="%.1f",
+        ))
+
+    _AGG_STATS = {
+        "mean_count": "mean",
+        "std_count": "std",
+        "median_count": "median",
+        "min_count": "min",
+        "max_count": "max",
+    }
 
     if layer is None:
         matrix = adata.X
@@ -383,6 +547,30 @@ def n_var_per_sample(
             f"Requested level '{level}' is incompatible with '{data_level}' data."
         )
 
+    if level == "protein" and data_level == "peptide":
+        total_vars = adata.var["protein_id"].nunique()
+    else:
+        total_vars = adata.n_vars
+
+    if percentage:
+        counts_array = (counts_array / total_vars) * 100
+
+    if ylabel is None:
+        if level == "protein" or (
+            level is None and data_level == "protein"
+        ):
+            label = "Proteins detected"
+        elif level == "peptide" or (
+            level is None and data_level == "peptide"
+        ):
+            label = "Peptides detected"
+        else:
+            label = "Nr. vars detected"
+        if percentage:
+            ylabel = f"{label} (%)"
+        else:
+            ylabel = label
+
     counts_series = pd.Series(counts_array, index=adata.obs_names, name="count")
     counts = counts_series.rename_axis("obs").reset_index()
 
@@ -431,13 +619,30 @@ def n_var_per_sample(
             _append_unique(group_order, value)
 
         stats_df = (
-            counts.groupby(group_by, observed=True)["count"]
-            .agg(mean_count="mean", std_count="std")
+            counts.groupby(group_by, observed=True)[
+                "count"
+            ]
+            .agg(**_AGG_STATS)
             .reindex(group_order)
         )
         stats_df = stats_df.dropna(subset=["mean_count"])
-        stats_df["std_count"] = stats_df["std_count"].fillna(0.0)
+        stats_df["std_count"] = (
+            stats_df["std_count"].fillna(0.0)
+        )
         stats_df = stats_df.reset_index()
+
+        if print_stats:
+            global_df = _add_pct_cols(
+                _summary_stats(counts["count"]),
+                total_vars,
+            )
+            print("Global:")
+            _print_stats_df(global_df)
+            print_df = _add_pct_cols(
+                stats_df.copy(), total_vars,
+            )
+            print(f"\nPer {group_by}:")
+            _print_stats_df(print_df)
 
         colors = None
         bar_colors = None
@@ -550,6 +755,31 @@ def n_var_per_sample(
     )
     counts = counts.sort_values("obs")
 
+    if print_stats:
+        if has_grouping:
+            global_df = _add_pct_cols(
+                _summary_stats(counts["count"]),
+                total_vars,
+            )
+            print("Global:")
+            _print_stats_df(global_df)
+            print_df = (
+                counts.groupby(
+                    order_by, observed=True,
+                )["count"]
+                .agg(**_AGG_STATS)
+                .reset_index()
+            )
+            _add_pct_cols(print_df, total_vars)
+            print(f"\nPer {order_by}:")
+            _print_stats_df(print_df)
+        else:
+            print_df = _add_pct_cols(
+                _summary_stats(counts["count"]),
+                total_vars,
+            )
+            _print_stats_df(print_df)
+
     counts[group_key] = counts[group_key].astype(str)
 
     unique_groups = list(cat_index_map.keys())
@@ -607,7 +837,6 @@ docstr_header = "Plot the number of detected peptides per observation."
 n_peptides_per_sample = partial_with_docsig(
     n_var_per_sample,
     level="peptide",
-    ylabel="Nr. peptides detected",
     docstr_header=docstr_header,
 )
 
@@ -615,7 +844,6 @@ docstr_header = "Plot the number of detected proteins per observation."
 n_proteins_per_sample = partial_with_docsig(
     n_var_per_sample,
     level="protein",
-    ylabel="Nr. proteins detected",
     docstr_header=docstr_header,
 )
 
@@ -839,11 +1067,12 @@ def n_cat1_per_cat2_hist(
     axis: int,
     bin_width: float | None = None,
     bin_range: tuple[float, float] | None = None,
+    print_stats: bool = False,
     figsize: tuple[float, float] = (6.0, 4.0),
     show: bool = True,
     save: str | Path | None = None,
-    ax: bool = False,
-) -> Axes | None:
+    ax: Axes | None = None,
+) -> Axes:
     """
     Plot the distribution of the number of first-category entries per second
     category.
@@ -867,6 +1096,8 @@ def n_cat1_per_cat2_hist(
     bin_range : tuple[float, float] | None
         Optional tuple ``(lower, upper)`` limiting the histogram bins. ``lower``
         must be strictly smaller than ``upper``.
+    print_stats : bool
+        Print distribution statistics (mean, median, mode, variance, min, max).
     figsize : tuple[float, float]
         Size (width, height) in inches passed to
         :func:`matplotlib.pyplot.subplots`.
@@ -874,9 +1105,9 @@ def n_cat1_per_cat2_hist(
         Call :func:`matplotlib.pyplot.show` when ``True``.
     save : str | Path | None
         Save the figure to the provided path when given.
-    ax : bool
-        Return the :class:`~matplotlib.axes.Axes` instance instead of displaying
-        the plot.
+    ax : Axes | None
+        Matplotlib Axes to plot onto. If ``None``, a new figure and axes
+        are created.
     """
     check_proteodata(adata)
     # Ensures that the 'index' has unique values if used
@@ -932,12 +1163,29 @@ def n_cat1_per_cat2_hist(
             "No entries available to compute counts for the requested categories."
         )
 
-    fig, _ax = plt.subplots(figsize=figsize)
     if bin_width is None:
         edges = np.histogram_bin_edges(counts.values, bins="auto")
         auto_width = edges[1] - edges[0]
         bin_width = max(auto_width, 1.0)
 
+    if print_stats:
+        stats_df = pd.DataFrame(
+            {
+                "mean": [counts.mean()],
+                "median": [counts.median()],
+                "mode": [counts.mode().iloc[0]],
+                "variance": [counts.var()],
+                "min": [counts.min()],
+                "max": [counts.max()],
+            }
+        )
+        print(stats_df.to_string(index=False))
+
+    if ax is None:
+        fig, _ax = plt.subplots(figsize=figsize)
+    else:
+        _ax = ax
+        fig = _ax.get_figure()
     if first_category == "index":
         entry_label = "observations" if axis == 0 else "variables"
     else:
@@ -958,15 +1206,7 @@ def n_cat1_per_cat2_hist(
     if show:
         plt.show()
 
-    if ax:
-        return _ax
-
-    if not show and save is None and not ax:
-        warnings.warn(
-            "Function does not do anything. Enable `show`, provide a `save` path, "
-            "or set `ax=True`."
-        )
-        plt.close(fig)
+    return _ax
 
 docstr_header = (
     "Plot the distribution of the number of first-category entries per second category."
@@ -1007,6 +1247,7 @@ def cv_by_group(
     show: bool = True,
     ax: bool = False,
     save: str | None = None,
+    print_stats: bool = False,
 ):
     """
     Compute per-group coefficients of variation and plot their distributions.
@@ -1056,6 +1297,11 @@ def cv_by_group(
         Return the Matplotlib Axes if ``True``.
     save : str | None, optional
         Path to save the figure. When ``None`` the figure is not saved.
+    print_stats : bool, optional
+        If ``True``, print CV summary statistics (global and per-group)
+        as DataFrames before plotting. When ``hline`` is set, also
+        prints threshold summaries showing counts and percentages of
+        variables with CVs strictly below the threshold.
     """
 
     check_proteodata(adata)
@@ -1154,6 +1400,82 @@ def cv_by_group(
     else:
         palette = dict(zip(order, resolved_colors))
 
+    if print_stats:
+        cv_values = df_melted["CV"].dropna()
+        global_summary = pd.DataFrame({
+            "Count": [cv_values.count()],
+            "Min": [round(cv_values.min(), 4)],
+            "Max": [round(cv_values.max(), 4)],
+            "Median": [round(cv_values.median(), 4)],
+            "Mean": [round(cv_values.mean(), 4)],
+            "Std": [round(cv_values.std(), 4)],
+        })
+        print("Global CV Summary:")
+        print(global_summary.to_string(index=False))
+        print()
+
+        per_group = (
+            df_melted.groupby("Group")["CV"]
+            .agg(
+                Count="count",
+                Min="min",
+                Max="max",
+                Median="median",
+                Mean="mean",
+                Std="std",
+            )
+            .round(4)
+            .reindex(order)
+        )
+        print("Per-Group CV Summary:")
+        print(per_group.to_string())
+        print()
+
+        if hline is not None:
+            below_count = (cv_values < hline).sum()
+            total_count = cv_values.count()
+            pct = (
+                round(below_count / total_count * 100, 4)
+                if total_count > 0
+                else 0.0
+            )
+            global_thresh = pd.DataFrame({
+                "Count below": [int(below_count)],
+                "Percentage below": [pct],
+            })
+            print(
+                f"Global Threshold Summary "
+                f"(hline={hline}):"
+            )
+            print(global_thresh.to_string(index=False))
+            print()
+
+            def _thresh_stats(group_cv):
+                n_below = (group_cv < hline).sum()
+                n_total = group_cv.count()
+                pct_below = (
+                    round(n_below / n_total * 100, 4)
+                    if n_total > 0
+                    else 0.0
+                )
+                return pd.Series({
+                    "Count below": int(n_below),
+                    "Percentage below": pct_below,
+                })
+
+            per_group_thresh = (
+                df_melted.groupby("Group")["CV"]
+                .apply(_thresh_stats)
+                .unstack()
+                .reindex(order)
+            )
+            print(
+                f"Per-Group Threshold Summary "
+                f"(hline={hline}):"
+            )
+            print(per_group_thresh.to_string())
+            print()
+
     fig, ax_plot = plt.subplots(figsize=figsize, dpi=150)
 
     sns.violinplot(
@@ -1241,6 +1563,7 @@ def sample_correlation_matrix(
     figsize: tuple[float, float] = (9.0, 7.0),
     show: bool = True,
     ax: bool = False,
+    print_stats: bool = False,
     save: str | Path | None = None,
 ) -> Axes | None:
     """
@@ -1278,6 +1601,11 @@ def sample_correlation_matrix(
         Display the figure with :func:`matplotlib.pyplot.show`.
     ax : bool
         Return the heatmap :class:`matplotlib.axes.Axes` when ``True``.
+    print_stats : bool
+        Print correlation summary statistics before drawing the plot.
+        Includes overall off-diagonal statistics, per-sample mean
+        correlation, and per-group correlations when ``margin_color``
+        is provided.
     save : str | Path | None
         File path for saving the Seaborn cluster map. When ``None`` nothing is
         written.
@@ -1402,6 +1730,84 @@ def sample_correlation_matrix(
     np.fill_diagonal(dist, 0.0)
     dist = np.clip(dist, 0, 2)  # numerical guard
     Z = linkage(squareform(dist), method=linkage_method)
+
+    # ---- optional statistics printout
+    if print_stats and n > 1:
+        # 1) Overall off-diagonal summary
+        summary = pd.DataFrame({
+            "min": [np.nanmin(offdiag)],
+            "max": [np.nanmax(offdiag)],
+            "mean": [np.nanmean(offdiag)],
+            "median": [np.nanmedian(offdiag)],
+            "std": [np.nanstd(offdiag)],
+        })
+        print(
+            f"Sample correlation summary "
+            f"(off-diagonal, {method}):"
+        )
+        print(summary.to_string(index=False))
+        print()
+
+        # 2) Per-sample mean correlation (dendrogram order)
+        mask = ~np.eye(n, dtype=bool)
+        per_sample_mean = np.nanmean(
+            np.where(mask, A, np.nan), axis=1
+        )
+        heatmap_order = leaves_list(Z)
+        per_sample_df = pd.DataFrame({
+            "sample_id": corr_df.index[heatmap_order],
+            "mean_corr": per_sample_mean[heatmap_order],
+        })
+        print("Per-sample mean correlation:")
+        print(per_sample_df.to_string(index=False))
+        print()
+
+        # 3) Per-group correlation (if margin_color provided)
+        if margin_color is not None:
+            if margin_color not in adata.obs.columns:
+                raise KeyError(
+                    f"Column '{margin_color}' not found "
+                    f"in adata.obs."
+                )
+            groups_ps = adata.obs.loc[
+                corr_df.index, margin_color
+            ]
+            unique_groups = groups_ps.dropna().unique()
+            group_rows = []
+            for grp in sorted(unique_groups):
+                grp_idx = groups_ps[
+                    groups_ps == grp
+                ].index
+                other_idx = groups_ps[
+                    (groups_ps != grp) & groups_ps.notna()
+                ].index
+                within = corr_df.loc[grp_idx, grp_idx]
+                within_vals = within.values[
+                    ~np.eye(len(grp_idx), dtype=bool)
+                ]
+                mean_within = (
+                    np.nanmean(within_vals)
+                    if len(within_vals) > 0
+                    else np.nan
+                )
+                if len(other_idx) > 0:
+                    between_vals = corr_df.loc[
+                        grp_idx, other_idx
+                    ].values.ravel()
+                    mean_between = np.nanmean(
+                        between_vals
+                    )
+                else:
+                    mean_between = np.nan
+                group_rows.append({
+                    "group": grp,
+                    "mean_within": mean_within,
+                    "mean_between": mean_between,
+                })
+            group_df = pd.DataFrame(group_rows)
+            print("Per-group mean correlation:")
+            print(group_df.to_string(index=False))
+            print()
 
     # ---- clustermap (center at off-diagonal mean)
     g = sns.clustermap(

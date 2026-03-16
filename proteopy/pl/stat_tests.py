@@ -9,12 +9,14 @@ from scipy import sparse
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 import seaborn as sns
-from adjustText import adjust_text
 import anndata as ad
 
 from proteopy.utils.anndata import check_proteodata
 from proteopy.utils.parsers import parse_stat_test_varm_slot
 from proteopy.utils.matplotlib import _resolve_color_scheme
+from proteopy.utils.stat_tests import (
+    volcano_plot as _volcano_plot,
+)
 
 
 def _stat_test_title_from_varm_slot(
@@ -28,17 +30,6 @@ def _stat_test_title_from_varm_slot(
     (group comparison), and optional layer information, then formats them
     into a concise title string. If parsing fails, returns the original
     slot name with a runtime warning.
-
-    Parameters
-    ----------
-    adata : ad.AnnData
-        AnnData object containing the layers used for slot name
-        parsing.
-    varm_slot : str
-        Stat test result slot name in ``adata.varm``. Expected
-        format: ``<test_type>;<group_by>;<design>`` or
-        ``<test_type>;<group_by>;<design>;<layer>`` (e.g.,
-        ``welch;condition;treatment_vs_control``).
 
     Returns
     -------
@@ -155,32 +146,230 @@ def _normalize_alt_color(
     return series
 
 
-def volcano_plot(
+def _validate_thresholds(fc_thresh, pval_thresh):
+    if (
+        not isinstance(fc_thresh, (int, float))
+        or fc_thresh <= 0
+    ):
+        raise ValueError(
+            "fc_thresh must be a positive number."
+        )
+    if (
+        not isinstance(pval_thresh, (int, float))
+        or pval_thresh <= 0
+        or pval_thresh > 1
+    ):
+        raise ValueError(
+            "pval_thresh must be a number in (0, 1]."
+        )
+
+
+def _validate_labels(top_labels, highlight_labels):
+    if top_labels is not None:
+        if (
+            not isinstance(top_labels, int)
+            or top_labels < 0
+        ):
+            raise ValueError(
+                "top_labels must be a non-negative integer."
+            )
+    if highlight_labels is not None:
+        if not isinstance(highlight_labels, list):
+            raise TypeError(
+                "highlight_labels must be a list of strings."
+            )
+    if (
+        top_labels is not None
+        and highlight_labels is not None
+    ):
+        raise ValueError(
+            "top_labels and highlight_labels are mutually "
+            "exclusive."
+        )
+
+
+def _validate_figsize(figsize):
+    if (
+        not isinstance(figsize, (tuple, list))
+        or len(figsize) != 2
+        or not all(
+            isinstance(v, (int, float)) and v > 0
+            for v in figsize
+        )
+    ):
+        raise ValueError(
+            "figsize must be a tuple/list of 2 positive "
+            "numbers."
+        )
+
+
+def _validate_volcano_inputs(
     adata: ad.AnnData,
     varm_slot: str,
-    fc_col: str = "logfc",
-    pval_col: str = "pval_adj",
+    fc_col: str,
+    pval_col: str,
+    label_col: str | None,
+    fc_thresh: float,
+    pval_thresh: float,
+    top_labels: int | None,
+    highlight_labels: list[str] | None,
+    figsize: tuple[float, float],
+    yscale_log: bool,
+) -> tuple[pd.DataFrame, str]:
+    """
+    Validate all input parameters for the volcano plot function.
+
+    Checks the AnnData object, threshold values, label arguments,
+    figure size, y-axis scale type, and the required columns in the
+    varm slot. Resolves the p-value column name by preferring
+    ``pval_col`` and falling back to ``"pval"`` when the adjusted
+    column is absent.
+
+    Parameters
+    ----------
+    adata : ad.AnnData
+        :class:`~anndata.AnnData` containing differential abundance
+        test results in ``.varm``.
+    varm_slot : str
+        Key in ``adata.varm`` holding the statistical test results
+        as a :class:`pandas.DataFrame`.
+    fc_col : str
+        Column name in the varm DataFrame for log fold change values.
+    pval_col : str
+        Preferred column name in the varm DataFrame for p-values
+        (typically adjusted). Falls back to ``"pval"`` if absent.
+    label_col : str | None
+        Column in ``adata.var`` used to label proteins on the plot.
+        ``None`` uses ``adata.var_names``.
+    fc_thresh : float
+        Absolute log fold change threshold; must be a positive number.
+    pval_thresh : float
+        P-value significance threshold; must be in the range (0, 1].
+    top_labels : int | None
+        Number of top significant proteins to label per fold-change
+        direction. Must be a non-negative integer or ``None``.
+        Mutually exclusive with ``highlight_labels``.
+    highlight_labels : list[str] | None
+        Explicit list of protein label strings to annotate.
+        Must be a :class:`list` or ``None``. Mutually exclusive
+        with ``top_labels``.
+    figsize : tuple[float, float]
+        Figure dimensions (width, height) in inches; both values
+        must be positive numbers.
+    yscale_log : bool
+        Controls y-axis p-value representation. Must be a
+        :class:`bool`.
+
+    Returns
+    -------
+    tuple[pd.DataFrame, str]
+        A 2-tuple of:
+
+        - **results** (:class:`pandas.DataFrame`) — the validated
+          varm slot DataFrame indexed by variable names.
+        - **pval_col_used** (:class:`str`) — the resolved p-value
+          column name (``pval_col`` if present, otherwise ``"pval"``).
+
+    Raises
+    ------
+    KeyError
+        If ``varm_slot`` is not found in ``adata.varm``, ``fc_col``
+        is not a column in the varm DataFrame, neither ``pval_col``
+        nor ``"pval"`` is a column in the varm DataFrame, or
+        ``label_col`` is not a column in ``adata.var``.
+    TypeError
+        If ``adata.varm[varm_slot]`` is not a
+        :class:`pandas.DataFrame`, or if ``highlight_labels`` is not
+        a :class:`list`, or if ``yscale_log`` is not a :class:`bool`.
+    ValueError
+        If ``fc_thresh`` is not a positive number, ``pval_thresh``
+        is not in (0, 1], ``figsize`` is not a 2-element
+        tuple/list of positive numbers, ``top_labels`` is not a
+        non-negative integer, or ``top_labels`` and
+        ``highlight_labels`` are both non-``None``.
+    """
+    check_proteodata(adata)
+
+    # -- Validate scalar parameters
+    _validate_thresholds(fc_thresh, pval_thresh)
+    _validate_labels(top_labels, highlight_labels)
+    _validate_figsize(figsize)
+
+    if not isinstance(yscale_log, bool):
+        raise TypeError("yscale_log must be a bool.")
+
+    # -- Validate varm slot exists and contains a DataFrame
+    if varm_slot not in adata.varm:
+        raise KeyError(
+            f"varm_slot '{varm_slot}' not found in "
+            f"adata.varm."
+        )
+
+    results = adata.varm[varm_slot]
+    if not isinstance(results, pd.DataFrame):
+        raise TypeError(
+            "Expected adata.varm[varm_slot] to be a pandas "
+            "DataFrame."
+        )
+
+    # -- Validate required columns exist
+    if fc_col not in results.columns:
+        raise KeyError(
+            f"Column '{fc_col}' not found in varm slot "
+            f"'{varm_slot}'."
+        )
+
+    # Prioritize adjusted p-values, fall back to unadjusted
+    # if needed. This allows the function to work with test
+    # results that may not include multiple testing correction.
+    if pval_col in results.columns:
+        pval_col_used = pval_col
+    elif "pval" in results.columns:
+        pval_col_used = "pval"
+    else:
+        raise KeyError(
+            f"Columns '{pval_col}' or 'pval' not found in "
+            f"'{varm_slot}'."
+        )
+
+    if (
+        label_col is not None
+        and label_col not in adata.var.columns
+    ):
+        raise KeyError(
+            f"Column '{label_col}' not found in adata.var."
+        )
+
+    return results, pval_col_used
+
+
+def volcano(
+    adata: ad.AnnData,
+    varm_slot: str,
     fc_thresh: float = 1.0,
     pval_thresh: float = 0.05,
-    top_labels: int | None = None,
+    *,
+    fc_col: str = "logfc",
+    pval_col: str = "pval_adj",
     label_col: str | None = None,
+    top_labels: int | None = None,
+    highlight_labels: list[str] | None = None,
     figsize: tuple[float, float] = (6.0, 5.0),
     xlabel: str | None = None,
+    ylabel: str | None = None,
     alt_color: pd.Series | list[bool] | np.ndarray | None = None,
-    ylabel_logscale: bool = True,
+    yscale_log: bool = True,
     title: str | None = None,
     show: bool = True,
     save: str | Path | None = None,
-    ax: bool | None = None,
-) -> Axes | None:
+    ax: Axes | None = None,
+) -> Axes:
     """
     Visualize differential abundance results as a volcano plot.
 
     Creates a scatter plot of log fold change (x-axis) versus p-value
     (y-axis) for proteins from a statistical test stored in
-    ``adata.varm``. Points are colored by significance (exceeding both
-    fold change and p-value thresholds), with options for custom
-    coloring and automatic labeling of top hits.
+    ``adata.varm``.
 
     Parameters
     ----------
@@ -191,13 +380,6 @@ def volcano_plot(
         Key in ``adata.varm`` containing the differential abundance
         test results as a DataFrame. Expected format produced by
         ``copro.tl.differential_abundance``.
-    fc_col : str, optional
-        Column name in the varm DataFrame containing log fold change
-        values. Log base depends on the test method used.
-    pval_col : str, optional
-        Column name in the varm DataFrame containing adjusted p-values.
-        If this column is not found, the function falls back to
-        ``"pval"`` (unadjusted p-values).
     fc_thresh : float, optional
         Absolute log fold change threshold for significance. Proteins
         with ``|logfc| >= fc_thresh`` and ``pval <= pval_thresh`` are
@@ -205,22 +387,40 @@ def volcano_plot(
     pval_thresh : float, optional
         P-value threshold for significance. Used in conjunction with
         ``fc_thresh`` to identify significant proteins.
+    fc_col : str, optional
+        Column name in the varm DataFrame containing log fold change
+        values. Log base depends on the test method used.
+    pval_col : str, optional
+        Column name in the varm DataFrame containing adjusted p-values.
+        If this column is not found, the function falls back to
+        ``"pval"`` (unadjusted p-values).
+    label_col : str | None, optional
+        Column in ``adata.var`` to use for labeling proteins.
+        Defaults to ``adata.var_names`` if ``None``.
     top_labels : int | None, optional
         Number of top proteins to label on each side of the volcano
-        plot (up to 2N labels total). For each direction (positive
+        plot (up to 0.5N labels total). For each direction (positive
         and negative fold change), selects the top N proteins that
         meet BOTH significance thresholds (``pval <= pval_thresh``
         AND ``|logfc| >= fc_thresh``). Proteins are ranked first by
         smallest p-value, then by largest absolute fold change.
         ``None`` disables automatic labeling.
-    label_col : str | None, optional
-        Column in ``adata.var`` to use for labeling proteins.
-        Defaults to ``adata.var_names`` if ``None``.
+    highlight_labels : list[str] | None, optional
+        Sequence of protein label strings to annotate on the plot.
+        Each entry must match a value in the label column
+        (``label_col`` or ``adata.var_names``). Mutually exclusive
+        with ``top_labels``. Labels not found after data filtering
+        trigger a warning.
     figsize : tuple[float, float], optional
         Figure dimensions (width, height) in inches.
     xlabel : str | None, optional
         Label for the x-axis. Defaults to the value of ``fc_col`` if
         ``None``.
+    ylabel : str | None, optional
+        Label for the y-axis. When ``None``, defaults to the
+        p-value column name (e.g., ``"pval_adj"``) if
+        ``yscale_log=True``, or ``"-log10(pval_adj)"`` if
+        ``yscale_log=False``.
     alt_color : pd.Series | list[bool] | np.ndarray | None, optional
         Boolean mask (length ``n_vars``) for alternative coloring
         scheme. When provided, this COMPLETELY OVERRIDES the default
@@ -230,14 +430,12 @@ def volcano_plot(
         and ``pval_thresh``) are still visualized as dashed lines
         but do not influence point colors. ``None`` uses the default
         significance-based coloring (gray, blue, red).
-    ylabel_logscale : bool, optional
+    yscale_log : bool, optional
         Controls y-axis representation of p-values. When ``True``,
         plot raw p-values on a log10-scaled y-axis (inverted so
-        smaller p-values appear higher); y-axis label shows
-        ``pval_col`` name. When ``False``, apply ``-log10``
-        transform to p-values and plot on a linear y-axis; y-axis
-        label shows ``-log10(pval_col)``. Both representations
-        produce visually similar plots with the same interpretation.
+        smaller p-values appear higher). When ``False``, apply
+        ``-log10`` transform to p-values and plot on a linear
+        y-axis.
     title : str | None, optional
         Plot title. If ``None``, generates a title from the
         ``varm_slot`` name using the stat test metadata (test type,
@@ -245,17 +443,14 @@ def volcano_plot(
     show : bool, optional
         Call ``matplotlib.pyplot.show()`` to display the plot.
     save : str | Path | None, optional
-        File path to save the figure. Saved at 300 DPI with tight
-        bounding box. ``None`` skips saving.
-    ax : bool | None, optional
-        Return the :class:`matplotlib.axes.Axes` object. When
-        ``None`` or ``False``, returns ``None``. When ``True``,
-        returns the Axes object for further customization.
+        File path to save the figure.
+    ax : matplotlib.axes.Axes | None, optional
+        Matplotlib Axes object to plot onto.
 
     Returns
     -------
-    Axes | None
-        The Matplotlib Axes object if ``ax=True``, otherwise ``None``.
+    Axes
+        The Matplotlib Axes object used for plotting.
 
     Raises
     ------
@@ -264,11 +459,16 @@ def volcano_plot(
         p-value columns are not in the varm DataFrame, or
         ``label_col`` is not in ``adata.var``.
     TypeError
-        If ``adata.varm[varm_slot]`` is not a pandas DataFrame.
+        If ``adata.varm[varm_slot]`` is not a pandas DataFrame,
+        ``highlight_labels`` is not a :class:`list`, or
+        ``yscale_log`` is not a :class:`bool`.
     ValueError
-        If no valid (finite, positive p-value) results remain after
-        filtering, if ``top_labels`` is not a positive integer, or if
-        all of ``show``, ``save``, and ``ax`` are ``False``.
+        If ``fc_thresh`` is not a positive number, ``pval_thresh``
+        is not in (0, 1], ``figsize`` is not a 2-element
+        tuple/list of positive numbers, ``top_labels`` is not a
+        non-negative integer, ``top_labels`` and
+        ``highlight_labels`` are both non-``None``, or no valid
+        (finite, positive p-value) results remain after filtering.
 
     Notes
     -----
@@ -276,36 +476,16 @@ def volcano_plot(
     Proteins are filtered before plotting to remove:
     - Missing values in fold change or p-value columns
     - Non-finite values (inf, -inf, nan)
-    - Non-positive p-values (cannot be log-transformed)
-
-    **Color Schemes**:
-    Default coloring (when ``alt_color=None``):
-    - Gray: non-significant proteins (fail one or both thresholds)
-    - Blue (#1f77b4): significantly downregulated
-      (``logfc <= -fc_thresh`` AND ``pval <= pval_thresh``)
-    - Red (#d62728): significantly upregulated
-      (``logfc >= fc_thresh`` AND ``pval <= pval_thresh``)
-
-    Alternative coloring (when ``alt_color`` is provided):
-    - Gray (#808080): proteins with ``alt_color=False``
-    - Light purple (#8E54E5): proteins with ``alt_color=True``
-    - Significance thresholds do NOT affect colors, only threshold
-      lines are drawn
-
-    **Label Selection Algorithm** (when ``top_labels`` is set):
-    1. Filter proteins to those meeting BOTH significance thresholds
-    2. Separate into positive (``logfc > 0``) and negative
-       (``logfc < 0``) groups
-    3. Within each group, rank by: (1) smallest p-value, then
-       (2) largest absolute fold change
-    4. Select top N from each group (up to 2N total labels)
-    5. Use ``adjustText`` library to prevent label overlap
+    - Non-positive p-values
 
     Examples
     --------
     Plot differential abundance results with default settings:
 
-    >>> pp.pl.volcano_plot(adata, varm_slot="welch;condition;treatment_vs_ctrl")
+    >>> pp.pl.volcano_plot(
+    ...     adata,
+    ...     varm_slot="welch;condition;treatment_vs_ctrl",
+    ... )
 
     Label top 10 proteins per side and save to file:
 
@@ -327,19 +507,74 @@ def volcano_plot(
     ...     alt_color=proteins_of_interest,
     ... )
     """
-    check_proteodata(adata)
+    results, pval_col_used = _validate_volcano_inputs(
+        adata, varm_slot, fc_col, pval_col, label_col,
+        fc_thresh, pval_thresh, top_labels,
+        highlight_labels, figsize, yscale_log,
+    )
 
-    # Validate varm slot exists and contains a DataFrame
-    if varm_slot not in adata.varm:
-        raise KeyError(
-            f"varm_slot '{varm_slot}' not found in adata.varm."
+    fc_arr = results[fc_col].to_numpy()
+    pvals_arr = results[pval_col_used].to_numpy()
+
+    labels = None
+    if top_labels is not None or highlight_labels is not None:
+        if label_col is None:
+            labels = adata.var_names.to_numpy()
+        else:
+            labels = adata.var[label_col].to_numpy()
+
+    # Normalize alt_color via existing helper
+    alt_arr = None
+    if alt_color is not None:
+        alt_series = _normalize_alt_color(
+            alt_color, adata, results.index,
+        )
+        alt_arr = alt_series.to_numpy()
+
+    if title is None:
+        title = _stat_test_title_from_varm_slot(
+            adata, varm_slot,
         )
 
+    if ylabel is None:
+        if yscale_log:
+            ylabel = pval_col_used
+        else:
+            ylabel = f"-log10 {pval_col_used}"
+
+    return _volcano_plot(
+        fc_vals=fc_arr,
+        pvals=pvals_arr,
+        fc_thresh=fc_thresh,
+        pval_thresh=pval_thresh,
+        labels=labels,
+        top_labels=top_labels,
+        highlight_labels=highlight_labels,
+        figsize=figsize,
+        xlabel=fc_col if xlabel is None else xlabel,
+        ylabel=ylabel,
+        alt_color=alt_arr,
+        yscale_log=yscale_log,
+        title=title,
+        show=show,
+        save=save,
+        ax=ax,
+    )
+
+
+def _validate_varm_slot(adata, varm_slot):
+    if varm_slot not in adata.varm:
+        raise KeyError(
+            f"varm_slot '{varm_slot}' not found in "
+            f"adata.varm."
+        )
     results = adata.varm[varm_slot]
     if not isinstance(results, pd.DataFrame):
         raise TypeError(
-            "Expected adata.varm[varm_slot] to be a pandas DataFrame."
+            "Expected adata.varm[varm_slot] to be a "
+            "pandas DataFrame."
         )
+    return results
 
     # Validate required columns exist
     if fc_col not in results.columns:

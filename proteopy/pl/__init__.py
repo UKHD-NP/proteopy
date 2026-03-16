@@ -6,7 +6,7 @@ from .intensities import (
     abundance_rank,
     box,
     binary_heatmap,
-    )
+)
 
 from .stats import (
     completeness,
@@ -21,18 +21,21 @@ from .stats import (
     cv_by_group,
     sample_correlation_matrix,
     hclustv_profiles_heatmap,
-    )
+)
 
 from .copf import proteoform_scores
-from .stat_tests import volcano_plot, differential_abundance_box
+from .stat_tests import (
+    volcano,
+    differential_abundance_box,
+)
 
 from .clustering import (
     hclustv_silhouette,
     hclustv_elbow,
     hclustv_profile_intensities,
-    )
+)
 
 from .sequence import (
     peptides_on_sequence,
     peptides_on_prot_sequence,
-    )
+)

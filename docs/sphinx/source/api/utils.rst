@@ -28,3 +28,11 @@ common operations.
    :nosignatures:
 
    proteopy.utils.is_log_transformed
+
+.. rubric:: Plotting
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   proteopy.utils.volcano_plot

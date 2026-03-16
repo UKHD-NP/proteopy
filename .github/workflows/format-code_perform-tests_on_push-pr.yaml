@@ -77,6 +77,7 @@ jobs:
             proteopy/download/karayel_2020.py \
             proteopy/pl/sequence.py \
             proteopy/pp/quantification.py \
+            proteopy/read/long.py \
             proteopy/get/proteoforms.py \
             proteopy/utils/anndata.py \
             tests/__init__.py \

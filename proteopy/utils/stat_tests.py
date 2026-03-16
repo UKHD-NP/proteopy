@@ -130,9 +130,9 @@ def _validate_thresholds(fc_thresh, pval_thresh):
             "fc_thresh must be a positive number."
         )
     if pval_thresh is not None:
-        if pval_thresh <= 0 or pval_thresh > 1:
+        if pval_thresh < 0 or pval_thresh > 1:
             raise ValueError(
-                "pval_thresh must be in (0, 1]."
+                "pval_thresh must be in [0, 1]."
             )
 
 

@@ -4,6 +4,7 @@ from typing import Callable
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+import anndata as ad
 from Bio import SeqIO
 
 from proteopy.utils.functools import partial_with_docsig
@@ -378,82 +379,218 @@ def filter_samples_by_category_count(
     return new_adata
 
 
+def _validate_remove_zero_variance_vars_input(
+    adata,
+    group_by,
+    atol,
+    inplace,
+    verbose,
+):
+    """Validate inputs for ``remove_zero_variance_vars``."""
+    if not isinstance(adata, ad.AnnData):
+        raise TypeError(
+            f"`adata` must be an AnnData object, "
+            f"got {type(adata).__name__}."
+        )
+    if group_by is not None and not isinstance(group_by, str):
+        raise TypeError(
+            f"`group_by` must be a string or None, "
+            f"got {type(group_by).__name__}."
+        )
+    if not isinstance(atol, (int, float)):
+        raise TypeError(
+            f"`atol` must be a numeric value, "
+            f"got {type(atol).__name__}."
+        )
+    if atol < 0:
+        raise ValueError("`atol` must be non-negative.")
+    if not isinstance(inplace, bool):
+        raise TypeError(
+            f"`inplace` must be a bool, "
+            f"got {type(inplace).__name__}."
+        )
+    if not isinstance(verbose, bool):
+        raise TypeError(
+            f"`verbose` must be a bool, "
+            f"got {type(verbose).__name__}."
+        )
+    if group_by is not None:
+        if group_by not in adata.obs.columns:
+            raise KeyError(
+                f"`group_by`='{group_by}' not found "
+                f"in adata.obs"
+            )
+        if adata.obs[group_by].isna().any():
+            raise ValueError(
+                f"`group_by`='{group_by}' column in "
+                f"adata.obs contains NaN values."
+            )
+
+
 def remove_zero_variance_vars(
     adata,
     group_by=None,
     atol=1e-8,
     inplace=True,
+    verbose=False,
 ):
     """
-    Remove variables (columns) with near-zero variance, skipping NaN values.
+    Remove variables with near-zero or zero variance, skipping NaN values.
 
-    This function removes variables (e.g., peptides, proteins or features)
-    whose variance across observations is less than or equal to a given
-    tolerance. If a grouping variable is provided via `group_by`, a variable
-    is removed if it has near-zero variance (≤ `atol`) in **any** group.
+    Variables whose variance is at or below ``atol`` are removed.
+    Variables that are entirely NaN — globally or within any group
+    when ``group_by`` is set — are treated as zero variance and also
+    removed.
 
     Parameters
     ----------
-    adata : anndata.AnnData
-        Annotated data matrix.
-    group_by : str or None, optional (default: None)
-        Column name in ``adata.obs`` to compute variance per group. If provided,
-        variables are removed if their variance is ≤ `atol` within *any* group.
-        If None, variance is computed across all observations.
-    atol : float, optional (default: 1e-8)
-        Absolute tolerance threshold. Variables with variance ≤ `atol` are
-        considered to have zero variance and are removed.
-    inplace : bool, optional (default: True)
-        If True, modifies ``adata`` in place. Otherwise, returns a copy with
-        low-variance variables removed.
+    adata : AnnData
+        :class:`~anndata.AnnData` annotated data matrix.
+    group_by : str | None, optional
+        Column in ``adata.obs`` to compute variance per group. When
+        set, a variable is removed if its variance is ``<= atol`` or
+        all-NaN in *any* group.
+    atol : float, optional
+        Absolute tolerance threshold. Variables with variance
+        ``<= atol`` are considered zero-variance and removed.
+    inplace : bool, optional
+        Modify ``adata`` in place and return ``None``.
+        Otherwise, returns a filtered copy.
+    verbose : bool, optional
+        Print how many variables were present, removed,
+        and remaining.
 
     Returns
     -------
-    None or anndata.AnnData
-        If ``inplace=True``, returns None and modifies ``adata`` in place.
-        Otherwise, returns a new AnnData object containing only variables
-        with variance > `atol`.
+    None | AnnData
+        ``None`` when ``inplace=True``; a new :class:`anndata.AnnData`
+        containing only variables with variance ``> atol`` otherwise.
 
-    Notes
+    Raises
+    ------
+    TypeError
+        If any argument has an incorrect type.
+    ValueError
+        If ``atol`` is negative or the ``group_by`` column
+        contains NaN values.
+    KeyError
+        If ``group_by`` is not a column in ``adata.obs``.
+
+    Warns
     -----
-    - NaN values are ignored using ``np.nanvar`` (population variance, ddof=0).
-    - For sparse matrices, the data is densified for variance computation.
-      Without grouping this happens once on the full matrix; with grouping it
-      happens per-group slice to limit peak memory.
-    - If `group_by` is provided, any variable that has variance ≤ `atol` in
-      *any* group is removed globally.
+    UserWarning
+        Raised when one or more variables are removed because they are
+        entirely NaN (globally or within at least one group).
+
+    Examples
+    --------
+    Build a small protein-level dataset with four variables:
+    ``p1`` varies, ``p2`` is constant, ``p3`` is all-NaN, and
+    ``p4`` varies.
+
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> import anndata as ad
+    >>> import proteopy as pr
+    >>> X = np.array([
+    ...     [1.0, 5.0, np.nan, 7.0],
+    ...     [2.0, 5.0, np.nan, 7.0],
+    ...     [3.0, 5.0, np.nan, 8.0],
+    ... ])
+    >>> obs = pd.DataFrame(
+    ...     {"sample_id": ["s1", "s2", "s3"]},
+    ...     index=["s1", "s2", "s3"],
+    ... )
+    >>> var = pd.DataFrame(
+    ...     {"protein_id": ["p1", "p2", "p3", "p4"]},
+    ...     index=["p1", "p2", "p3", "p4"],
+    ... )
+    >>> adata = ad.AnnData(X=X, obs=obs, var=var)
+    >>> pr.pp.remove_zero_variance_vars(adata)
+    >>> adata.var_names.tolist()
+    ['p1', 'p4']
+
+    With ``group_by``, a variable is removed if it has zero
+    variance or is all-NaN in *any* group. Here ``p2`` is
+    constant in group A, ``p3`` is all-NaN in group A, and
+    ``p4`` is constant in both groups:
+
+    >>> X_grp = np.array([
+    ...     [1.0, 5.0, np.nan, 9.0],
+    ...     [2.0, 5.0, np.nan, 9.0],
+    ...     [3.0, 7.0,  8.0,   9.0],
+    ...     [4.0, 8.0,  8.0,   9.0],
+    ... ])
+    >>> obs_grp = pd.DataFrame(
+    ...     {"sample_id": ["s1", "s2", "s3", "s4"],
+    ...      "group": ["A", "A", "B", "B"]},
+    ...     index=["s1", "s2", "s3", "s4"],
+    ... )
+    >>> adata = ad.AnnData(X=X_grp, obs=obs_grp, var=var)
+    >>> pr.pp.remove_zero_variance_vars(adata, group_by="group")
+    >>> adata.var_names.tolist()
+    ['p1']
     """
+    _validate_remove_zero_variance_vars_input(
+        adata, group_by, atol, inplace, verbose,
+    )
     check_proteodata(adata)
     X = adata.X
     n_vars = adata.n_vars
     is_sparse = sp.issparse(X)
 
     keep_mask = np.ones(n_vars, dtype=bool)
+    n_allnan = 0
 
     if group_by is None:
         X_full = X.toarray() if is_sparse else np.asarray(X)
-        var_all = np.nanvar(X_full, axis=0, ddof=0)
-        keep_mask &= (var_all > atol)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            var_all = np.nanvar(X_full, axis=0, ddof=0)
+        allnan_mask = np.isnan(var_all)  # np.nanvar(all_nan_vector) == np.nan
+        n_allnan = int(allnan_mask.sum())
+        keep_mask &= (var_all > atol) & ~allnan_mask
     else:
-        if group_by not in adata.obs.columns:
-            raise KeyError(f"`group_by`='{group_by}' not found in adata.obs")
-
         groups = adata.obs[group_by].astype("category")
         zero_any = np.zeros(n_vars, dtype=bool)
+        allnan_any = np.zeros(n_vars, dtype=bool)
 
         for g in groups.cat.categories:
             idx = np.where(groups.values == g)[0]
             if idx.size == 0:
                 continue
             Xg = X[idx, :]
-            Xg_arr = Xg.toarray() if sp.issparse(Xg) else np.asarray(Xg)
-            vg = np.nanvar(Xg_arr, axis=0, ddof=0)
-            zero_any |= (vg <= atol)
+            Xg_arr = (
+                Xg.toarray() if sp.issparse(Xg)
+                else np.asarray(Xg)
+            )
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                vg = np.nanvar(Xg_arr, axis=0, ddof=0)
+            allnan_g = np.isnan(vg)  # np.nanvar(all_nan_vector) == np.nan
+            allnan_any |= allnan_g
+            zero_any |= (vg <= atol) & ~allnan_g
 
-        keep_mask &= ~zero_any
+        n_allnan = int(allnan_any.sum())
+        keep_mask &= ~zero_any & ~allnan_any
+
+    if n_allnan > 0:
+        warnings.warn(
+            f"{n_allnan} variable(s) contained only NaN values"
+            f"{' in at least one group' if group_by else ''}"
+            " and were treated as zero variance.",
+            UserWarning,
+            stacklevel=2,
+        )
 
     removed = int((~keep_mask).sum())
-    print(f"Removed {removed} variables.")
+    if verbose:
+        remaining = int(keep_mask.sum())
+        print(
+            f"{n_vars} variables present, "
+            f"{removed} removed, "
+            f"{remaining} remaining."
+        )
 
     if inplace:
         adata._inplace_subset_var(keep_mask)

@@ -25,205 +25,882 @@ from proteopy.utils.string import sanitize_string
 from proteopy.pp.stats import calculate_cv
 
 
-def completeness(
-    adata: ad.AnnData,
-    axis: int,
-    layer: str | None = None,
-    zero_to_na: bool = False,
-    groups: Iterable[Any] | str | None = None,
-    group_by: str | None = None,
-    xlabel_rotation: float = 0.0,
-    figsize: tuple[float, float] = (6.0, 5.0),
-    show: bool = True,
-    ax: bool = False,
-    save: bool | str | Path | None = False,
-) -> Axes | None:
-    """
-    Plot a histogram of completeness across observations or variables.
-
-    Parameters
-    ----------
-    adata : AnnData
-        :class:`~anndata.AnnData` object with proteomics annotations.
-    axis
-        `0` plots completeness per variable, `1` per observation.
-    layer
-        Name of the layer to use instead of `.X`. Defaults to `.X`.
-    zero_to_na
-        Treat zero entries as missing values when True.
-    groups
-        Optional iterable of group labels to include.
-    group_by
-        Column name in `.var` (axis 0) or `.obs` (axis 1) used to stratify
-        completeness into groups. Triggers a boxplot when provided.
-    xlabel_rotation
-        Rotation angle in degrees applied to x-axis tick labels.
-    figsize
-        Tuple ``(width, height)`` controlling figure size in inches.
-    show
-        Display the plot with `plt.show()` when True.
-    ax
-        Return the Matplotlib Axes object instead of displaying the plot.
-    save
-        File path or truthy value to trigger `fig.savefig`.
-    """
+def _validate_completeness_args(  # noqa: C901
+    adata,
+    axis,
+    layer,
+    order,
+    group_by_resolution,
+    group_by_partition,
+    min_count,
+    min_fraction,
+    fraction_thresh,
+    bin_width,
+):
+    """Validate inputs and derive working variables for completeness."""
     check_proteodata(adata)
 
     if axis not in (0, 1):
-        raise ValueError("`axis` must be either 0 (var) or 1 (obs).")
+        raise ValueError(
+            "`axis` must be either 0 (var) or 1 (obs)."
+        )
+
+    if (
+        group_by_resolution is not None
+        and group_by_partition is not None
+    ):
+        raise ValueError(
+            "`group_by_resolution` and `group_by_partition` "
+            "are mutually exclusive. Provide one or neither."
+        )
+
+    if min_count is not None and min_fraction is not None:
+        raise ValueError(
+            "`min_count` and `min_fraction` are mutually exclusive. "
+            "Provide one or neither."
+        )
+
+    if fraction_thresh is not None and (
+        fraction_thresh < 0 or fraction_thresh > 1
+    ):
+        raise ValueError(
+            "`fraction_thresh` must be between 0 and 1."
+        )
+
+    if bin_width is not None and bin_width <= 0:
+        raise ValueError(
+            "`bin_width` must be a positive number."
+        )
+
+    if (
+        group_by_resolution is None
+        and (min_count is not None or min_fraction is not None)
+    ):
+        warnings.warn(
+            "`min_count` and `min_fraction` are only used when "
+            "`group_by_resolution` is provided. They will be "
+            "ignored."
+        )
+        min_count = None
+        min_fraction = None
 
     if layer is None:
         matrix = adata.X
     else:
         if layer not in adata.layers:
-            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+            raise KeyError(
+                f"Layer '{layer}' not found in adata.layers."
+            )
         matrix = adata.layers[layer]
 
     if matrix is None:
-        raise ValueError("Selected matrix is empty; cannot compute completeness.")
+        raise ValueError(
+            "Selected matrix is empty; cannot compute "
+            "completeness."
+        )
 
     n_obs, n_vars = matrix.shape
-    axis_length = n_obs if axis == 0 else n_vars
+
+    if axis == 0:
+        axis_labels = ("var", "obs")
+        n_items = n_vars
+        axis_length = n_obs
+        grouping_frame = adata.obs
+    else:
+        axis_labels = ("obs", "var")
+        n_items = n_obs
+        axis_length = n_vars
+        grouping_frame = adata.var
 
     if axis_length == 0:
-        raise ValueError("Cannot compute completeness on empty axis.")
+        raise ValueError(
+            "Cannot compute completeness on empty axis."
+        )
 
-    if sparse.issparse(matrix):
-        matrix_coo = matrix.tocoo()
-        data = matrix_coo.data
-        rows = matrix_coo.row
-        cols = matrix_coo.col
+    if n_items == 0:
+        raise ValueError(
+            "No items to compute completeness for."
+        )
 
+    if order is not None and group_by_partition is None:
+        warnings.warn(
+            "`order` is only used when "
+            "`group_by_partition` is provided. "
+            "It will be ignored."
+        )
+
+    return [
+        matrix, axis_labels, n_items, axis_length,
+        grouping_frame, min_count, min_fraction,
+    ]
+
+
+def _summary_stats(values):
+    """Return a single-row DataFrame of summary statistics."""
+    s = pd.Series(values) if not isinstance(
+        values, pd.Series,
+    ) else values
+    return pd.DataFrame({
+        "count": [s.count()],
+        "mean": [s.mean()],
+        "median": [s.median()],
+        "std": [s.std()],
+        "min": [s.min()],
+        "max": [s.max()],
+    })
+
+
+def _count_nonmissing(mat, ax, zero_to_na):
+    """Count non-missing values along the given axis."""
+    if sparse.issparse(mat):
+        mat_coo = mat.tocoo()
+        data = mat_coo.data
+        rows = mat_coo.row
+        cols = mat_coo.col
         if zero_to_na:
-            valid_mask = (~np.isnan(data)) & (data != 0)
-            if axis == 0:
-                counts = np.bincount(
-                    cols[valid_mask],
-                    minlength=n_vars,
+            valid = (~np.isnan(data)) & (data != 0)
+            if ax == 0:
+                return np.bincount(
+                    cols[valid],
+                    minlength=mat.shape[1],
                 )
             else:
-                counts = np.bincount(
-                    rows[valid_mask],
-                    minlength=n_obs,
+                return np.bincount(
+                    rows[valid],
+                    minlength=mat.shape[0],
                 )
         else:
             nan_mask = np.isnan(data)
-            if axis == 0:
-                nan_counts = np.bincount(
+            if ax == 0:
+                nan_c = np.bincount(
                     cols[nan_mask],
-                    minlength=n_vars,
+                    minlength=mat.shape[1],
                 )
-                counts = n_obs - nan_counts
+                return mat.shape[0] - nan_c
             else:
-                nan_counts = np.bincount(
+                nan_c = np.bincount(
                     rows[nan_mask],
-                    minlength=n_obs,
+                    minlength=mat.shape[0],
                 )
-                counts = n_vars - nan_counts
+                return mat.shape[1] - nan_c
     else:
-        values = np.asarray(matrix)
+        values = np.asarray(mat)
         valid_mask = ~np.isnan(values)
         if zero_to_na:
             valid_mask &= values != 0
-        counts = valid_mask.sum(axis=axis)
+        return valid_mask.sum(axis=ax)
 
-    counts = np.asarray(counts, dtype=float)
-    completeness = counts / axis_length
 
-    if axis == 0:
-        index = adata.var_names
-        axis_labels = ("var", "obs")
-        grouping_frame = adata.var
-    else:
-        index = adata.obs_names
-        axis_labels = ("obs", "var")
-        grouping_frame = adata.obs
-
-    completeness_series = pd.Series(completeness, index=index)
-
-    if group_by is None:
-        fig, _ax = plt.subplots(figsize=figsize)
-        sns.histplot(
-            completeness_series,
-            ax=_ax,
-        )
-        _ax.set_xlabel(
-            f"Fraction of non-missing {axis_labels[1]} values per {axis_labels[0]}",
-        )
-        plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation)
-    else:
-        if group_by not in grouping_frame.columns:
-            raise KeyError(
-                f"Column '{group_by}' not found in "
-                f"{'.var' if axis == 0 else '.obs'}",
-            )
-        group_series = grouping_frame[group_by].reindex(index, copy=False)
-        plot_df = pd.DataFrame(
-            {
-                "completeness": completeness_series,
-                group_by: group_series,
-            },
-            index=index,
-        )
-        plot_df = plot_df.dropna(subset=[group_by])
-
-        if groups is not None:
-            if isinstance(groups, str):
-                groups = [groups]
-            else:
-                groups = list(groups)
-            plot_df = plot_df[plot_df[group_by].isin(groups)]
-            order = [grp for grp in groups if grp in plot_df[group_by].unique()]
+def _resolve_partition_order(order, available):
+    """Resolve and validate group order for partition plots."""
+    if order is not None:
+        if isinstance(order, str):
+            order = [order]
         else:
-            order = None
-
-        if plot_df.empty:
+            order = list(order)
+        missing = [
+            g for g in order if g not in available
+        ]
+        if missing:
             raise ValueError(
-                "No data available for the requested grouping combination.",
+                "Unknown group(s) in `order`: "
+                f"{', '.join(map(str, missing))}.",
+            )
+        return order
+    return sorted(available, key=str)
+
+
+def _group_completeness_counts(
+    matrix, axis, g_mask, zero_to_na,
+):
+    """Count non-missing values per item within a group mask."""
+    if axis == 0:
+        sub_matrix = matrix[g_mask, :]
+    else:
+        sub_matrix = matrix[:, g_mask]
+    counts = np.asarray(
+        _count_nonmissing(sub_matrix, axis, zero_to_na),
+        dtype=float,
+    )
+    return counts, int(g_mask.sum())
+
+
+def _plot_completeness_partition(
+    matrix,
+    axis,
+    axis_labels,
+    zero_to_na,
+    grouping_frame,
+    group_by_partition,
+    order,
+    fraction_thresh,
+    print_stats,
+    xlabel_rotation,
+    figsize,
+    ax,
+):
+    """Plot boxplots of completeness partitioned by a grouping column."""
+    if group_by_partition not in grouping_frame.columns:
+        raise KeyError(
+            f"Column '{group_by_partition}' not found "
+            f"in {'.obs' if axis == 0 else '.var'}",
+        )
+
+    group_series = grouping_frame[group_by_partition]
+    available = list(group_series.dropna().unique())
+    unique_groups = _resolve_partition_order(
+        order, available,
+    )
+
+    if len(unique_groups) == 0:
+        raise ValueError(
+            "No groups found for the given "
+            "`group_by_partition` column.",
+        )
+
+    # -- compute completeness per item within each group
+    records = []
+    for g in unique_groups:
+        g_mask = (group_series == g).values
+        counts_g, g_size = _group_completeness_counts(
+            matrix, axis, g_mask, zero_to_na,
+        )
+        fracs = counts_g / g_size
+        for f in fracs:
+            records.append(
+                {"Group": str(g), "Completeness": f}
             )
 
-        if isinstance(plot_df[group_by].dtype, pd.CategoricalDtype):
-            plot_df[group_by] = plot_df[group_by].cat.remove_unused_categories()
-            if order is None:
-                order = list(plot_df[group_by].cat.categories)
+    long_df = pd.DataFrame(records)
 
+    if print_stats:
+        print("Global:")
+        print(_summary_stats(
+            long_df["Completeness"],
+        ).to_string(
+            index=False, float_format="%.4f",
+        ))
+        per_group = (
+            long_df.groupby("Group")["Completeness"]
+            .agg(["count", "mean", "median",
+                  "std", "min", "max"])
+            .reindex(
+                [str(g) for g in unique_groups],
+            )
+        )
+        print(f"\nPer {group_by_partition}:")
+        print(per_group.to_string(
+            float_format="%.4f",
+        ))
+        print()
+
+    if ax is None:
         fig, _ax = plt.subplots(figsize=figsize)
-        sns.boxplot(
-            data=plot_df,
-            x=group_by,
-            y="completeness",
-            order=order,
-            ax=_ax,
+    else:
+        _ax = ax
+        fig = _ax.get_figure()
+    sns.boxplot(
+        data=long_df,
+        x="Group",
+        y="Completeness",
+        order=[str(g) for g in unique_groups],
+        ax=_ax,
+    )
+    _ax.set_title(
+        f"Completeness per {axis_labels[0]} "
+        f"by '{group_by_partition}'",
+    )
+    _ax.set_xlabel(group_by_partition)
+    _ax.set_ylabel(
+        f"Fraction of non-missing {axis_labels[1]} "
+        f"values per {axis_labels[0]}",
+    )
+    if fraction_thresh is not None:
+        _ax.axhline(
+            fraction_thresh,
+            color="red",
+            linestyle="--",
+            label=f"fraction_thresh={fraction_thresh}",
         )
-        _ax.set_ylabel(
-            f"Fraction of non-missing {axis_labels[1]} values per {axis_labels[0]}",
-        )
-        _ax.set_xlabel(group_by)
-        plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation)
+        _ax.legend()
+    plt.setp(
+        _ax.get_xticklabels(),
+        rotation=xlabel_rotation,
+    )
+    return fig, _ax
 
-    if save:
+
+def _plot_completeness_ungrouped(
+    matrix,
+    axis,
+    axis_labels,
+    axis_length,
+    zero_to_na,
+    fraction_thresh,
+    print_stats,
+    bin_edges,
+    xlabel_rotation,
+    figsize,
+    ax,
+):
+    """Plot a histogram of ungrouped completeness fractions."""
+    counts = np.asarray(
+        _count_nonmissing(matrix, axis, zero_to_na),
+        dtype=float,
+    )
+    fractions = counts / axis_length
+
+    if print_stats:
+        print("Global:")
+        print(_summary_stats(fractions).to_string(
+            index=False, float_format="%.4f",
+        ))
+        print()
+
+    if ax is None:
+        fig, _ax = plt.subplots(figsize=figsize)
+    else:
+        _ax = ax
+        fig = _ax.get_figure()
+    sns.histplot(fractions, bins=bin_edges, ax=_ax)
+    _ax.set_title(
+        f"Completeness per {axis_labels[0]}",
+    )
+    _ax.set_xlabel(
+        f"Fraction of non-missing {axis_labels[1]} values "
+        f"per {axis_labels[0]}",
+    )
+    if fraction_thresh is not None:
+        _ax.axvline(
+            fraction_thresh,
+            color="red",
+            linestyle="--",
+            label=f"fraction_thresh={fraction_thresh}",
+        )
+        _ax.legend()
+    plt.setp(
+        _ax.get_xticklabels(), rotation=xlabel_rotation,
+    )
+    return fig, _ax
+
+
+def _plot_completeness_resolution(
+    matrix,
+    axis,
+    axis_labels,
+    n_items,
+    zero_to_na,
+    grouping_frame,
+    group_by_resolution,
+    min_count,
+    min_fraction,
+    fraction_thresh,
+    print_stats,
+    bin_edges,
+    xlabel_rotation,
+    figsize,
+    ax,
+):
+    """Plot a histogram of detection fractions across groups."""
+    if group_by_resolution not in grouping_frame.columns:
+        raise KeyError(
+            f"Column '{group_by_resolution}' not found in "
+            f"{'.obs' if axis == 0 else '.var'}",
+        )
+
+    group_series = grouping_frame[group_by_resolution]
+    unique_groups = list(
+        group_series.dropna().unique()
+    )
+    n_groups = len(unique_groups)
+
+    if n_groups == 0:
+        raise ValueError(
+            "No groups found for the given "
+            "`group_by_resolution` column.",
+        )
+
+    # Default threshold: min_count=1
+    use_fraction = min_fraction is not None
+    if not use_fraction and min_count is None:
+        min_count = 1
+
+    # For each group, determine which items are "detected"
+    detected_count = np.zeros(n_items, dtype=int)
+
+    for g in unique_groups:
+        g_mask = (group_series == g).values
+        counts_g, group_size = _group_completeness_counts(
+            matrix, axis, g_mask, zero_to_na,
+        )
+
+        if use_fraction:
+            detected = (
+                counts_g / group_size >= min_fraction
+            )
+        else:
+            detected = counts_g >= min_count
+
+        detected_count += detected.astype(int)
+
+    detection_fractions = detected_count / n_groups
+
+    if print_stats:
+        print("Global:")
+        print(_summary_stats(
+            detection_fractions,
+        ).to_string(
+            index=False, float_format="%.4f",
+        ))
+        print()
+
+    if ax is None:
+        fig, _ax = plt.subplots(figsize=figsize)
+    else:
+        _ax = ax
+        fig = _ax.get_figure()
+    sns.histplot(
+        detection_fractions, bins=bin_edges, ax=_ax,
+    )
+
+    if use_fraction:
+        threshold_label = (
+            f"min_fraction={min_fraction}"
+        )
+    else:
+        threshold_label = f"min_count={min_count}"
+
+    _ax.set_title(
+        f"'{group_by_resolution}' completeness "
+        f"per {axis_labels[0]}",
+    )
+    _ax.set_xlabel(
+        f"Fraction of '{group_by_resolution}' groups "
+        f"where {axis_labels[0]} is detected "
+        f"({threshold_label})",
+    )
+    if fraction_thresh is not None:
+        _ax.axvline(
+            fraction_thresh,
+            color="red",
+            linestyle="--",
+            label=f"fraction_thresh={fraction_thresh}",
+        )
+        _ax.legend()
+    plt.setp(
+        _ax.get_xticklabels(), rotation=xlabel_rotation,
+    )
+    return fig, _ax
+
+
+def completeness(
+    adata: ad.AnnData,
+    axis: int,
+    layer: str | None = None,
+    zero_to_na: bool = False,
+    order: Sequence[Any] | None = None,
+    group_by_partition: str | None = None,
+    group_by_resolution: str | None = None,
+    min_count: int | None = None,
+    min_fraction: float | None = None,
+    fraction_thresh: float | None = None,
+    print_stats: bool = False,
+    bin_width: float = 0.01,
+    xlabel_rotation: float = 0.0,
+    figsize: tuple[float, float] = (6.0, 5.0),
+    show: bool = True,
+    ax: Axes | None = None,
+    save: str | Path | None = None,
+) -> Axes:
+    """
+    Plot a histogram of completeness across observations or variables.
+
+    When ``group_by_resolution`` is provided, shows the distribution of
+    the fraction of groups in which each item is "detected" (has at
+    least ``min_count`` or ``min_fraction`` non-missing values within
+    the group).
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` object in proteodata format.
+    axis
+        ``0`` plots completeness per variable, ``1`` per observation.
+    layer
+        Name of the layer to use instead of ``.X``.
+    zero_to_na
+        Treat zero entries as missing values when True.
+    order
+        Explicit ordering and subsetting of groups when
+        ``group_by_partition`` is provided. Groups not listed
+        are excluded.
+    group_by_partition
+        Column in ``.obs`` (axis 0) or ``.var`` (axis 1) used to
+        partition the opposite axis. For each partition group,
+        completeness fractions are computed per item and displayed
+        as side-by-side boxplots. Mutually exclusive with
+        ``group_by_resolution``.
+    group_by_resolution
+        Column in ``.obs`` (axis 0) or ``.var`` (axis 1) used to define
+        detection groups. When provided, the plot shows the fraction of
+        groups in which each item is detected.
+    min_count : int or None, optional
+        Minimum number of non-missing values within a group for an item
+        to be considered detected. Mutually exclusive with
+        ``min_fraction``. Only used when ``group_by_resolution`` is
+        provided.
+    min_fraction : float or None, optional
+        Minimum fraction of non-missing values within a group for an
+        item to be considered detected. Mutually exclusive with
+        ``min_count``. Only used when ``group_by_resolution`` is
+        provided.
+    fraction_thresh : float or None, optional
+        Completeness fraction threshold in ``[0, 1]``. Drawn as a
+        vertical dashed line on histograms or a horizontal dashed
+        line on boxplots (``group_by_partition``).
+    print_stats : bool, optional
+        Print completeness distribution statistics before plotting.
+        When ``group_by_partition`` is provided, per-group statistics
+        are printed below the global summary.
+    bin_width : float, optional
+        Width of each histogram bin on the fraction axis. Bins span
+        from 0.0 to 1.0 + ``bin_width``. Defaults to 0.01.
+    xlabel_rotation
+        Rotation angle in degrees applied to x-axis tick labels.
+    figsize
+        Tuple ``(width, height)`` controlling figure size in inches.
+    show
+        Display the plot with ``plt.show()`` when True.
+    ax : Axes or None, optional
+        Matplotlib Axes object to plot onto. If ``None``, a new
+        figure and axes are created.
+    save : str or Path or None, optional
+        File path to save the figure. If ``None``, do not save.
+
+    Returns
+    -------
+    Axes
+        The Matplotlib Axes object used for plotting.
+    """
+    validated = _validate_completeness_args(
+        adata, axis, layer, order,
+        group_by_resolution, group_by_partition,
+        min_count, min_fraction, fraction_thresh,
+        bin_width,
+    )
+    matrix = validated[0]
+    axis_labels = validated[1]
+    n_items = validated[2]
+    axis_length = validated[3]
+    grouping_frame = validated[4]
+    min_count = validated[5]
+    min_fraction = validated[6]
+
+    bin_edges = np.arange(
+        0.0, 1.0 + bin_width * 2, bin_width,
+    )
+
+    if group_by_partition is not None:
+        fig, _ax = _plot_completeness_partition(
+            matrix=matrix,
+            axis=axis,
+            axis_labels=axis_labels,
+            zero_to_na=zero_to_na,
+            grouping_frame=grouping_frame,
+            group_by_partition=group_by_partition,
+            order=order,
+            fraction_thresh=fraction_thresh,
+            print_stats=print_stats,
+            xlabel_rotation=xlabel_rotation,
+            figsize=figsize,
+            ax=ax,
+        )
+    elif group_by_resolution is None:
+        fig, _ax = _plot_completeness_ungrouped(
+            matrix=matrix,
+            axis=axis,
+            axis_labels=axis_labels,
+            axis_length=axis_length,
+            zero_to_na=zero_to_na,
+            fraction_thresh=fraction_thresh,
+            print_stats=print_stats,
+            bin_edges=bin_edges,
+            xlabel_rotation=xlabel_rotation,
+            figsize=figsize,
+            ax=ax,
+        )
+    else:
+        fig, _ax = _plot_completeness_resolution(
+            matrix=matrix,
+            axis=axis,
+            axis_labels=axis_labels,
+            n_items=n_items,
+            zero_to_na=zero_to_na,
+            grouping_frame=grouping_frame,
+            group_by_resolution=group_by_resolution,
+            min_count=min_count,
+            min_fraction=min_fraction,
+            fraction_thresh=fraction_thresh,
+            print_stats=print_stats,
+            bin_edges=bin_edges,
+            xlabel_rotation=xlabel_rotation,
+            figsize=figsize,
+            ax=ax,
+        )
+
+    if save is not None:
         fig.savefig(save, dpi=300, bbox_inches="tight")
     if show:
         plt.show()
-    if ax:
-        return _ax
-    if not save and not show and not ax:
-        raise ValueError(
-            "Args show, ax and save all set to False, function does nothing.",
-        )
 
-docstr_header="Plot a histogram of completeness per variable.\n"
-completeness_per_var = partial_with_docsig(
-    completeness,
-    axis=0,
-    docstr_header=docstr_header,
+    return _ax
+
+
+def completeness_per_var(
+    adata: ad.AnnData,
+    layer: str | None = None,
+    zero_to_na: bool = False,
+    order: Sequence[Any] | None = None,
+    group_by_partition: str | None = None,
+    group_by_resolution: str | None = None,
+    min_count: int | None = None,
+    min_fraction: float | None = None,
+    fraction_thresh: float | None = None,
+    print_stats: bool = False,
+    bin_width: float = 0.01,
+    xlabel_rotation: float = 0.0,
+    figsize: tuple[float, float] = (6.0, 5.0),
+    show: bool = True,
+    ax: Axes | None = None,
+    save: str | Path | None = None,
+) -> Axes:
+    """
+    Plot a histogram of completeness per variable.
+
+    For each variable (column), completeness is the fraction of
+    observations (rows) with non-missing values. When
+    ``group_by_resolution`` is provided, shows the fraction of
+    observation-groups in which each variable is detected. When
+    ``group_by_partition`` is provided, shows boxplots of per-variable
+    completeness within each partition group.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` object in proteodata format.
+    layer
+        Name of the layer to use instead of ``.X``.
+    zero_to_na
+        Treat zero entries as missing values when True.
+    order
+        Explicit ordering and subsetting of groups when
+        ``group_by_partition`` is provided. Groups not listed
+        are excluded.
+    group_by_partition
+        Column in ``.obs`` used to partition observations. For each
+        group, completeness fractions are computed per variable and
+        displayed as side-by-side boxplots. Mutually exclusive with
+        ``group_by_resolution``.
+    group_by_resolution
+        Column in ``.obs`` used to define detection groups. When
+        provided, the plot shows the fraction of groups in which each
+        variable is detected.
+    min_count : int or None, optional
+        Minimum number of non-missing observations within a group for
+        a variable to be considered detected. Mutually exclusive with
+        ``min_fraction``. Only used when ``group_by_resolution`` is
+        provided.
+    min_fraction : float or None, optional
+        Minimum fraction of non-missing observations within a group
+        for a variable to be considered detected. Mutually exclusive
+        with ``min_count``. Only used when ``group_by_resolution`` is
+        provided.
+    fraction_thresh : float or None, optional
+        Completeness fraction threshold in ``[0, 1]``. Drawn as a
+        vertical dashed line on histograms or a horizontal dashed
+        line on boxplots (``group_by_partition``).
+    print_stats : bool, optional
+        Print completeness distribution statistics before plotting.
+        When ``group_by_partition`` is provided, per-group statistics
+        are printed below the global summary.
+    bin_width : float, optional
+        Width of each histogram bin on the fraction axis. Bins span
+        from 0.0 to 1.0 + ``bin_width``. Defaults to 0.01.
+    xlabel_rotation
+        Rotation angle in degrees applied to x-axis tick labels.
+    figsize
+        Tuple ``(width, height)`` controlling figure size in inches.
+    show
+        Display the plot with ``plt.show()`` when True.
+    ax : Axes or None, optional
+        Matplotlib Axes object to plot onto. If ``None``, a new
+        figure and axes are created.
+    save : str or Path or None, optional
+        File path to save the figure. If ``None``, do not save.
+
+    Returns
+    -------
+    Axes
+        The Matplotlib Axes object used for plotting.
+
+    Examples
+    --------
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.example_peptide_data()
+    >>> pr.pl.completeness_per_var(adata, fraction_thresh=0.7)
+
+    >>> pr.pl.completeness_per_var(
+    ...     adata,
+    ...     group_by_resolution="condition",
+    ...     min_count=1,
+    ... )
+
+    >>> pr.pl.completeness_per_var(
+    ...     adata,
+    ...     group_by_partition="condition",
+    ...     order=["control", "treatment"],
+    ... )
+    """
+    return completeness(
+        adata,
+        axis=0,
+        layer=layer,
+        zero_to_na=zero_to_na,
+        order=order,
+        group_by_partition=group_by_partition,
+        group_by_resolution=group_by_resolution,
+        min_count=min_count,
+        min_fraction=min_fraction,
+        fraction_thresh=fraction_thresh,
+        print_stats=print_stats,
+        bin_width=bin_width,
+        xlabel_rotation=xlabel_rotation,
+        figsize=figsize,
+        show=show,
+        ax=ax,
+        save=save,
     )
 
-docstr_header="Plot a histogram of completeness per sample (observation).\n"
-completeness_per_sample = partial_with_docsig(
-    completeness,
-    axis=1,
-    docstr_header=docstr_header,
+
+def completeness_per_sample(
+    adata: ad.AnnData,
+    layer: str | None = None,
+    zero_to_na: bool = False,
+    order: Sequence[Any] | None = None,
+    group_by_partition: str | None = None,
+    group_by_resolution: str | None = None,
+    min_count: int | None = None,
+    min_fraction: float | None = None,
+    fraction_thresh: float | None = None,
+    print_stats: bool = False,
+    bin_width: float = 0.01,
+    xlabel_rotation: float = 0.0,
+    figsize: tuple[float, float] = (6.0, 5.0),
+    show: bool = True,
+    ax: Axes | None = None,
+    save: str | Path | None = None,
+) -> Axes:
+    """
+    Plot a histogram of completeness per sample (observation).
+
+    For each sample (row), completeness is the fraction of variables
+    (columns) with non-missing values. When ``group_by_resolution``
+    is provided, shows the fraction of variable-groups in which each
+    sample is detected. When ``group_by_partition`` is provided, shows
+    boxplots of per-sample completeness within each partition group.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` object in proteodata format.
+    layer
+        Name of the layer to use instead of ``.X``.
+    zero_to_na
+        Treat zero entries as missing values when True.
+    order
+        Explicit ordering and subsetting of groups when
+        ``group_by_partition`` is provided. Groups not listed
+        are excluded.
+    group_by_partition
+        Column in ``.var`` used to partition variables. For each
+        group, completeness fractions are computed per sample and
+        displayed as side-by-side boxplots. Mutually exclusive with
+        ``group_by_resolution``.
+    group_by_resolution
+        Column in ``.var`` used to define detection groups. When
+        provided, the plot shows the fraction of groups in which each
+        sample is detected.
+    min_count : int or None, optional
+        Minimum number of non-missing variables within a group for a
+        sample to be considered detected. Mutually exclusive with
+        ``min_fraction``. Only used when ``group_by_resolution`` is
+        provided.
+    min_fraction : float or None, optional
+        Minimum fraction of non-missing variables within a group for
+        a sample to be considered detected. Mutually exclusive with
+        ``min_count``. Only used when ``group_by_resolution`` is
+        provided.
+    fraction_thresh : float or None, optional
+        Completeness fraction threshold in ``[0, 1]``. Drawn as a
+        vertical dashed line on histograms or a horizontal dashed
+        line on boxplots (``group_by_partition``).
+    print_stats : bool, optional
+        Print completeness distribution statistics before plotting.
+        When ``group_by_partition`` is provided, per-group statistics
+        are printed below the global summary.
+    bin_width : float, optional
+        Width of each histogram bin on the fraction axis. Bins span
+        from 0.0 to 1.0 + ``bin_width``. Defaults to 0.01.
+    xlabel_rotation
+        Rotation angle in degrees applied to x-axis tick labels.
+    figsize
+        Tuple ``(width, height)`` controlling figure size in inches.
+    show
+        Display the plot with ``plt.show()`` when True.
+    ax : Axes or None, optional
+        Matplotlib Axes object to plot onto. If ``None``, a new
+        figure and axes are created.
+    save : str or Path or None, optional
+        File path to save the figure. If ``None``, do not save.
+
+    Returns
+    -------
+    Axes
+        The Matplotlib Axes object used for plotting.
+
+    Examples
+    --------
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.example_peptide_data()
+    >>> pr.pl.completeness_per_sample(adata, fraction_thresh=0.5)
+
+    With peptide-level proteodata, grouping by ``protein_id`` yields
+    the fraction of proteins detected per sample.
+
+    >>> pr.pl.completeness_per_sample(
+    ...     adata,
+    ...     group_by_resolution="protein_id",
+    ...     min_count=1,
+    ... )
+    """
+    return completeness(
+        adata,
+        axis=1,
+        layer=layer,
+        zero_to_na=zero_to_na,
+        order=order,
+        group_by_partition=group_by_partition,
+        group_by_resolution=group_by_resolution,
+        min_count=min_count,
+        min_fraction=min_fraction,
+        fraction_thresh=fraction_thresh,
+        print_stats=print_stats,
+        bin_width=bin_width,
+        xlabel_rotation=xlabel_rotation,
+        figsize=figsize,
+        show=show,
+        ax=ax,
+        save=save,
     )
 
 

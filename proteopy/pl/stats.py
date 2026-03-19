@@ -2152,6 +2152,7 @@ def cv_by_group(
     show: bool = True,
     ax: bool = False,
     save: str | None = None,
+    print_stats: bool = False,
 ):
     """
     Compute per-group coefficients of variation and plot their distributions.
@@ -2201,6 +2202,8 @@ def cv_by_group(
         Return the Matplotlib Axes if ``True``.
     save : str | None, optional
         Path to save the figure. When ``None`` the figure is not saved.
+    print_stats : bool, optional
+        Print CV summary statistics.
     """
 
     check_proteodata(adata)
@@ -2298,6 +2301,82 @@ def cv_by_group(
         palette = None
     else:
         palette = dict(zip(order, resolved_colors))
+
+    if print_stats:
+        cv_values = df_melted["CV"].dropna()
+        global_summary = pd.DataFrame({
+            "Count": [cv_values.count()],
+            "Min": [round(cv_values.min(), 4)],
+            "Max": [round(cv_values.max(), 4)],
+            "Median": [round(cv_values.median(), 4)],
+            "Mean": [round(cv_values.mean(), 4)],
+            "Std": [round(cv_values.std(), 4)],
+        })
+        print("Global CV Summary:")
+        print(global_summary.to_string(index=False))
+        print()
+
+        per_group = (
+            df_melted.groupby("Group")["CV"]
+            .agg(
+                Count="count",
+                Min="min",
+                Max="max",
+                Median="median",
+                Mean="mean",
+                Std="std",
+            )
+            .round(4)
+            .reindex(order)
+        )
+        print("Per-Group CV Summary:")
+        print(per_group.to_string())
+        print()
+
+        if hline is not None:
+            below_count = (cv_values < hline).sum()
+            total_count = cv_values.count()
+            pct = (
+                round(below_count / total_count * 100, 4)
+                if total_count > 0
+                else 0.0
+            )
+            global_thresh = pd.DataFrame({
+                "Count below": [int(below_count)],
+                "Percentage below": [pct],
+            })
+            print(
+                f"Global Threshold Summary "
+                f"(hline={hline}):"
+            )
+            print(global_thresh.to_string(index=False))
+            print()
+
+            def _thresh_stats(group_cv):
+                n_below = (group_cv < hline).sum()
+                n_total = group_cv.count()
+                pct_below = (
+                    round(n_below / n_total * 100, 4)
+                    if n_total > 0
+                    else 0.0
+                )
+                return pd.Series({
+                    "Count below": int(n_below),
+                    "Percentage below": pct_below,
+                })
+
+            per_group_thresh = (
+                df_melted.groupby("Group")["CV"]
+                .apply(_thresh_stats)
+                .unstack()
+                .reindex(order)
+            )
+            print(
+                f"Per-Group Threshold Summary "
+                f"(hline={hline}):"
+            )
+            print(per_group_thresh.to_string())
+            print()
 
     fig, ax_plot = plt.subplots(figsize=figsize, dpi=150)
 

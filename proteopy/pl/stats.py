@@ -1,6 +1,6 @@
 import warnings
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 import uuid
 
 import numpy as np
@@ -904,340 +904,526 @@ def completeness_per_sample(
     )
 
 
-def n_var_per_sample(
-    adata: ad.AnnData,
-    group_by: str | None = None,
-    order_by: str | None = None,
-    order: Sequence[str] | None = None,
-    ascending: bool = False,
-    zero_to_na: bool = False,
-    layer: str | None = None,
-    figsize: tuple[float, float] = (6.0, 4.0),
-    level: str | None = None,
-    ylabel: str = "Nr. vars detected",
-    xlabel_rotation: float = 90,
-    order_by_label_rotation: float = 0,
-    show: bool = True,
-    ax: bool = False,
-    save: bool | str | Path | None = False,
-    color_scheme: Any | None = None,
-) -> Axes | None:
-    """
-    Plot the number of detected variables per sample (obs).
+def _contains_value(seq, value) -> bool:
+    """Check if *value* is in *seq*, treating NaN as equal."""
+    for item in seq:
+        if pd.isna(item) and pd.isna(value):
+            return True
+        if item == value:
+            return True
+    return False
 
-    Parameters
-    ----------
-    adata : AnnData
-        AnnData object with proteomics annotations.
-    group_by : str | None
-        Optional column in ``adata.obs`` used to summarise observations into
-        groups. When provided, a boxplot of detected variables per group is
-        shown. Mutually exclusive with ``order_by``.
-    order_by : str | None
-        Optional column in ``adata.obs`` used to assign group labels.
-    order : Sequence[str] | None
-        Determines the x-axis order.
-        Without ``group_by`` or ``order_by`` it should list observation names.
-        With ``order_by`` it specifies the group order for the stacked bars.
-        With ``group_by`` it specifies the group order for the boxplot.
-    ascending : bool
-        When both ``group_by`` and ``order_by`` are ``None`` and ``order`` is
-        ``None``, sort observations by detected counts.
-        ``False`` places higher counts to the left.
-        ``True`` places lower counts to the left.
-    zero_to_na : bool
-        Treat zero entries as missing values when ``True``.
-    layer : str | None
-        Name of an alternate matrix in ``adata.layers``.
-        Defaults to ``adata.X``.
-    figsize : tuple[float, float]
-        Figure size supplied to :func:`matplotlib.pyplot.subplots`.
-    level : str | None
-        Quantification level to count.
-        ``"peptide"`` counts detected peptides.
-        ``"protein"`` aggregates peptides to proteins.
-        ``None`` follows the intrinsic level of the data.
-    ylabel : str
-        Label applied to the y-axis.
-    xlabel_rotation : float
-        Rotation in degrees applied to x tick labels.
-    order_by_label_rotation : float
-        Rotation in degrees applied to group labels drawn above the plot.
-    show : bool
-        Call :func:`matplotlib.pyplot.show` when ``True``.
-    ax : bool
-        Return the :class:`~matplotlib.axes.Axes` instead of displaying the plot.
-    save : str | Path | None
-        Path or truthy value triggering ``Figure.savefig``.
-    color_scheme : Any | None
-        Optional mapping or palette controlling bar colours.
-    """
+
+def _append_unique(seq, value) -> None:
+    """Append *value* to *seq* only if not already present."""
+    if not _contains_value(seq, value):
+        seq.append(value)
+
+
+def _n_var_summary_stats(series):
+    """Return a one-row DataFrame of count summary stats."""
+    return pd.DataFrame({
+        "mean_count": [series.mean()],
+        "std_count": [series.std()],
+        "median_count": [series.median()],
+        "min_count": [series.min()],
+        "max_count": [series.max()],
+    })
+
+
+def _add_pct_cols(df, total):
+    """Add percentage columns to *df* in place."""
+    for col in [
+        "mean", "std", "median", "min", "max",
+    ]:
+        df[f"{col}_pct"] = (
+            df[f"{col}_count"] / total * 100
+        )
+
+
+def _print_stats_df(df):
+    """Print a DataFrame with one-decimal formatting."""
+    print(df.to_string(
+        index=False, float_format="%.1f",
+    ))
+
+
+_AGG_STATS = {
+    "mean_count": "mean",
+    "std_count": "std",
+    "median_count": "median",
+    "min_count": "min",
+    "max_count": "max",
+}
+
+
+def _validate_n_var_per_sample_args(  # noqa: C901
+    adata,
+    level,
+    group_by,
+    order_by,
+    order,
+    layer,
+):
+    """Validate inputs for :func:`n_var_per_sample`."""
     _, data_level = is_proteodata(adata, raise_error=True)
 
-    if level is not None:
-        level = level.lower()
-        if level not in {"peptide", "protein"}:
-            raise ValueError(
-                "level must be one of {'peptide', 'protein', None}."
-            )
+    # -- Validate level
+    valid_levels = {"peptide", "protein", None}
+    if level not in valid_levels:
+        raise ValueError(
+            f"Invalid level '{level}'. Must be "
+            "'peptide', 'protein', or None."
+        )
+    if level == "peptide" and data_level == "protein":
+        raise ValueError(
+            "Cannot count peptides from "
+            "protein-level data."
+        )
 
+    # -- Mutual exclusivity
     if group_by is not None and order_by is not None:
-        raise ValueError("`group_by` and `order_by` cannot be used together.")
+        raise ValueError(
+            "`group_by` and `order_by` cannot be "
+            "used together."
+        )
 
-    def _contains_value(seq, value) -> bool:
-        for item in seq:
-            if pd.isna(item) and pd.isna(value):
-                return True
-            if item == value:
-                return True
-        return False
-
-    def _append_unique(seq, value) -> None:
-        if not _contains_value(seq, value):
-            seq.append(value)
-
+    # -- Validate layer
     if layer is None:
         matrix = adata.X
     else:
         if layer not in adata.layers:
-            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
+            raise KeyError(
+                f"Layer '{layer}' not found in "
+                "adata.layers."
+            )
         matrix = adata.layers[layer]
         if matrix is None:
             raise ValueError(
-                "Selected layer is empty; cannot compute variable counts."
+                "Selected layer is empty; cannot "
+                "compute variable counts."
             )
 
-    n_obs, _ = matrix.shape
-
-    if sparse.issparse(matrix):
-        matrix_csr = matrix.tocsr()
-        indptr = matrix_csr.indptr
-        indices = matrix_csr.indices
-        data = matrix_csr.data
-
-        row_lengths = np.diff(indptr)
-        row_indices = np.repeat(np.arange(n_obs), row_lengths)
-
-        valid_entry_mask = ~np.isnan(data)
-        if zero_to_na:
-            valid_entry_mask &= data != 0
-
-        valid_rows = row_indices[valid_entry_mask]
-        valid_cols = indices[valid_entry_mask]
-    else:
-        values = np.asarray(matrix)
-        valid_mask = ~np.isnan(values)
-        if zero_to_na:
-            valid_mask &= values != 0
-
-        valid_rows, valid_cols = np.nonzero(valid_mask)
-
-    if valid_rows.size:
-        base_counts = np.bincount(valid_rows, minlength=n_obs)
-    else:
-        base_counts = np.zeros(n_obs, dtype=int)
-
-    if level is None or level == data_level:
-        counts_array = base_counts
-    elif level == "protein" and data_level == "peptide":
-        protein_ids = adata.var["protein_id"].to_numpy()
-        protein_codes, protein_unique = pd.factorize(protein_ids, sort=False)
-        n_proteins = len(protein_unique)
-
-        if valid_rows.size:
-            protein_cols = protein_codes[valid_cols]
-            data_vals = np.ones(valid_rows.size, dtype=np.int8)
-            protein_matrix = sparse.csr_matrix(
-                (data_vals, (valid_rows, protein_cols)),
-                shape=(n_obs, n_proteins),
-            )
-            protein_matrix.data[:] = 1
-            counts_array = np.diff(protein_matrix.indptr)
-        else:
-            counts_array = np.zeros(n_obs, dtype=int)
-    else:
-        raise ValueError(
-            f"Requested level '{level}' is incompatible with '{data_level}' data."
-        )
-
-    counts_series = pd.Series(counts_array, index=adata.obs_names, name="count")
-    counts = counts_series.rename_axis("obs").reset_index()
-
+    # -- Validate group_by column
     if group_by is not None:
         if group_by not in adata.obs.columns:
-            raise KeyError(f"Column '{group_by}' not found in adata.obs.")
-
-        group_df = adata.obs[[group_by]].copy()
-        group_df = group_df.rename_axis("obs").reset_index()
-        counts = pd.merge(counts, group_df, on="obs", how="left")
-        counts = counts.dropna(subset=[group_by])
-        if counts.empty:
-            raise ValueError(
-                "No observations remain after aligning `group_by` labels.",
+            raise KeyError(
+                f"Column '{group_by}' not found "
+                "in adata.obs."
             )
 
-        group_values = counts[group_by]
-        if isinstance(group_values.dtype, pd.CategoricalDtype):
-            group_values = group_values.cat.remove_unused_categories()
-            counts[group_by] = group_values
-        available_groups: list[Any] = []
-        for value in group_values:
-            _append_unique(available_groups, value)
+    # -- Validate order_by column
+    if order_by is not None:
+        if order_by not in adata.obs.columns:
+            raise KeyError(
+                f"Column '{order_by}' not found "
+                "in adata.obs."
+            )
 
-        if order:
-            group_order: list[Any] = []
-            for grp in order:
-                if not _contains_value(group_order, grp):
-                    group_order.append(grp)
-            missing_groups = [
-                grp for grp in group_order
-                if not _contains_value(available_groups, grp)
-            ]
-            if missing_groups:
-                missing_str = ", ".join(map(str, missing_groups))
-                raise ValueError(
-                    f"Unknown group(s) in order argument: {missing_str}.",
-                )
+    # -- Validate order elements
+    if order is not None:
+        if group_by is not None:
+            valid = set(
+                adata.obs[group_by].dropna().unique()
+            )
+            source = f"adata.obs['{group_by}']"
+        elif order_by is not None:
+            valid = set(
+                adata.obs[order_by].dropna().unique()
+            )
+            source = f"adata.obs['{order_by}']"
         else:
-            if isinstance(group_values.dtype, pd.CategoricalDtype):
-                group_order = list(group_values.cat.categories)
-            else:
-                group_order = available_groups.copy()
+            valid = set(adata.obs_names)
+            source = "adata.obs_names"
+        invalid = [
+            o for o in order if o not in valid
+        ]
+        if invalid:
+            invalid_str = ", ".join(
+                map(str, invalid)
+            )
+            raise ValueError(
+                f"Unknown value(s) in `order`: "
+                f"{invalid_str}. Valid values "
+                f"come from {source}."
+            )
 
-        for value in available_groups:
-            _append_unique(group_order, value)
+    return data_level, level, matrix
 
-        stats_df = (
-            counts.groupby(group_by, observed=True)["count"]
-            .agg(mean_count="mean", std_count="std")
-            .reindex(group_order)
-        )
-        stats_df = stats_df.dropna(subset=["mean_count"])
-        stats_df["std_count"] = stats_df["std_count"].fillna(0.0)
-        stats_df = stats_df.reset_index()
 
-        colors = None
-        bar_colors = None
-        if color_scheme is not None:
-            colors = _resolve_color_scheme(color_scheme, group_order)
-        if colors is not None:
-            bar_colors = [
-                colors[group_order.index(grp)] for grp in stats_df[group_by]
-            ]
-
-        fig, _ax = plt.subplots(figsize=figsize)
-        bar_labels = stats_df[group_by].astype(str)
-        bars = _ax.bar(
-            bar_labels,
-            stats_df["mean_count"],
-            yerr=stats_df["std_count"],
-            color=bar_colors,
-            capsize=4.0,
-            edgecolor="black",
-        )
-        plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha="right")
-        _ax.set_xlabel(group_by)
-        _ax.set_ylabel(ylabel)
-        plt.tight_layout()
-
-        if save:
-            fig.savefig(save, dpi=300, bbox_inches="tight")
-        if show:
-            plt.show()
-        if ax:
-            return _ax
-        return None
-
-    has_grouping = order_by is not None
-    group_key = order_by if has_grouping else "_group"
-
-    if has_grouping:
-        if group_key != "obs":
-            obs = adata.obs[[group_key]].copy()
-            obs = obs.rename_axis("obs").reset_index()
-            counts = pd.merge(counts, obs, on="obs", how="left")
-        else:
-            counts[group_key] = counts["obs"]
+def _valid_mask(matrix, zero_to_na):
+    """Return a dense boolean mask of valid (non-missing) entries."""
+    if sparse.issparse(matrix):
+        arr = matrix.toarray()
     else:
-        counts[group_key] = "all"
+        arr = np.asarray(matrix)
+    mask = ~np.isnan(arr)
+    if zero_to_na:
+        mask &= arr != 0
+    return mask
 
-    obs_df = adata.obs.copy()
-    obs_df = obs_df.rename_axis("obs").reset_index()
-    if group_key not in obs_df.columns:
-        obs_df[group_key] = "all"
-    if has_grouping and isinstance(obs_df[group_key].dtype, pd.CategoricalDtype):
-        obs_df[group_key] = obs_df[group_key].astype("category")
+
+def _n_var_count_per_sample(
+    matrix, zero_to_na, level, data_level, adata,
+):
+    """Count non-missing vars per sample.
+
+    When *level* is ``"protein"`` on peptide-level data, counts
+    unique proteins with at least one non-missing peptide.
+    """
+    valid = _valid_mask(matrix, zero_to_na)
+
+    # -- Count at native level
+    if level is None or level == data_level:
+        return valid.sum(axis=1)
+
+    # -- Protein count from peptide data
+    if level == "protein" and data_level == "peptide":
+        protein_codes, _ = pd.factorize(
+            adata.var["protein_id"].to_numpy(),
+            sort=False,
+        )
+        n_proteins = protein_codes.max() + 1
+        # OR-reduce peptide columns into protein columns
+        prot_detected = np.zeros(
+            (valid.shape[0], n_proteins), dtype=bool,
+        )
+        np.maximum.at(
+            prot_detected,
+            (slice(None), protein_codes),
+            valid,
+        )
+        return prot_detected.sum(axis=1)
+
+    raise ValueError(
+        f"Requested level '{level}' is "
+        f"incompatible with "
+        f"'{data_level}' data."
+    )
+
+
+def _n_var_derive_totals(
+    counts_array, level, data_level,
+    percentage, ylabel, title, adata,
+):
+    """Derive totals, percentage, ylabel, and title."""
+    if level == "protein" and data_level == "peptide":
+        total_vars = adata.var["protein_id"].nunique()
+    else:
+        total_vars = adata.n_vars
+
+    if percentage:
+        if total_vars == 0:
+            raise ValueError(
+                "Cannot compute percentage: "
+                "no variables found."
+            )
+        counts_array = (
+            counts_array / total_vars
+        ) * 100
+
+    # -- Resolve y-axis label
+    if ylabel is None:
+        ylabel = "%" if percentage else "#"
+
+    # -- Resolve title
+    if title is None:
+        if level == "protein" or (
+            level is None
+            and data_level == "protein"
+        ):
+            entity = "proteins"
+        elif level == "peptide" or (
+            level is None
+            and data_level == "peptide"
+        ):
+            entity = "peptides"
+        else:
+            entity = "variables"
+        title = f"Number of detected {entity}"
+
+    return total_vars, counts_array, ylabel, title
+
+
+def _n_var_print_group_stats(
+    counts, stats_df, group_by, total_vars,
+):
+    """Print global and per-group statistics."""
+    global_df = _n_var_summary_stats(counts["count"])
+    _add_pct_cols(global_df, total_vars)
+    print("Global:")
+    _print_stats_df(global_df)
+    print_df = stats_df.copy()
+    _add_pct_cols(print_df, total_vars)
+    print(f"\nPer {group_by}:")
+    _print_stats_df(print_df)
+
+
+def _n_var_resolve_bar_colors(
+    color_scheme, group_order, stats_df, group_by,
+):
+    """Resolve bar colors from a color scheme."""
+    if color_scheme is None:
+        return None
+    colors = _resolve_color_scheme(
+        color_scheme, group_order,
+    )
+    if colors is None:
+        return None
+    return [
+        colors[group_order.index(grp)]
+        for grp in stats_df[group_by]
+    ]
+
+
+def _n_var_group_by_path(
+    counts, adata, group_by, order,
+    color_scheme, total_vars, ylabel, title,
+    print_stats, figsize, xlabel_rotation,
+    save, show, ax=None,
+):
+    """Plot mean +/- std bar chart grouped by an obs column."""
+    group_df = adata.obs[[group_by]].copy()
+    group_df = group_df.rename_axis(
+        "obs",
+    ).reset_index()
+    counts = pd.merge(
+        counts, group_df, on="obs", how="left",
+    )
+    counts = counts.dropna(subset=[group_by])
+    if counts.empty:
+        raise ValueError(
+            "No observations remain after "
+            "aligning `group_by` labels.",
+        )
+
+    group_values = counts[group_by]
+    if isinstance(
+        group_values.dtype, pd.CategoricalDtype,
+    ):
+        group_values = (
+            group_values.cat
+            .remove_unused_categories()
+        )
+        counts[group_by] = group_values
 
     available_groups: list[Any] = []
-    for value in obs_df[group_key]:
+    for value in group_values:
         _append_unique(available_groups, value)
 
-    if has_grouping:
-        if order:
-            group_order = list(order)
-            missing_groups = [
-                grp for grp in group_order
-                if not _contains_value(available_groups, grp)
-            ]
-            if missing_groups:
-                missing_str = ", ".join(map(str, missing_groups))
-                raise ValueError(
-                    f"Unknown group(s) in order argument: {missing_str}."
-                )
-        else:
-            group_order = available_groups.copy()
+    group_order = _n_var_resolve_group_order(
+        order, available_groups, group_values,
+    )
 
+    # Append any groups not yet in order
+    for value in available_groups:
+        _append_unique(group_order, value)
+
+    # -- Compute per-group statistics
+    stats_df = (
+        counts.groupby(group_by, observed=True)[
+            "count"
+        ]
+        .agg(**_AGG_STATS)
+        .reindex(group_order)
+    )
+    stats_df = stats_df.dropna(
+        subset=["mean_count"],
+    )
+    stats_df["std_count"] = (
+        stats_df["std_count"].fillna(0.0)
+    )
+    stats_df = stats_df.reset_index()
+
+    if print_stats:
+        _n_var_print_group_stats(
+            counts, stats_df, group_by, total_vars,
+        )
+
+    # -- Plot grouped bar chart
+    bar_colors = _n_var_resolve_bar_colors(
+        color_scheme, group_order,
+        stats_df, group_by,
+    )
+
+    if ax is not None:
+        _ax = ax
+        fig = _ax.get_figure()
+    else:
+        fig, _ax = plt.subplots(figsize=figsize)
+    bar_labels = stats_df[group_by].astype(str)
+    _ax.bar(
+        bar_labels,
+        stats_df["mean_count"],
+        yerr=stats_df["std_count"],
+        color=bar_colors,
+        capsize=4.0,
+        edgecolor="black",
+    )
+    plt.setp(
+        _ax.get_xticklabels(),
+        rotation=xlabel_rotation,
+        ha="right",
+    )
+    _ax.set_xlabel(group_by)
+    _ax.set_ylabel(ylabel)
+    fig.suptitle(title, y=0.95)
+    plt.tight_layout()
+
+    if save is not None:
+        fig.savefig(
+            save, dpi=300,
+            bbox_inches="tight",
+        )
+    if show:
+        plt.show()
+    return _ax
+
+
+def _n_var_resolve_group_order(
+    order, available_groups, group_values,
+):
+    """Resolve group ordering from order arg or categories."""
+    if order:
+        # Deduplicate while preserving order
+        group_order: list[Any] = []
+        for grp in order:
+            if not _contains_value(
+                group_order, grp,
+            ):
+                group_order.append(grp)
+        return group_order
+
+    if isinstance(
+        group_values.dtype,
+        pd.CategoricalDtype,
+    ):
+        return list(
+            group_values.cat.categories,
+        )
+    return available_groups.copy()
+
+
+def _n_var_resolve_obs_ordering(
+    counts, obs_df, group_key, order,
+    available_groups, ascending,
+):
+    """Resolve observation ordering for the per-obs bar path."""
+    has_grouping = group_key != "_group"
+
+    if has_grouping:
+        group_order = _n_var_resolve_group_order(
+            order, available_groups, obs_df[group_key],
+        )
         for grp in available_groups:
             _append_unique(group_order, grp)
 
         cat_index_map: dict[str, list[str]] = {}
         for grp in group_order:
-            obs_list = obs_df.loc[obs_df[group_key] == grp, "obs"].tolist()
+            obs_list = obs_df.loc[
+                obs_df[group_key] == grp, "obs"
+            ].tolist()
             if obs_list:
                 cat_index_map[str(grp)] = obs_list
-        x_ordered = [obs for obs_list in cat_index_map.values() for obs in obs_list]
+        x_ordered = [
+            obs
+            for obs_list in cat_index_map.values()
+            for obs in obs_list
+        ]
     else:
         if order:
-            obs_order = list(order)
-            available_obs = counts["obs"].tolist()
-            missing_obs = [
-                obs_name for obs_name in obs_order
-                if not _contains_value(available_obs, obs_name)
-            ]
-            if missing_obs:
-                missing_str = ", ".join(map(str, missing_obs))
-                raise ValueError(f"Unknown obs in order argument: {missing_str}.")
+            # Deduplicate, then append remaining obs
             x_ordered: list[Any] = []
-            for obs_name in obs_order:
-                _append_unique(x_ordered, obs_name)
+            for obs_name in order:
+                _append_unique(
+                    x_ordered, obs_name,
+                )
             for obs_name in counts["obs"]:
-                _append_unique(x_ordered, obs_name)
+                _append_unique(
+                    x_ordered, obs_name,
+                )
         else:
-            sorted_counts = counts.sort_values(
-                "count",
-                ascending=ascending,
-                kind="mergesort",
-            )
-            x_ordered = sorted_counts["obs"].tolist()
+            if ascending is not None:
+                sorted_counts = counts.sort_values(
+                    "count",
+                    ascending=ascending,
+                    kind="mergesort",
+                )
+                x_ordered = sorted_counts[
+                    "obs"
+                ].tolist()
+            else:
+                x_ordered = counts[
+                    "obs"
+                ].tolist()
         cat_index_map = {"all": x_ordered}
-    counts["obs"] = pd.Categorical(
-        counts["obs"],
-        categories=x_ordered,
-        ordered=True,
-    )
-    counts = counts.sort_values("obs")
 
-    counts[group_key] = counts[group_key].astype(str)
+    return x_ordered, cat_index_map
+
+
+def _n_var_plot_per_obs(
+    counts, x_ordered, cat_index_map,
+    group_key, order_by, total_vars,
+    color_scheme, ylabel, title,
+    print_stats, figsize, xlabel_rotation,
+    order_by_label_rotation, save, show,
+    ax=None,
+):
+    """Plot per-observation bars with group labels."""
+    has_grouping = group_key != "_group"
+
+    # -- Print statistics
+    if print_stats:
+        if has_grouping:
+            global_df = _n_var_summary_stats(
+                counts["count"],
+            )
+            _add_pct_cols(global_df, total_vars)
+            print("Global:")
+            _print_stats_df(global_df)
+            print_df = (
+                counts.groupby(
+                    order_by, observed=True,
+                )["count"]
+                .agg(**_AGG_STATS)
+                .reset_index()
+            )
+            _add_pct_cols(print_df, total_vars)
+            print(f"\nPer {order_by}:")
+            _print_stats_df(print_df)
+        else:
+            print_df = _n_var_summary_stats(
+                counts["count"],
+            )
+            _add_pct_cols(print_df, total_vars)
+            _print_stats_df(print_df)
+
+    # -- Resolve colors
+    counts[group_key] = (
+        counts[group_key].astype(str)
+    )
 
     unique_groups = list(cat_index_map.keys())
-    colors = _resolve_color_scheme(color_scheme, unique_groups)
+    colors = _resolve_color_scheme(
+        color_scheme, unique_groups,
+    )
     plot_kwargs = {}
 
     if colors is not None:
-        color_map = {str(grp): colors[i] for i, grp in enumerate(unique_groups)}
-        plot_kwargs["color"] = counts[group_key].map(color_map).to_list()
+        color_map = {
+            str(grp): colors[i]
+            for i, grp in enumerate(unique_groups)
+        }
+        plot_kwargs["color"] = (
+            counts[group_key].map(color_map).to_list()
+        )
 
-    fig, _ax = plt.subplots(figsize=figsize)
+    # -- Plot per-observation bars
+    if ax is not None:
+        _ax = ax
+        fig = _ax.get_figure()
+    else:
+        fig, _ax = plt.subplots(figsize=figsize)
     counts.plot(
         kind="bar",
         x="obs",
@@ -1247,11 +1433,18 @@ def n_var_per_sample(
         **plot_kwargs,
     )
 
-    plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha="right")
+    plt.setp(
+        _ax.get_xticklabels(),
+        rotation=xlabel_rotation,
+        ha="right",
+    )
     _ax.set_xlabel("")
     _ax.set_ylabel(ylabel)
 
-    obs_idx_map = {obs: i for i, obs in enumerate(x_ordered)}
+    # -- Add group labels above bars
+    obs_idx_map = {
+        obs: i for i, obs in enumerate(x_ordered)
+    }
     ymax = counts['count'].max()
     for cat, obs_list in cat_index_map.items():
         if not obs_list:
@@ -1268,32 +1461,307 @@ def n_var_per_sample(
             va='bottom',
             fontsize=8,
             fontweight='bold',
-            rotation=order_by_label_rotation
+            rotation=order_by_label_rotation,
         )
 
+    fig.suptitle(title, y=0.95)
     plt.tight_layout()
 
-    if save:
-        fig.savefig(save, dpi=300, bbox_inches='tight')
+    if save is not None:
+        fig.savefig(
+            save, dpi=300, bbox_inches='tight',
+        )
     if show:
         plt.show()
-    if ax:
-        return _ax
+    return _ax
 
-docstr_header = "Plot the number of detected peptides per observation."
+
+def n_var_per_sample(
+    adata: ad.AnnData,
+    *,
+    layer: str | None = None,
+    zero_to_na: bool = False,
+    level: str | None = None,
+    percentage: bool = False,
+    ascending: bool | None = None,
+    order_by: str | None = None,
+    order: Sequence[str] | None = None,
+    group_by: str | None = None,
+    print_stats: bool = False,
+    figsize: tuple[float, float] = (6.0, 4.0),
+    color_scheme: str | dict | Sequence | Colormap | callable | None = None,
+    title: str | None = None,
+    ylabel: str | None = None,
+    xlabel_rotation: float = 90,
+    order_by_label_rotation: float = 0,
+    show: bool = True,
+    ax: Axes | None = None,
+    save: str | Path | None = None,
+) -> Axes:
+    """
+    Plot the number of detected variables (peptides or protein) per sample.
+
+    Parameters
+    ----------
+    adata : AnnData
+        :class:`~anndata.AnnData` object in proteodata format.
+    layer : str or None, optional
+        Key in ``adata.layers``; when set, uses that layer
+        instead of ``.X``.
+    zero_to_na : bool, optional
+        If ``True``, zeros in the matrix are treated as
+        missing values.
+    level : str or None, optional
+        ``"peptide"`` counts detected peptides.
+        ``"protein"`` counts detected proteins.
+        ``None`` follows the intrinsic level of the data (.vars).
+    percentage : bool, optional
+        Display y-axis values as a percentage of total
+        variables instead of raw counts.
+    ascending : bool or None, optional
+        Sort observations by detected counts. ``True`` places
+        lower counts to the left; ``False`` places higher counts
+        to the left; ``None`` preserves the existing
+        observation order.
+    order_by : str or None, optional
+        Column in ``adata.obs`` used for grouping and
+        colouring bars.
+    order : Sequence[str] or None, optional
+        Controls ordering and subsetting on the x-axis.
+        Without ``group_by`` or ``order_by`` it lists
+        observation names. With ``order_by`` it specifies
+        the group order. With ``group_by`` it specifies
+        the group order for the bar chart.
+    group_by : str or None, optional
+        Column in ``adata.obs`` used to summarise
+        observations into groups. When provided, a mean
+        +/- std bar chart is shown. Mutually exclusive
+        with ``order_by``.
+    print_stats : bool, optional
+        Print summary statistics as a DataFrame.
+    figsize : tuple of float, optional
+        Figure size ``(width, height)`` in inches passed
+        to :func:`matplotlib.pyplot.subplots`.
+    color_scheme
+        Colour mapping for groups. Accepts a named
+        Matplotlib colormap, a single colour, a
+        list/tuple of colours, a dict mapping labels to
+        colours, a :class:`~matplotlib.colors.Colormap`,
+        or a callable.
+    title : str or None, optional
+        Plot title.
+    ylabel : str or None, optional
+        Label for the y-axis.
+    xlabel_rotation : float, optional
+        Rotation in degrees applied to x-axis tick labels.
+    order_by_label_rotation : float, optional
+        Rotation in degrees applied to group labels drawn
+        above the plot.
+    show : bool, optional
+        Call :func:`matplotlib.pyplot.show` when ``True``.
+    ax : Axes or None, optional
+        Matplotlib Axes to plot onto. If ``None``, a new
+        figure and axes are created.
+    save : str or Path or None, optional
+        File path to save the figure.
+
+    Returns
+    -------
+    Axes
+        The Matplotlib Axes object used for plotting.
+
+    Examples
+    --------
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.karayel_2020()
+    >>> pr.pl.n_var_per_sample(adata)
+
+    Show mean +/- std per group:
+
+    >>> pr.pl.n_var_per_sample(
+    ...     adata,
+    ...     group_by="cell_type",
+    ... )
+
+    Order bars by a grouping column:
+
+    >>> pr.pl.n_var_per_sample(
+    ...     adata,
+    ...     order_by="cell_type",
+    ...     order=["LBaso", "Ortho"],
+    ... )
+    """
+    data_level, level, matrix = (
+        _validate_n_var_per_sample_args(
+            adata, level, group_by, order_by,
+            order, layer,
+        )
+    )
+
+    # -- Count non-missing vars per sample
+    counts_array = _n_var_count_per_sample(
+        matrix, zero_to_na, level, data_level, adata,
+    )
+
+    # -- Derive totals, percentage, ylabel, and title
+    total_vars, counts_array, ylabel, title = (
+        _n_var_derive_totals(
+            counts_array, level, data_level,
+            percentage, ylabel, title, adata,
+        )
+    )
+
+    # -- Build counts DataFrame
+    counts_series = pd.Series(
+        counts_array,
+        index=adata.obs_names,
+        name="count",
+    )
+    counts = counts_series.rename_axis(
+        "obs",
+    ).reset_index()
+
+    # -- Warn when ascending has no effect
+    if ascending is not None:
+        if group_by is not None:
+            warnings.warn(
+                "`ascending` is ignored when "
+                "`group_by` is set.",
+                UserWarning,
+                stacklevel=2,
+            )
+        elif order is not None:
+            warnings.warn(
+                "`ascending` is ignored when "
+                "`order` is set explicitly.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+    # -- group_by path: mean +/- std bar plot per group
+    if group_by is not None:
+        return _n_var_group_by_path(
+            counts, adata, group_by, order,
+            color_scheme, total_vars, ylabel,
+            title, print_stats, figsize,
+            xlabel_rotation, save, show, ax,
+        )
+
+    # -- Per-observation bar plot (with optional order_by)
+    has_grouping = order_by is not None
+    group_key = (
+        order_by if has_grouping else "_group"
+    )
+
+    # Attach grouping column to counts
+    if has_grouping:
+        if group_key != "obs":
+            obs = adata.obs[[group_key]].copy()
+            obs = obs.rename_axis(
+                "obs",
+            ).reset_index()
+            counts = pd.merge(
+                counts, obs, on="obs", how="left",
+            )
+        else:
+            counts[group_key] = counts["obs"]
+    else:
+        counts[group_key] = "all"
+
+    obs_df = adata.obs.copy()
+    obs_df = obs_df.rename_axis(
+        "obs",
+    ).reset_index()
+    if group_key not in obs_df.columns:
+        obs_df[group_key] = "all"
+    if has_grouping and isinstance(
+        obs_df[group_key].dtype,
+        pd.CategoricalDtype,
+    ):
+        obs_df[group_key] = (
+            obs_df[group_key].astype("category")
+        )
+
+    available_groups: list[Any] = []
+    for value in obs_df[group_key]:
+        _append_unique(available_groups, value)
+
+    # -- Resolve observation ordering
+    x_ordered, cat_index_map = (
+        _n_var_resolve_obs_ordering(
+            counts, obs_df, group_key, order,
+            available_groups, ascending,
+        )
+    )
+
+    counts["obs"] = pd.Categorical(
+        counts["obs"],
+        categories=x_ordered,
+        ordered=True,
+    )
+    counts = counts.sort_values("obs")
+
+    # -- Plot per-observation bars
+    return _n_var_plot_per_obs(
+        counts, x_ordered, cat_index_map,
+        group_key, order_by, total_vars,
+        color_scheme, ylabel, title,
+        print_stats, figsize, xlabel_rotation,
+        order_by_label_rotation, save, show, ax,
+    )
+
+
 n_peptides_per_sample = partial_with_docsig(
     n_var_per_sample,
     level="peptide",
-    ylabel="Nr. peptides detected",
-    docstr_header=docstr_header,
+    docstr_header="""\
+Plot the number of detected peptides per sample.
+
+For each sample (observation), counts the number of
+peptides with non-missing values. Requires peptide-level
+proteodata.""",
+    docstr_examples="""\
+>>> import proteopy as pr
+>>> adata = pr.datasets.williams_2018()
+>>> pr.pl.n_peptides_per_sample(adata)
+
+Show mean +/- std per group:
+
+>>> pr.pl.n_peptides_per_sample(
+...     adata,
+...     group_by="tissue",
+... )""",
 )
 
-docstr_header = "Plot the number of detected proteins per observation."
+
 n_proteins_per_sample = partial_with_docsig(
     n_var_per_sample,
     level="protein",
-    ylabel="Nr. proteins detected",
-    docstr_header=docstr_header,
+    docstr_header="""\
+Plot the number of detected proteins per sample.
+
+For each sample (observation), counts the number of
+proteins with non-missing values.
+""",
+    docstr_examples="""\
+>>> import proteopy as pr
+
+Protein-level data:
+
+>>> adata = pr.datasets.karayel_2020()
+>>> pr.pl.n_proteins_per_sample(adata)
+
+Peptide-level data (aggregated to proteins):
+
+>>> adata = pr.datasets.williams_2018()
+>>> pr.pl.n_proteins_per_sample(adata)
+
+Show mean +/- std per group:
+
+>>> pr.pl.n_proteins_per_sample(
+...     adata,
+...     group_by="tissue",
+... )""",
 )
 
 

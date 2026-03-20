@@ -6,6 +6,7 @@ import warnings
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import LogLocator
 import seaborn as sns
 import anndata as ad
 from matplotlib.axes import Axes
@@ -19,7 +20,7 @@ def proteoform_scores(
     adj: bool = True,
     pval_threshold: float | int | None = None,
     score_threshold: float | int | None = None,
-    log_scores: bool = False,
+    yscale_log: bool = True,
     protein_id_key: str | None = None,
     highlight_prots: list[str] | None = None,
     protein_label_fontsize: int | float = 8,
@@ -42,9 +43,10 @@ def proteoform_scores(
     score_threshold : float | int | None
         Minimum proteoform score used to highlight points. ``None`` disables
         score-based filtering.
-    log_scores : bool
-        Plot p-values on a log-scaled y-axis when ``True``; otherwise use a
-        linear scale.
+    yscale_log : bool
+        When ``True``, plot p-values on a log10-scaled inverted
+        y-axis. When ``False``, plot ``-log10(pval)`` on a linear
+        y-axis.
     protein_id_key : str | None
         Column in ``.var`` whose values are used as display labels
         instead of ``protein_id``. 1-to-1 mapping between ``protein_id`` and
@@ -109,6 +111,9 @@ def proteoform_scores(
 
     check_proteodata(adata)
 
+    if not isinstance(yscale_log, bool):
+        raise TypeError("yscale_log must be a bool.")
+
     if adj:
         pval_col = "proteoform_score_pval_adj"
     else:
@@ -135,29 +140,23 @@ def proteoform_scores(
         )
         var = var.loc[finite_mask]
 
-    if log_scores:
-        positive_mask = var[pval_col] > 0
-        if not positive_mask.all():
-            warnings.warn(
-                "Dropping non-positive p-values before log-transforming.",
-                RuntimeWarning,
-            )
-            var = var.loc[positive_mask]
+    positive_mask = var[pval_col] > 0
+    if not positive_mask.all():
+        warnings.warn(
+            "Dropping non-positive p-values before plotting.",
+            RuntimeWarning,
+        )
+        var = var.loc[positive_mask]
+
+    if yscale_log:
+        plot_pvals = var[pval_col]
+        ylabel = "adj. p-value" if adj else "p-value"
+    else:
         plot_pvals = -np.log10(var[pval_col])
         if adj:
             ylabel = "-log10(adj. p-value)"
         else:
             ylabel = "-log10(p-value)"
-    else:
-        non_negative = var[pval_col] >= 0
-        if not non_negative.all():
-            warnings.warn(
-                "Dropping negative p-values before plotting.",
-                RuntimeWarning,
-            )
-            var = var.loc[non_negative]
-        plot_pvals = var[pval_col]
-        ylabel = "adj. p-value" if adj else "p-value"
 
     if var.empty:
         raise ValueError("No valid proteoform scores available for plotting.")
@@ -198,10 +197,10 @@ def proteoform_scores(
     )
 
     if pval_threshold is not None:
-        if log_scores:
-            pval_threshold_line = -np.log10(pval_threshold)
-        else:
+        if yscale_log:
             pval_threshold_line = pval_threshold
+        else:
+            pval_threshold_line = -np.log10(pval_threshold)
     else:
         pval_threshold_line = None
 
@@ -236,6 +235,18 @@ def proteoform_scores(
         legend=False,
         ax=_ax,
     )
+
+    if yscale_log:
+        _ax.set_yscale("log", base=10)
+        _ax.invert_yaxis()
+        _ax.yaxis.set_minor_locator(
+            LogLocator(
+                base=10,
+                subs=np.arange(2, 10) * 0.1,
+                numticks=12,
+            )
+        )
+        _ax.yaxis.set_minor_formatter(plt.NullFormatter())
 
     # -- Highlight selected proteins with text labels --------
     if highlight_prots is not None:

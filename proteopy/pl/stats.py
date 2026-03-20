@@ -9,7 +9,7 @@ import anndata as ad
 from pandas.api.types import is_string_dtype, is_categorical_dtype
 from scipy import sparse
 from scipy.spatial.distance import squareform
-from scipy.cluster.hierarchy import linkage
+from scipy.cluster.hierarchy import leaves_list, linkage
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
@@ -2477,6 +2477,7 @@ def sample_correlation_matrix(
     figsize: tuple[float, float] = (9.0, 7.0),
     show: bool = True,
     ax: bool = False,
+    print_stats: bool = False,
     save: str | Path | None = None,
 ) -> Axes | None:
     """
@@ -2514,6 +2515,11 @@ def sample_correlation_matrix(
         Display the figure with :func:`matplotlib.pyplot.show`.
     ax : bool
         Return the heatmap :class:`matplotlib.axes.Axes` when ``True``.
+    print_stats : bool
+        Print correlation summary statistics before drawing the plot.
+        Includes overall off-diagonal statistics, per-sample mean
+        correlation, and per-group correlations when ``margin_color``
+        is provided.
     save : str | Path | None
         File path for saving the Seaborn cluster map. When ``None`` nothing is
         written.
@@ -2638,6 +2644,84 @@ def sample_correlation_matrix(
     np.fill_diagonal(dist, 0.0)
     dist = np.clip(dist, 0, 2)  # numerical guard
     Z = linkage(squareform(dist), method=linkage_method)
+
+    # ---- optional statistics printout
+    if print_stats and n > 1:
+        # 1) Overall off-diagonal summary
+        summary = pd.DataFrame({
+            "min": [np.nanmin(offdiag)],
+            "max": [np.nanmax(offdiag)],
+            "mean": [np.nanmean(offdiag)],
+            "median": [np.nanmedian(offdiag)],
+            "std": [np.nanstd(offdiag)],
+        })
+        print(
+            f"Sample correlation summary "
+            f"(off-diagonal, {method}):"
+        )
+        print(summary.to_string(index=False))
+        print()
+
+        # 2) Per-sample mean correlation (dendrogram order)
+        mask = ~np.eye(n, dtype=bool)
+        per_sample_mean = np.nanmean(
+            np.where(mask, A, np.nan), axis=1
+        )
+        heatmap_order = leaves_list(Z)
+        per_sample_df = pd.DataFrame({
+            "sample_id": corr_df.index[heatmap_order],
+            "mean_corr": per_sample_mean[heatmap_order],
+        })
+        print("Per-sample mean correlation:")
+        print(per_sample_df.to_string(index=False))
+        print()
+
+        # 3) Per-group correlation (if margin_color provided)
+        if margin_color is not None:
+            if margin_color not in adata.obs.columns:
+                raise KeyError(
+                    f"Column '{margin_color}' not found "
+                    f"in adata.obs."
+                )
+            groups_ps = adata.obs.loc[
+                corr_df.index, margin_color
+            ]
+            unique_groups = groups_ps.dropna().unique()
+            group_rows = []
+            for grp in sorted(unique_groups):
+                grp_idx = groups_ps[
+                    groups_ps == grp
+                ].index
+                other_idx = groups_ps[
+                    (groups_ps != grp) & groups_ps.notna()
+                ].index
+                within = corr_df.loc[grp_idx, grp_idx]
+                within_vals = within.values[
+                    ~np.eye(len(grp_idx), dtype=bool)
+                ]
+                mean_within = (
+                    np.nanmean(within_vals)
+                    if len(within_vals) > 0
+                    else np.nan
+                )
+                if len(other_idx) > 0:
+                    between_vals = corr_df.loc[
+                        grp_idx, other_idx
+                    ].values.ravel()
+                    mean_between = np.nanmean(
+                        between_vals
+                    )
+                else:
+                    mean_between = np.nan
+                group_rows.append({
+                    "group": grp,
+                    "mean_within": mean_within,
+                    "mean_between": mean_between,
+                })
+            group_df = pd.DataFrame(group_rows)
+            print("Per-group mean correlation:")
+            print(group_df.to_string(index=False))
+            print()
 
     # ---- clustermap (center at off-diagonal mean)
     g = sns.clustermap(

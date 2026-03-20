@@ -208,7 +208,7 @@ def _validate_volcano_inputs(
     varm_slot: str,
     fc_col: str,
     pval_col: str,
-    label_col: str | None,
+    alt_labels_key: str | None,
     fc_thresh: float,
     pval_thresh: float,
     top_labels: int | None,
@@ -238,9 +238,9 @@ def _validate_volcano_inputs(
     pval_col : str
         Preferred column name in the varm DataFrame for p-values
         (typically adjusted). Falls back to ``"pval"`` if absent.
-    label_col : str | None
-        Column in ``adata.var`` used to label proteins on the plot.
-        ``None`` uses ``adata.var_names``.
+    alt_labels_key : str | None
+        Column in ``adata.var`` used as alternative labels for
+        rendering on the plot. ``None`` uses ``adata.var_names``.
     fc_thresh : float
         Absolute log fold change threshold; must be a positive number.
     pval_thresh : float
@@ -276,7 +276,7 @@ def _validate_volcano_inputs(
         If ``varm_slot`` is not found in ``adata.varm``, ``fc_col``
         is not a column in the varm DataFrame, neither ``pval_col``
         nor ``"pval"`` is a column in the varm DataFrame, or
-        ``label_col`` is not a column in ``adata.var``.
+        ``alt_labels_key`` is not a column in ``adata.var``.
     TypeError
         If ``adata.varm[varm_slot]`` is not a
         :class:`pandas.DataFrame`, or if ``highlight_labels`` is not
@@ -333,11 +333,12 @@ def _validate_volcano_inputs(
         )
 
     if (
-        label_col is not None
-        and label_col not in adata.var.columns
+        alt_labels_key is not None
+        and alt_labels_key not in adata.var.columns
     ):
         raise KeyError(
-            f"Column '{label_col}' not found in adata.var."
+            f"alt_labels_key '{alt_labels_key}' not found "
+            f"in adata.var."
         )
 
     return results, pval_col_used
@@ -351,7 +352,7 @@ def volcano(
     *,
     fc_col: str = "logfc",
     pval_col: str = "pval_adj",
-    label_col: str | None = None,
+    alt_labels_key: str | None = None,
     top_labels: int | None = None,
     highlight_labels: list[str] | None = None,
     figsize: tuple[float, float] = (6.0, 5.0),
@@ -394,9 +395,11 @@ def volcano(
         Column name in the varm DataFrame containing adjusted p-values.
         If this column is not found, the function falls back to
         ``"pval"`` (unadjusted p-values).
-    label_col : str | None, optional
-        Column in ``adata.var`` to use for labeling proteins.
-        Defaults to ``adata.var_names`` if ``None``.
+    alt_labels_key : str | None, optional
+        Column in ``adata.var`` used as alternative labels for
+        rendering on the plot. When set, ``highlight_labels``
+        accepts elements from this column. ``None`` uses
+        ``adata.var_names``.
     top_labels : int | None, optional
         Number of top proteins to label on each side of the volcano
         plot (up to 0.5N labels total). For each direction (positive
@@ -408,7 +411,7 @@ def volcano(
     highlight_labels : list[str] | None, optional
         Sequence of protein label strings to annotate on the plot.
         Each entry must match a value in the label column
-        (``label_col`` or ``adata.var_names``). Mutually exclusive
+        (``alt_labels_key`` or ``adata.var_names``). Mutually exclusive
         with ``top_labels``. Labels not found after data filtering
         trigger a warning.
     figsize : tuple[float, float], optional
@@ -457,7 +460,7 @@ def volcano(
     KeyError
         If ``varm_slot`` is not in ``adata.varm``, ``fc_col`` or
         p-value columns are not in the varm DataFrame, or
-        ``label_col`` is not in ``adata.var``.
+        ``alt_labels_key`` is not in ``adata.var``.
     TypeError
         If ``adata.varm[varm_slot]`` is not a pandas DataFrame,
         ``highlight_labels`` is not a :class:`list`, or
@@ -508,7 +511,7 @@ def volcano(
     ... )
     """
     results, pval_col_used = _validate_volcano_inputs(
-        adata, varm_slot, fc_col, pval_col, label_col,
+        adata, varm_slot, fc_col, pval_col, alt_labels_key,
         fc_thresh, pval_thresh, top_labels,
         highlight_labels, figsize, yscale_log,
     )
@@ -518,10 +521,10 @@ def volcano(
 
     labels = None
     if top_labels is not None or highlight_labels is not None:
-        if label_col is None:
+        if alt_labels_key is None:
             labels = adata.var_names.to_numpy()
         else:
-            labels = adata.var[label_col].to_numpy()
+            labels = adata.var[alt_labels_key].to_numpy()
 
     # Normalize alt_color via existing helper
     alt_arr = None

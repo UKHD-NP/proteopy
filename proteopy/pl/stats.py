@@ -1984,11 +1984,12 @@ def n_cat1_per_cat2_hist(
     axis: int,
     bin_width: float | None = None,
     bin_range: tuple[float, float] | None = None,
+    print_stats: bool = False,
     figsize: tuple[float, float] = (6.0, 4.0),
     show: bool = True,
     save: str | Path | None = None,
-    ax: bool = False,
-) -> Axes | None:
+    ax: Axes | None = None,
+) -> Axes:
     """
     Plot the distribution of the number of first-category entries per second
     category.
@@ -2012,6 +2013,8 @@ def n_cat1_per_cat2_hist(
     bin_range : tuple[float, float] | None
         Optional tuple ``(lower, upper)`` limiting the histogram bins. ``lower``
         must be strictly smaller than ``upper``.
+    print_stats : bool
+        Print distribution statistics (mean, median, mode, variance, min, max).
     figsize : tuple[float, float]
         Size (width, height) in inches passed to
         :func:`matplotlib.pyplot.subplots`.
@@ -2019,9 +2022,9 @@ def n_cat1_per_cat2_hist(
         Call :func:`matplotlib.pyplot.show` when ``True``.
     save : str | Path | None
         Save the figure to the provided path when given.
-    ax : bool
-        Return the :class:`~matplotlib.axes.Axes` instance instead of displaying
-        the plot.
+    ax : Axes | None
+        Matplotlib Axes to plot onto. If ``None``, a new figure and axes
+        are created.
     """
     check_proteodata(adata)
     # Ensures that the 'index' has unique values if used
@@ -2077,12 +2080,29 @@ def n_cat1_per_cat2_hist(
             "No entries available to compute counts for the requested categories."
         )
 
-    fig, _ax = plt.subplots(figsize=figsize)
     if bin_width is None:
         edges = np.histogram_bin_edges(counts.values, bins="auto")
         auto_width = edges[1] - edges[0]
         bin_width = max(auto_width, 1.0)
 
+    if print_stats:
+        stats_df = pd.DataFrame(
+            {
+                "mean": [counts.mean()],
+                "median": [counts.median()],
+                "mode": [counts.mode().iloc[0]],
+                "variance": [counts.var()],
+                "min": [counts.min()],
+                "max": [counts.max()],
+            }
+        )
+        print(stats_df.to_string(index=False))
+
+    if ax is None:
+        fig, _ax = plt.subplots(figsize=figsize)
+    else:
+        _ax = ax
+        fig = _ax.get_figure()
     if first_category == "index":
         entry_label = "observations" if axis == 0 else "variables"
     else:
@@ -2103,15 +2123,7 @@ def n_cat1_per_cat2_hist(
     if show:
         plt.show()
 
-    if ax:
-        return _ax
-
-    if not show and save is None and not ax:
-        warnings.warn(
-            "Function does not do anything. Enable `show`, provide a `save` path, "
-            "or set `ax=True`."
-        )
-        plt.close(fig)
+    return _ax
 
 docstr_header = (
     "Plot the distribution of the number of first-category entries per second category."

@@ -1,27 +1,32 @@
 import numpy as np
-from scipy import sparse 
+from scipy import sparse
 
 
-def is_log_transformed(
-        adata, 
-        layer=None, 
-        neg_frac_thresh=5e-3, 
-        p95_thresh=100.0
-        ):
-    """
-    Heuristic detector for log-transformed matrices.
+def _is_log_transformed_array(
+    X,
+    neg_frac_thresh=5e-3,
+    p95_thresh=100.0,
+):
+    """Heuristic log-transform check on a dense float array.
+
+    Parameters
+    ----------
+    X : np.ndarray
+        Dense 2-D float matrix. Non-finite values are ignored.
+    neg_frac_thresh : float
+        Fraction of negative values above which the data are
+        considered log-transformed.
+    p95_thresh : float
+        If the 95th percentile is at or below this value the
+        data are considered log-transformed.
 
     Returns
     -------
     is_log : bool
-        True if the matrix looks log-transformed.
+        ``True`` if the matrix looks log-transformed.
     stats : dict
-        {'frac_negative', 'p95', 'p5', 'dynamic_range_ratio', 'n_finite'}
+        Diagnostic statistics used for the decision.
     """
-    Xsrc = adata.layers[layer] if layer is not None else adata.X
-    X = Xsrc.toarray() if sparse.issparse(Xsrc) else np.asarray(Xsrc)
-    X = X.astype(float, copy=False)
-
     finite = np.isfinite(X)
     vals = X[finite]
     if vals.size == 0:
@@ -29,12 +34,15 @@ def is_log_transformed(
 
     frac_negative = float(np.mean(vals < 0))
     p95 = float(np.nanpercentile(vals, 95))
-    p5  = float(np.nanpercentile(vals, 5))
-    # avoid divide-by-zero in very degenerate cases
-    dr_ratio = float((p95 - p5) / max(abs(p5), 1e-12))
+    p5 = float(np.nanpercentile(vals, 5))
+    dr_ratio = float(
+        (p95 - p5) / max(abs(p5), 1e-12)
+    )
 
-    # Simple decision
-    is_log = (frac_negative >= neg_frac_thresh) or (p95 <= p95_thresh)
+    is_log = (
+        frac_negative >= neg_frac_thresh
+        or p95 <= p95_thresh
+    )
 
     stats = dict(
         frac_negative=frac_negative,
@@ -45,3 +53,37 @@ def is_log_transformed(
     )
 
     return bool(is_log), stats
+
+
+def is_log_transformed(
+        adata,
+        layer=None,
+        neg_frac_thresh=5e-3,
+        p95_thresh=100.0,
+):
+    """
+    Heuristic detector for log-transformed matrices.
+
+    Returns
+    -------
+    is_log : bool
+        True if the matrix looks log-transformed.
+    stats : dict
+        {'frac_negative', 'p95', 'p5', 'dynamic_range_ratio',
+         'n_finite'}
+    """
+    Xsrc = (
+        adata.layers[layer] if layer is not None
+        else adata.X
+    )
+    X = (
+        Xsrc.toarray() if sparse.issparse(Xsrc)
+        else np.asarray(Xsrc)
+    )
+    X = X.astype(float, copy=False)
+
+    return _is_log_transformed_array(
+        X,
+        neg_frac_thresh=neg_frac_thresh,
+        p95_thresh=p95_thresh,
+    )

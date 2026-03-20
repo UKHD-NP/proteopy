@@ -92,7 +92,7 @@ def _validate_label_inputs(
         _validate_highlight_labels(highlight_labels)
 
     if labels is not None:
-        labels = np.asarray(labels)
+        labels = np.asarray(labels, dtype=str)
         if not np.issubdtype(labels.dtype, np.str_):
             raise ValueError(
                 "labels must contain string values."

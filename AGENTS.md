@@ -28,6 +28,12 @@ Avoid prolixity:
 
 ### Function guidelines
 
+Prioritize validating parameters and input at the beginning of the
+function when it is convenient and elegant. Group all checks (type
+guards, value-range assertions, mutually-exclusive argument checks,
+etc.) before the main logic so readers can quickly see the contract
+the function enforces.
+
 Use `check_proteodata()` from `proteopy/utils/anndata.py` to validate
 that an AnnData object conforms to ProteoPy assumptions. Call it at the
 beginning of every public function and again before returning a new or
@@ -130,6 +136,16 @@ this number. If None, use the internal function defaults.
         created. Useful for embedding plots into subplot grids or further customization.
         The function always returns the Axes object used for plotting.
         Default=None (do not include this line in docstrings)
+    print_stats : bool
+        If True, print the statistics underlying the plot as a pandas
+        DataFrame before the plot is displayed and the axes object is
+        returned. Always prints global summary statistics (e.g. mean, std,
+        median, min, max). When `group_by` or `order_by` is provided,
+        also prints per-group statistics below the global summary.
+        Use `df.to_string(index=False, float_format="%.1f")` for
+        tabular output and label sections with headers such as
+        `"Global:"` and `f"\nPer {group_by}:"`.
+        Default=False (do not include this line in docstrings)
     show_zeros : bool
         Don't display zeros if False.
         Default=True (do not include this line in docstrings)
@@ -152,21 +168,21 @@ this number. If None, use the internal function defaults.
         with `order`, controls which groups appear and in what sequence.
         Default=None (do not include this line in docstrings)
     order : str | list | None
-        Controls ordering, subsetting, and duplication of observations,
-        variables, or categories on the plot axis.
+        Controls ordering and subsetting of observations, variables, or
+        categories on the plot axis. Values must be a subset of the
+        unique values in the `order_by` column (duplicates not allowed).
         - If `order_by` is None and `order` is None: use existing
           .var_names or .obs_names order.
         - If `order_by` is None and `order` is not None: `order`
           specifies the exact items to plot and their sequence. Items
-          not listed are excluded (subsetting). Items listed more than
-          once appear multiple times (duplication).
+          not listed are excluded (subsetting).
         - If `order_by` is not None and `order` is None: use the unique
           values in the `order_by` column. If categorical, use its
           category order; if str/object, use sorted order.
         - If `order_by` is not None and `order` is not None: `order`
           defines which `order_by` groups to show and in what sequence.
-          Groups absent from `order` are excluded (subsetting). Groups
-          listed more than once appear multiple times (duplication).
+          Groups absent from `order` are excluded (subsetting). Values
+          in `order` must be a subset of unique values in `order_by`.
         Default=None (do not include this line in docstrings)
     ascending : bool | None
         If `order` is None, sort the function relevant axis by a function-relevant
@@ -344,6 +360,14 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `ax: matplotlib.axes.Axes | None`
   Matplotlib Axes object to plot onto. If `None`, a new figure and axes are created. The function always returns the Axes object used for plotting (default=None).
 
+- `print_stats: bool`
+  If True, print the statistics underlying the plot as a pandas
+  DataFrame before the plot is displayed and the axes object is
+  returned. Always prints global summary statistics (e.g. mean, std,
+  median, min, max). When `group_by` or `order_by` is provided,
+  also prints per-group statistics below the global summary
+  (default=False).
+
 - `show_zeros: bool`
   Display zeros in the visualization; if False, hide or mask zeros where applicable (default=True).
 
@@ -363,11 +387,11 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
   Categorical `.obs` or `.var` column(s) by which to order, subset, or duplicate observations/variables for plotting. When combined with `order`, controls which groups appear and in what sequence.
 
 - `order: str | list | None`
-  Controls ordering, subsetting, and duplication of observations, variables, or categories on the plot axis.
+  Controls ordering and subsetting of observations, variables, or categories on the plot axis. Values must be a subset of the unique values in the `order_by` column (duplicates not allowed).
   - If `order_by is None` and `order is None`: use existing `.var_names` / `.obs_names` order.
-  - If `order_by is None` and `order is not None`: `order` specifies the exact items to plot and their sequence. Items not listed are excluded (subsetting). Items listed more than once appear multiple times (duplication).
+  - If `order_by is None` and `order is not None`: `order` specifies the exact items to plot and their sequence. Items not listed are excluded (subsetting).
   - If `order_by is not None` and `order is None`: order by the unique values in `order_by`. If `order_by` is categorical, use its category order; if object/string, use sorted order.
-  - If `order_by is not None` and `order is not None`: `order` defines which `order_by` groups to show and in what sequence. Groups absent from `order` are excluded (subsetting). Groups listed more than once appear multiple times (duplication).
+  - If `order_by is not None` and `order is not None`: `order` defines which `order_by` groups to show and in what sequence. Groups absent from `order` are excluded (subsetting). Values in `order` must be a subset of unique values in `order_by`.
 
 - `ascending: bool | None`
   When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` preserves the derived order.
@@ -458,12 +482,26 @@ New assets must remain lightweight and include provenance notes.
   - Constants → `UPPER_CASE`
 
 - Formatting and linting:
-  - Run `flake8` for style compliance
+  - Run `flake8` for style compliance (complexity threshold C901 = 10).
+    Keep functions below this threshold by extracting input validation
+    and major algorithmic steps into helper functions.
   - Run `pylint` (error level only) before committing
   - Use `black` for auto-formatting
 
 ### Style Notes
 Prefer f-strings for string interpolation. Use type hints in function signatures and docstrings but avoid verbose variable-level type checking. Perform input type checking at the beginning of the function when possible for good readability.
+
+### Commenting Convention
+Strike a balance between "the code is the documentation" and readable
+navigation. Do not over-comment obvious code.
+
+- **Section headings** — use `# -- <description>` to mark major logical
+  blocks within a function. Reserve these for larger chunks of code,
+  not individual lines. They act as scannable signposts when reading
+  longer functions.
+- **Clarification comments** — use plain `#` for brief notes that
+  explain *why* non-obvious code exists, not *what* it does.
+
 
 ### Import Alias Convention
 In tutorials, docstring examples, and documentation, always import proteopy as `pr`:
@@ -514,6 +552,20 @@ def preprocess_data(
     -------
     AnnData
         The filtered and optionally transformed AnnData object.
+
+    Warns
+    -----
+    UserWarning
+        If `min_proteins` removes more than 50 % of samples.
+
+    Examples
+    --------
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.example_peptide_data()
+    >>> pr.pp.preprocess_data(adata, min_proteins=100)
+    >>> pr.pp.preprocess_data(adata, inplace=False, min_samples=5)
+    >>> pr.pp.preprocess_data(adata, verbose=True)
+    Removed 1501 samples.
 ```
 
 
@@ -665,6 +717,14 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `ax: matplotlib.axes.Axes | None`
   Matplotlib Axes object to plot onto. If `None`, a new figure and axes are created. The function always returns the Axes object used for plotting (default=None).
 
+- `print_stats: bool`
+  If True, print the statistics underlying the plot as a pandas
+  DataFrame before the plot is displayed and the axes object is
+  returned. Always prints global summary statistics (e.g. mean, std,
+  median, min, max). When `group_by` or `order_by` is provided,
+  also prints per-group statistics below the global summary
+  (default=False).
+
 - `show_zeros: bool`
   Display zeros in the visualization; if False, hide or mask zeros where applicable (default=True).
 
@@ -684,11 +744,11 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
   Categorical `.obs` or `.var` column(s) by which to order, subset, or duplicate observations/variables for plotting. When combined with `order`, controls which groups appear and in what sequence.
 
 - `order: str | list | None`
-  Controls ordering, subsetting, and duplication of observations, variables, or categories on the plot axis.
+  Controls ordering and subsetting of observations, variables, or categories on the plot axis. Values must be a subset of the unique values in the `order_by` column (duplicates not allowed).
   - If `order_by is None` and `order is None`: use existing `.var_names` / `.obs_names` order.
-  - If `order_by is None` and `order is not None`: `order` specifies the exact items to plot and their sequence. Items not listed are excluded (subsetting). Items listed more than once appear multiple times (duplication).
+  - If `order_by is None` and `order is not None`: `order` specifies the exact items to plot and their sequence. Items not listed are excluded (subsetting).
   - If `order_by is not None` and `order is None`: order by the unique values in `order_by`. If `order_by` is categorical, use its category order; if object/string, use sorted order.
-  - If `order_by is not None` and `order is not None`: `order` defines which `order_by` groups to show and in what sequence. Groups absent from `order` are excluded (subsetting). Groups listed more than once appear multiple times (duplication).
+  - If `order_by is not None` and `order is not None`: `order` defines which `order_by` groups to show and in what sequence. Groups absent from `order` are excluded (subsetting). Values in `order` must be a subset of unique values in `order_by`.
 
 - `ascending: bool | None`
   When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` preserves the derived order.

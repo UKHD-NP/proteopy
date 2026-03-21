@@ -8,5 +8,5 @@ workflows.
    :maxdepth: 1
 
    The proteodata format <proteodata_basics>
-   workflow_protein-analysis_karayel-2020
    proteoform-inference_bludau-2021_reproduction
+   karayel-2020_proteome-remodeling-during-human-erythropoiesis

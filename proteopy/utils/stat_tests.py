@@ -10,120 +10,6 @@ from matplotlib.axes import Axes
 from adjustText import adjust_text
 
 
-def _validate_numeric_inputs(fc_vals, pvals):
-    try:
-        fc_vals = np.asarray(fc_vals, dtype=float)
-    except (ValueError, TypeError):
-        raise ValueError(
-            "fc_vals must contain numeric values."
-        )
-    try:
-        pvals = np.asarray(pvals, dtype=float)
-    except (ValueError, TypeError):
-        raise ValueError(
-            "pvals must contain numeric values."
-        )
-
-    if fc_vals.ndim != 1:
-        raise ValueError("fc_vals must be 1D.")
-    if pvals.ndim != 1:
-        raise ValueError("pvals must be 1D.")
-
-    if fc_vals.shape != pvals.shape:
-        raise ValueError(
-            "fc_vals and pvals must have the same length."
-        )
-
-    return fc_vals, pvals
-
-
-def _validate_highlight_labels(highlight_labels):
-    if len(highlight_labels) != len(set(highlight_labels)):
-        raise ValueError(
-            "highlight_labels must not contain "
-            "duplicates."
-        )
-    if len(highlight_labels) == 0:
-        warnings.warn(
-            "highlight_labels is empty.",
-            UserWarning,
-        )
-    if not np.issubdtype(
-        np.asarray(highlight_labels).dtype, np.str_
-    ):
-        raise ValueError(
-            "highlight_labels must contain "
-            "string values."
-        )
-
-
-def _validate_label_inputs(
-    labels, top_labels, highlight_labels, n_points,
-):
-    if (
-        top_labels is not None
-        and highlight_labels is not None
-    ):
-        raise ValueError(
-            "top_labels and highlight_labels are "
-            "mutually exclusive."
-        )
-
-    if (
-        labels is None
-        and (top_labels is not None
-             or highlight_labels is not None)
-    ):
-        raise ValueError(
-            "labels must be provided when "
-            "top_labels or highlight_labels is set."
-        )
-
-    if top_labels is not None:
-        if (
-            not isinstance(top_labels, int)
-            or top_labels <= 0
-        ):
-            raise ValueError(
-                "top_labels must be a positive integer."
-            )
-
-    if highlight_labels is not None:
-        _validate_highlight_labels(highlight_labels)
-
-    if labels is not None:
-        labels = np.asarray(labels, dtype=str)
-        if not np.issubdtype(labels.dtype, np.str_):
-            raise ValueError(
-                "labels must contain string values."
-            )
-        if labels.shape[0] != n_points:
-            raise ValueError(
-                "labels must have the same length as "
-                "fc_vals."
-            )
-
-    return labels
-
-
-def _validate_alt_color(alt_color, n_points):
-    if alt_color is None:
-        return None
-    alt_color = np.asarray(alt_color)
-    if alt_color.ndim != 1:
-        raise ValueError(
-            "alt_color must be a 1D boolean sequence."
-        )
-    if alt_color.shape[0] != n_points:
-        raise ValueError(
-            "alt_color must have the same length as "
-            "fc_vals."
-        )
-    if not np.issubdtype(alt_color.dtype, np.bool_):
-        raise ValueError("alt_color must be boolean.")
-    return alt_color
-
-
 def _validate_thresholds(fc_thresh, pval_thresh):
     if fc_thresh is not None and fc_thresh <= 0:
         raise ValueError(
@@ -379,6 +265,126 @@ def _annotate_highlight_labels(
             )
 
 
+def _validate_volcano_plot_inputs(  # noqa: C901
+    fc_vals, pvals, fc_thresh, pval_thresh,
+    labels, top_labels, highlight_labels,
+    alt_color, ax,
+):
+    """Validate all volcano-plot inputs."""
+    # -- Numeric arrays
+    try:
+        fc_vals = np.asarray(fc_vals, dtype=float)
+    except (ValueError, TypeError):
+        raise ValueError(
+            "fc_vals must contain numeric values."
+        )
+    try:
+        pvals = np.asarray(pvals, dtype=float)
+    except (ValueError, TypeError):
+        raise ValueError(
+            "pvals must contain numeric values."
+        )
+    if fc_vals.ndim != 1:
+        raise ValueError("fc_vals must be 1D.")
+    if pvals.ndim != 1:
+        raise ValueError("pvals must be 1D.")
+    if fc_vals.shape != pvals.shape:
+        raise ValueError(
+            "fc_vals and pvals must have the same "
+            "length."
+        )
+
+    # -- Thresholds
+    _validate_thresholds(fc_thresh, pval_thresh)
+
+    # -- Axes
+    if ax is not None and not isinstance(ax, Axes):
+        raise ValueError(
+            "ax must be a matplotlib Axes object."
+        )
+
+    # -- Label arguments
+    n_points = fc_vals.shape[0]
+    if (
+        top_labels is not None
+        and highlight_labels is not None
+    ):
+        raise ValueError(
+            "top_labels and highlight_labels are "
+            "mutually exclusive."
+        )
+    if (
+        labels is None
+        and (top_labels is not None
+             or highlight_labels is not None)
+    ):
+        raise ValueError(
+            "labels must be provided when "
+            "top_labels or highlight_labels is set."
+        )
+    if top_labels is not None:
+        if (
+            not isinstance(top_labels, int)
+            or top_labels <= 0
+        ):
+            raise ValueError(
+                "top_labels must be a positive integer."
+            )
+    if highlight_labels is not None:
+        if len(highlight_labels) != len(
+            set(highlight_labels)
+        ):
+            raise ValueError(
+                "highlight_labels must not contain "
+                "duplicates."
+            )
+        if len(highlight_labels) == 0:
+            warnings.warn(
+                "highlight_labels is empty.",
+                UserWarning,
+            )
+        if not np.issubdtype(
+            np.asarray(highlight_labels).dtype, np.str_
+        ):
+            raise ValueError(
+                "highlight_labels must contain "
+                "string values."
+            )
+    if labels is not None:
+        labels = np.asarray(labels, dtype=str)
+        if not np.issubdtype(labels.dtype, np.str_):
+            raise ValueError(
+                "labels must contain string values."
+            )
+        if labels.shape[0] != n_points:
+            raise ValueError(
+                "labels must have the same length as "
+                "fc_vals."
+            )
+
+    # -- alt_color
+    if alt_color is not None:
+        alt_color = np.asarray(alt_color)
+        if alt_color.ndim != 1:
+            raise ValueError(
+                "alt_color must be a 1D boolean "
+                "sequence."
+            )
+        if alt_color.shape[0] != n_points:
+            raise ValueError(
+                "alt_color must have the same length "
+                "as fc_vals."
+            )
+        if not np.issubdtype(
+            alt_color.dtype, np.bool_
+        ):
+            raise ValueError(
+                "alt_color must be boolean."
+            )
+
+    return fc_vals, pvals, labels, alt_color
+
+
 def volcano_plot(
     fc_vals: Sequence[float] | np.ndarray,
     pvals: Sequence[float] | np.ndarray,
@@ -526,38 +532,39 @@ def volcano_plot(
     ... )
     <Axes: ...>
     """
-    fc_vals, pvals = _validate_numeric_inputs(fc_vals, pvals)
-    _validate_thresholds(fc_thresh, pval_thresh)
-    if ax is not None and not isinstance(ax, Axes):
-        raise ValueError(
-            "ax must be a matplotlib Axes object."
+    fc_vals, pvals, labels, alt_color = (
+        _validate_volcano_plot_inputs(
+            fc_vals, pvals, fc_thresh, pval_thresh,
+            labels, top_labels, highlight_labels,
+            alt_color, ax,
         )
-    labels = _validate_label_inputs(
-        labels, top_labels, highlight_labels,
-        fc_vals.shape[0],
     )
-    alt_color = _validate_alt_color(
-        alt_color, fc_vals.shape[0],
-    )
-    fc_vals, pvals, labels, alt_color = _filter_volcano_data(
-        fc_vals, pvals, labels, alt_color,
+    fc_vals, pvals, labels, alt_color = (
+        _filter_volcano_data(
+            fc_vals, pvals, labels, alt_color,
+        )
     )
 
     # -- Prepare plotting arrays
     neg_log_p = -np.log10(pvals)
     y_vals = pvals if yscale_log else neg_log_p
 
-    sig_mask = (
-        np.ones(len(pvals), dtype=bool)
-        if pval_thresh is None
-        else pvals <= pval_thresh
-    )
-    if fc_thresh is None:
-        up_mask = sig_mask & (fc_vals > 0)
-        down_mask = sig_mask & (fc_vals < 0)
+    if fc_thresh is None and pval_thresh is None:
+        sig_mask = np.zeros(len(pvals), dtype=bool)
+        up_mask = np.zeros(len(pvals), dtype=bool)
+        down_mask = np.zeros(len(pvals), dtype=bool)
     else:
-        up_mask = sig_mask & (fc_vals >= fc_thresh)
-        down_mask = sig_mask & (fc_vals <= -fc_thresh)
+        sig_mask = (
+            np.ones(len(pvals), dtype=bool)
+            if pval_thresh is None
+            else pvals <= pval_thresh
+        )
+        if fc_thresh is None:
+            up_mask = sig_mask & (fc_vals > 0)
+            down_mask = sig_mask & (fc_vals < 0)
+        else:
+            up_mask = sig_mask & (fc_vals >= fc_thresh)
+            down_mask = sig_mask & (fc_vals <= -fc_thresh)
     other_mask = ~(up_mask | down_mask)
 
     # -- Plot
@@ -583,9 +590,17 @@ def volcano_plot(
 
     # -- Labels
     if top_labels is not None and labels is not None:
+        label_mask = (
+            alt_color if alt_color is not None
+            else sig_mask
+        )
+        label_fc_thresh = (
+            None if alt_color is not None
+            else fc_thresh
+        )
         _annotate_top_labels(
             _ax, fc_vals, pvals, y_vals, labels,
-            top_labels, sig_mask, fc_thresh,
+            top_labels, label_mask, label_fc_thresh,
         )
     if highlight_labels is not None and labels is not None:
         _annotate_highlight_labels(

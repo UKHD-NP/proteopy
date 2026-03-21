@@ -147,21 +147,23 @@ def _normalize_alt_color(
 
 
 def _validate_thresholds(fc_thresh, pval_thresh):
-    if (
-        not isinstance(fc_thresh, (int, float))
-        or fc_thresh <= 0
-    ):
-        raise ValueError(
-            "fc_thresh must be a positive number."
-        )
-    if (
-        not isinstance(pval_thresh, (int, float))
-        or pval_thresh <= 0
-        or pval_thresh > 1
-    ):
-        raise ValueError(
-            "pval_thresh must be a number in (0, 1]."
-        )
+    if fc_thresh is not None:
+        if (
+            not isinstance(fc_thresh, (int, float))
+            or fc_thresh <= 0
+        ):
+            raise ValueError(
+                "fc_thresh must be a positive number."
+            )
+    if pval_thresh is not None:
+        if (
+            not isinstance(pval_thresh, (int, float))
+            or pval_thresh <= 0
+            or pval_thresh > 1
+        ):
+            raise ValueError(
+                "pval_thresh must be a number in (0, 1]."
+            )
 
 
 def _validate_labels(top_labels, highlight_labels):
@@ -209,8 +211,8 @@ def _validate_volcano_inputs(
     fc_col: str,
     pval_col: str,
     alt_labels_key: str | None,
-    fc_thresh: float,
-    pval_thresh: float,
+    fc_thresh: float | None,
+    pval_thresh: float | None,
     top_labels: int | None,
     highlight_labels: list[str] | None,
     figsize: tuple[float, float],
@@ -241,10 +243,14 @@ def _validate_volcano_inputs(
     alt_labels_key : str | None
         Column in ``adata.var`` used as alternative labels for
         rendering on the plot. ``None`` uses ``adata.var_names``.
-    fc_thresh : float
+    fc_thresh : float | None
         Absolute log fold change threshold; must be a positive number.
-    pval_thresh : float
+        When ``None``, the fold-change threshold is not applied for
+        significance coloring.
+    pval_thresh : float | None
         P-value significance threshold; must be in the range (0, 1].
+        When ``None``, the p-value threshold is not applied for
+        significance coloring.
     top_labels : int | None
         Number of top significant proteins to label per fold-change
         direction. Must be a non-negative integer or ``None``.
@@ -347,8 +353,8 @@ def _validate_volcano_inputs(
 def volcano(
     adata: ad.AnnData,
     varm_slot: str,
-    fc_thresh: float = 1.0,
-    pval_thresh: float = 0.05,
+    fc_thresh: float | None = None,
+    pval_thresh: float | None = None,
     *,
     fc_col: str = "logfc",
     pval_col: str = "pval_adj",
@@ -381,13 +387,19 @@ def volcano(
         Key in ``adata.varm`` containing the differential abundance
         test results as a DataFrame. Expected format produced by
         ``copro.tl.differential_abundance``.
-    fc_thresh : float, optional
+    fc_thresh : float | None, optional
         Absolute log fold change threshold for significance. Proteins
         with ``|logfc| >= fc_thresh`` and ``pval <= pval_thresh`` are
-        highlighted as significant.
-    pval_thresh : float, optional
+        highlighted as significant. When ``None``, no fold-change
+        threshold line is drawn and fold change is not considered for
+        significance coloring.
+    pval_thresh : float | None, optional
         P-value threshold for significance. Used in conjunction with
-        ``fc_thresh`` to identify significant proteins.
+        ``fc_thresh`` to identify significant proteins. When ``None``,
+        no p-value threshold line is drawn and p-value is not
+        considered for significance coloring. When both ``fc_thresh``
+        and ``pval_thresh`` are ``None``, no points receive
+        significance coloring (all gray).
     fc_col : str, optional
         Column name in the varm DataFrame containing log fold change
         values. Log base depends on the test method used.

@@ -37,6 +37,7 @@ dependencies = [
     "biopython",
     "matplotlib",
     "numpy",
+    "packaging>=26.0",
     "pandas",
     "pooch",
     "scikit-learn",

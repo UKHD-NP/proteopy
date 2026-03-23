@@ -7,10 +7,11 @@
 The ``proteopy.utils`` module provides utility functions for data validation and
 common operations.
 
-.. warning::
+.. note::
 
-   Functions in this module are under constant development and backwards
-   compatibility is not guaranteed.
+   Only the functions listed below are part of the public API and
+   officially supported. All other functions in ``proteopy.utils``
+   are internal helpers and may change without notice.
 
 .. rubric:: Data Validation
 

@@ -39,6 +39,7 @@ dependencies = [
     "numpy",
     "packaging>=26.0",
     "pandas",
+    "pyarrow",
     "pooch",
     "scikit-learn",
     "scipy",

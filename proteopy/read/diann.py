@@ -1,13 +1,59 @@
+import re
 import warnings
 import gc
 import pandas as pd
+import numpy as np
 import anndata as ad
 import matplotlib.pyplot as plt
 import seaborn as sns
 from packaging.version import Version
 
+from proteopy.utils.anndata import check_proteodata
+
+
+# -- Aggregation level dispatch for v1.9.1
+
+_PEPTIDE_AGGR_PATTERNS = {
+    r"[Pp]recursor\.[Ii]d": "Precursor.Id",
+    r"[Mm]odified\.[Ss]equence": "Modified.Sequence",
+    r"[Ss]tripped\.[Ss]equence": "Stripped.Sequence",
+}
+
+_PROTEIN_AGGR_PATTERNS = {
+    r"[Pp]rotein\.[Ii]ds": "Protein.Ids",
+    r"[Pp]rotein\.[Gg]roups": "Protein.Groups",
+}
+
+_ALL_AGGR_PATTERNS = {
+    **_PEPTIDE_AGGR_PATTERNS,
+    **_PROTEIN_AGGR_PATTERNS,
+}
+
+
+def _resolve_aggr_level(aggr_level):
+    """Resolve an aggr_level string to its canonical column name.
+
+    Returns the canonical column name and a boolean indicating
+    whether the level corresponds to protein-level aggregation.
+    """
+    for pattern, canonical in _ALL_AGGR_PATTERNS.items():
+        if re.fullmatch(pattern, aggr_level):
+            return canonical, pattern in _PROTEIN_AGGR_PATTERNS
+    valid = ", ".join(
+        f"'{p}'" for p in _ALL_AGGR_PATTERNS
+    )
+    raise ValueError(
+        f"Invalid aggr_level '{aggr_level}'. "
+        f"Valid regex patterns: {valid}"
+    )
+
 
 def _resolve_version_handler(version, dispatch):
+    """Return the handler callable for the given DIA-NN version string.
+
+    Performs a floor-match against sorted dispatch keys, raising
+    ``ValueError`` if ``version`` is below the minimum supported key.
+    """
     query = Version(version)
     sorted_keys = sorted(dispatch.keys(), key=Version)
 
@@ -39,6 +85,12 @@ def _read_diann_v1(
     run_parser=None,
     fill_na=None,
 ):
+    """Read a DIA-NN v1.x TSV report into an :class:`~anndata.AnnData`.
+
+    Filters to proteotypic, non-multi-mapping precursors, applies
+    Q-value thresholds, aggregates ``Precursor.Quantity`` by
+    ``aggr_level``, and returns a samples-x-peptides AnnData object.
+    """
     # -- Check args
     aggr_level_options = [
         'Stripped.Sequence',
@@ -343,32 +395,335 @@ def _read_diann_v1(
     return adata
 
 
+def _read_diann_v1_9_1(
+    diann_output_path,
+    aggr_level,
+    max_precursor_q=None,
+    max_protein_q=None,
+    max_global_precursor_q=None,
+    normalized=False,
+    run_parser=None,
+    fill_na=None,
+    zero_to_na=False,
+    verbose=False,
+):
+    """Read a DIA-NN v1.9.1+ parquet report into an :class:`~anndata.AnnData`.
+
+    Filters decoys and multi-mapping precursors, applies Q-value
+    thresholds, aggregates intensities by ``aggr_level``, and returns
+    a validated samples-x-peptides AnnData object.
+    """
+    # -- Validate arguments
+    if run_parser is not None and not callable(run_parser):
+        raise ValueError(
+            "run_parser must be a callable or None."
+        )
+
+    aggr_col, is_protein = _resolve_aggr_level(aggr_level)
+
+    if is_protein:
+        raise NotImplementedError(
+            "Protein-level aggregation not yet "
+            "implemented for DIA-NN >= 1.9.1."
+        )
+
+    if fill_na is not None and zero_to_na:
+        raise ValueError(
+            "fill_na and zero_to_na are mutually exclusive."
+        )
+
+    # -- Determine columns to read
+    intensity_col = (
+        "Precursor.Normalised"
+        if normalized
+        else "Precursor.Quantity"
+    )
+
+    base_cols = [
+        "Run",
+        "Decoy",
+        aggr_col,
+        "Protein.Ids",
+        "Protein.Group",
+        "Genes",
+        "Protein.Names",
+        intensity_col,
+    ]
+
+    if max_precursor_q is not None:
+        base_cols.append("Q.Value")
+    if max_protein_q is not None:
+        base_cols.append("Protein.Q.Value")
+    if max_global_precursor_q is not None:
+        base_cols.append("Global.Q.Value")
+    if aggr_col == "Precursor.Id":
+        base_cols.extend([
+            "Modified.Sequence",
+            "Stripped.Sequence",
+            "Precursor.Charge",
+        ])
+    elif aggr_col == "Modified.Sequence":
+        base_cols.append("Stripped.Sequence")
+
+    usecols = sorted(set(base_cols))
+
+    # -- Read parquet
+    data = pd.read_parquet(
+        diann_output_path, columns=usecols,
+    )
+
+    if verbose:
+        print(
+            f"Rows before decoy and proteotypicity "
+            f"filtering: {len(data):,}"
+        )
+
+    # -- Filter decoys
+    data = data[data["Decoy"] == 0].copy()
+    data.drop(columns=["Decoy"], inplace=True)
+
+    # -- Filter proteotypicity (single protein mapping)
+    proteotypic_mask = (
+        data["Protein.Ids"].str.split(";").str.len() == 1
+    )
+    data = data[proteotypic_mask].copy()
+
+    if verbose:
+        print(
+            f"Rows after decoy and proteotypicity "
+            f"filtering: {len(data):,}"
+        )
+
+    # -- Apply Q-value filters
+    if max_precursor_q is not None:
+        data = data[data["Q.Value"] <= max_precursor_q]
+    if max_protein_q is not None:
+        data = data[
+            data["Protein.Q.Value"] <= max_protein_q
+        ]
+    if max_global_precursor_q is not None:
+        data = data[
+            data["Global.Q.Value"]
+            <= max_global_precursor_q
+        ]
+
+    if len(data) == 0:
+        raise ValueError(
+            "No rows remain after Q-value filtering."
+        )
+
+    if verbose:
+        print(
+            f"Rows after Q-value filtering: {len(data):,}"
+        )
+
+    # -- Parse Run column
+    if run_parser is not None:
+        data["Run"] = data["Run"].apply(run_parser)
+
+    # -- Pivot to wide format
+    if aggr_col == "Precursor.Id":
+        X = pd.pivot(
+            data,
+            index="Run",
+            columns=aggr_col,
+            values=intensity_col,
+        )
+    else:
+        agg_data = (
+            data.groupby(
+                [aggr_col, "Protein.Ids", "Run"],
+                observed=True,
+            )[intensity_col]
+            .sum()
+            .reset_index()
+        )
+        X = pd.pivot(
+            agg_data,
+            index="Run",
+            columns=aggr_col,
+            values=intensity_col,
+        )
+
+    X = X.sort_index(axis=0).sort_index(axis=1)
+    X.columns.name = None
+    X.index.name = None
+
+    # -- Build obs
+    obs = pd.DataFrame(index=X.index)
+    obs["sample_id"] = obs.index
+    obs.index.name = None
+
+    # -- Build var metadata
+    meta_cols = [
+        aggr_col,
+        "Protein.Ids",
+        "Protein.Group",
+        "Genes",
+        "Protein.Names",
+    ]
+
+    if aggr_col == "Modified.Sequence":
+        meta_cols.append("Stripped.Sequence")
+    elif aggr_col == "Precursor.Id":
+        meta_cols.extend([
+            "Stripped.Sequence",
+            "Modified.Sequence",
+            "Precursor.Charge",
+        ])
+
+    meta = data[meta_cols].drop_duplicates(
+        subset=[aggr_col], keep="first",
+    )
+
+    var = meta.set_index(aggr_col)
+    var = var.loc[X.columns]
+    var["peptide_id"] = var.index
+    var["protein_id"] = var["Protein.Ids"]
+    var.index.name = None
+
+    del data
+    gc.collect()
+
+    # -- Build AnnData
+    adata = ad.AnnData(X=X, obs=obs, var=var)
+    adata.strings_to_categoricals()
+
+    # -- Handle zeros and NAs in .X
+    if zero_to_na:
+        mat = adata.X
+        mat[mat == 0] = np.nan
+        adata.X = mat
+
+    if fill_na is not None:
+        mat = adata.X
+        mat = np.where(np.isnan(mat), fill_na, mat)
+        adata.X = mat
+
+    check_proteodata(adata)
+    return adata
+
+
 _DIANN_VERSION_DISPATCH = {
     "1.0.0": _read_diann_v1,
+    "1.9.1": _read_diann_v1_9_1,
 }
 
 
 def diann(
     diann_output_path,
     aggr_level,
-    precursor_pval_max,
-    gene_pval_max,
-    global_precursor_pval_max,
-    show_input_stats=False,
-    run_parser=None,
-    fill_na=None,
     version="1.0.0",
+    **kwargs,
 ):
+    """Read a DIA-NN report into an :class:`~anndata.AnnData` object.
+
+    Parameters
+    ----------
+    diann_output_path : str | Path
+        Path to the DIA-NN output file. TSV for version ``"1.0.0"``;
+        parquet for version ``"1.9.1"``.
+    aggr_level : str
+        Peptide aggregation level. Accepted values (case-insensitive
+        regex match):
+
+        - ``"Precursor.Id"`` — one row per charge-modified sequence
+          pair; no intensity summing across precursors.
+        - ``"Modified.Sequence"`` — sum precursor quantities per
+          modified peptide sequence.
+        - ``"Stripped.Sequence"`` — sum precursor quantities per
+          unmodified peptide sequence.
+    version : str, optional
+        DIA-NN version string used to select the parsing handler.
+        Floor-matched against supported versions.
+    **kwargs
+        Additional keyword arguments forwarded to the version-specific
+        handler. Common options:
+
+        *v1.0.0 handler* (``_read_diann_v1``):
+
+        - ``precursor_pval_max`` *(float)* — maximum ``Q.Value``.
+        - ``gene_pval_max`` *(float)* — maximum ``Protein.Q.Value``.
+        - ``global_precursor_pval_max`` *(float)* — maximum
+          ``Global.Q.Value``.
+        - ``show_input_stats`` *(bool)* — print Q-value distributions
+          and proteotypicity fractions before and after filtering.
+        - ``run_parser`` *(callable | None)* — function applied to
+          each ``Run`` value to transform sample identifiers.
+        - ``fill_na`` *(float | int | None)* — value used to replace
+          ``NaN`` entries in the intensity matrix.
+
+        *v1.9.1 handler* (``_read_diann_v1_9_1``):
+
+        - ``max_precursor_q`` *(float | None)* — maximum ``Q.Value``.
+        - ``max_protein_q`` *(float | None)* — maximum
+          ``Protein.Q.Value``.
+        - ``max_global_precursor_q`` *(float | None)* — maximum
+          ``Global.Q.Value``.
+        - ``normalized`` *(bool)* — use ``Precursor.Normalised``
+          instead of ``Precursor.Quantity`` as the intensity column.
+        - ``run_parser`` *(callable | None)* — function applied to
+          each ``Run`` value to transform sample identifiers.
+        - ``fill_na`` *(float | int | None)* — value used to replace
+          ``NaN`` entries in the intensity matrix.
+        - ``zero_to_na`` *(bool)* — replace zeros with ``np.nan``
+          before returning. Mutually exclusive with ``fill_na``.
+        - ``verbose`` *(bool)* — print row counts at each filtering
+          step.
+
+    Returns
+    -------
+    ad.AnnData
+        AnnData with shape ``(n_samples, n_peptides)``. Observations
+        (``.obs``) contain ``sample_id``; variables (``.var``) contain
+        ``peptide_id``, ``protein_id``.
+
+    Raises
+    ------
+    ValueError
+        If ``version`` is below the minimum supported version.
+    ValueError
+        If ``aggr_level`` does not match any recognised pattern.
+    ValueError
+        If required columns are absent from the input file (v1.0.0).
+    ValueError
+        If no rows remain after Q-value and proteotypicity filtering.
+    NotImplementedError
+        If a protein-level ``aggr_level`` is requested for
+        DIA-NN >= 1.9.1.
+
+    Examples
+    --------
+    Read a DIA-NN v1.0.0 TSV report at stripped-sequence level:
+
+    >>> import proteopy as pr
+    >>> adata = pr.read.diann(
+    ...     "report.tsv",
+    ...     aggr_level="Stripped.Sequence",
+    ...     version="1.0.0",
+    ...     precursor_pval_max=0.01,
+    ...     gene_pval_max=0.01,
+    ...     global_precursor_pval_max=0.01,
+    ... )
+
+    Read a DIA-NN v1.9.1 parquet report at precursor level with a
+    custom run-name parser:
+
+    >>> import proteopy as pr
+    >>> adata = pr.read.diann(
+    ...     "report.parquet",
+    ...     aggr_level="Precursor.Id",
+    ...     version="1.9.1",
+    ...     max_precursor_q=0.01,
+    ...     run_parser=lambda s: s.split("/")[-1].split(".")[0],
+    ...     verbose=True,
+    ... )
+    """
     handler = _resolve_version_handler(
         version, _DIANN_VERSION_DISPATCH
     )
     return handler(
         diann_output_path=diann_output_path,
         aggr_level=aggr_level,
-        precursor_pval_max=precursor_pval_max,
-        gene_pval_max=gene_pval_max,
-        global_precursor_pval_max=global_precursor_pval_max,
-        show_input_stats=show_input_stats,
-        run_parser=run_parser,
-        fill_na=fill_na,
+        **kwargs,
     )

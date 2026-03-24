@@ -8,5 +8,5 @@ workflows.
    :maxdepth: 1
 
    The proteodata format <proteodata_basics>
-   proteoform-inference_bludau-2021_reproduction
    karayel-2020_proteome-remodeling-during-human-erythropoiesis
+   bludau-2021_tissue-specific-proteoform-inference-across-five-mouse-organs

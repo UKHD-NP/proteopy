@@ -7,8 +7,8 @@ author = (
     "Ian Dirk Fichtner, Isabell Bludau, "
     "BludauLab Neuropathology Heidelberg"
     )
-version = "0.1.0"
-release = "0.1.0"
+version = "0.1.1"
+release = "0.1.1"
 
 
 # -- Path setup --------------------------------------------------------------

@@ -7,9 +7,38 @@ and this project adheres to
 
 ## [Unreleased]
 
+## [0.1.1] - 2025-03-24
+
 ### Added
 
-- **Tutorials**: Protein-level analysis notebook
+- **Preprocessing** (`pr.pp`): `summarize_modifications()` for
+  modification summarization
+- **Analysis** (`pr.tl`): ANOVA support in `differential_abundance()`
+- **Visualization** (`pr.pl`): `binary_heatmap()`, `box()`,
+  `volcano()`, `peptides_on_sequence()`,
+  `peptides_on_prot_sequence()`; `print_stats` parameter across
+  multiple plot functions
+- **Datasets** (`pr.datasets`): `williams_2018()` and
+  `karayel_2020()` download functions
+- **Utilities** (`pr.utils`): Public API with `is_proteodata()`,
+  `check_proteodata()`, `is_log_transformed()`
+- **Documentation**: Sphinx documentation site; proteoform inference
+  and protein-level analysis tutorials
+
+### Changed
+
+- **Reader** (`pr.read`): `diann()` now supports version >=1.9.1
+  with automatic version dispatch
+- **Preprocessing** (`pr.pp`): `impute_downshift()` now supports
+  `group_by`; `normalize_median()` gains `method` parameter;
+  `remove_contaminants()` defaults to `inplace=True`
+- **Validation**: `is_proteodata()` now checks for NaN in ID
+  columns, infinite values in `.X`/layers, and obs/var index sync
+
+### Fixed
+
+- `volcano_plot` type incompatibility and label display
+- `n_cat1_per_cat2_hist` minimum bin width
 
 ## [0.1.0] - 2025-01-29
 

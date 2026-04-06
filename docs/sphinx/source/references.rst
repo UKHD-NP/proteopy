@@ -12,10 +12,13 @@ If you use ProteoPy in your research, please cite:
 .. code-block:: bibtex
 
     @article{fichtner2026proteopy,
-        title={ProteoPy: an AnnData-based framework for integrated proteomics analysis},
-        author={Fichtner, Ian Dirk and Sahm, Felix and Gerstung, Moritz and Bludau, Isabell},
-        journal={UNPUBLISHED},
-        year={2026}
+        title={{ProteoPy}: an {AnnData}-based framework for integrated proteomics analysis},
+        author={Fichtner, Ian Dirk and Temesvari-Nagy, Levente and Sahm, Felix and Gerstung, Moritz and Bludau, Isabell},
+        journal={bioRxiv},
+        year={2026},
+        doi={10.64898/2026.03.31.715273},
+        url={https://www.biorxiv.org/content/10.64898/2026.03.31.715273v1},
+        note={Preprint}
     }
 
 COPF algorithm

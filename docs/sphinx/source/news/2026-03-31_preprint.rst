@@ -1,0 +1,18 @@
+.. grid-item-card:: ProteoPy preprint on bioRxiv
+    :margin: 0 0 2 0
+
+    *1 April 2026*
+
+    We are excited to announce that the ProteoPy manuscript is now available
+    as a preprint on bioRxiv:
+
+        Fichtner ID, Temesvari-Nagy L, Sahm F, Gerstung M, Bludau I.
+        **ProteoPy: an AnnData-based framework for integrated proteomics
+        analysis.** *bioRxiv* (2026).
+        `doi:10.64898/2026.03.31.715273
+        <https://doi.org/10.64898/2026.03.31.715273>`_
+
+    To be notified of new revisions, visit the
+    `bioRxiv article page
+    <https://www.biorxiv.org/content/10.64898/2026.03.31.715273v1>`_ and
+    click the *Follow this preprint* button to subscribe to updates.

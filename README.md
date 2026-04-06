@@ -165,15 +165,19 @@ sc.pl.pca(adata, color="cell_type")
 
 If you use ProteoPy in your research, please cite:
 
-> Fichtner ID, Sahm F, Gerstung M, Bludau I. ProteoPy: an AnnData-based
-> framework for integrated proteomics analysis. *UNPUBLISHED* (2025).
+> Fichtner ID, Temesvari-Nagy L, Sahm F, Gerstung M, Bludau I. ProteoPy: an
+> AnnData-based framework for integrated proteomics analysis. *bioRxiv*
+> (2026). [doi:10.64898/2026.03.31.715273](https://doi.org/10.64898/2026.03.31.715273)
 
 ```bibtex
-@article{fichtner2025proteopy,
-  title={ProteoPy: an AnnData-based framework for integrated proteomics analysis},
-  author={Fichtner, Ian Dirk and Sahm, Felix and Gerstung, Moritz and Bludau, Isabell},
-  journal={UNPUBLISHED},
-  year={2025}
+@article{fichtner2026proteopy,
+  title={{ProteoPy}: an {AnnData}-based framework for integrated proteomics analysis},
+  author={Fichtner, Ian Dirk and Temesvari-Nagy, Levente and Sahm, Felix and Gerstung, Moritz and Bludau, Isabell},
+  journal={bioRxiv},
+  year={2026},
+  doi={10.64898/2026.03.31.715273},
+  url={https://www.biorxiv.org/content/10.64898/2026.03.31.715273v1},
+  note={Preprint}
 }
 ```
 

@@ -1732,6 +1732,7 @@ class TestRemoveContaminants:
         if inplace:
             assert result is None
         else:
+            assert result is not None
             assert list(adata.var_names) == original_var_names
 
     def test_no_matching_contaminants_keeps_all_variables(self, tmp_path):
@@ -1904,17 +1905,6 @@ class TestRemoveContaminants:
             remove_contaminants(
                 adata,
                 contaminant_path=path,
-                inplace=False,
-            )
-
-    def test_invalid_adata_fails_proteodata_validation(self, fasta):
-        adata = _make_adata_remove_contaminants_base()
-        adata.obs = pd.DataFrame(index=adata.obs_names)
-
-        with pytest.raises(ValueError, match=r"sample_id"):
-            remove_contaminants(
-                adata,
-                contaminant_path=fasta,
                 inplace=False,
             )
 

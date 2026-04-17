@@ -8,8 +8,8 @@ from proteopy.pp.filtering import (
     filter_axis,
     filter_proteins_by_peptide_count,
     remove_zero_variance_vars,
-    remove_contaminants
-    )
+    remove_contaminants,
+)
 
 
 def _make_adata_filter_obs_base() -> AnnData:
@@ -46,7 +46,7 @@ def _make_adata_filter_obs_groupby_singletons() -> AnnData:
     )
     obs_names = [f"obs{i}" for i in range(3)]
     var_names = [f"protein_{i}" for i in range(2)]
-    obs = pd.DataFrame({"sample_id": obs_names},index=obs_names)
+    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
     var = pd.DataFrame(
         {
             "protein_id": var_names,
@@ -65,8 +65,8 @@ def _make_adata_filter_obs_groupby() -> AnnData:
             [1, 1, 2, 2, 3],         # obs0: both groups complete
             [1, n, 2, 2, 3],         # obs1: group 0 -> 1/2 complete
             [1, 1, 2, 2, n],         # obs2: group 1 -> 2/3 incomplete
-            [1, n, 2, 2, n],         # obs3: group 0 -> 1/2 complete, group 1 -> 2/3 complete
-            [1, n, 2, n, n],         # obs4: group 0 -> 1/2 complete, group 1 -> 1/3 complete
+            [1, n, 2, 2, n],         # obs3: g0 1/2, g1 2/3
+            [1, n, 2, n, n],         # obs4: g0 1/2, g1 1/3
         ],
         dtype=float,
     )
@@ -94,24 +94,30 @@ def _make_adata_filter_obs_groupby_na() -> AnnData:
             [1, 1, 2, 2, 3, 4, 4, 4, 4],  # obs0: all groups complete
             [1, n, 2, 2, 3, 4, 4, 4, 4],  # obs1: group 0 -> 1/2 complete
             [1, 1, 2, 2, n, 4, 4, 4, 4],  # obs2: group 1 -> 2/3 incomplete
-            [1, n, 2, 2, n, 4, 4, 4, 4],  # obs3: group 0 -> 1/2 complete, group 1 -> 2/3 complete
-            [1, n, 2, n, n, 4, 4, 4, 4],  # obs4: group 0 -> 1/2 complete, group 1 -> 1/3 complete
+            [1, n, 2, 2, n, 4, 4, 4, 4],  # obs3
+            [1, n, 2, n, n, 4, 4, 4, 4],  # obs4
         ],
         dtype=float,
     )
     obs_names = [f"obs{i}" for i in range(5)]
     var_names = [f"protein_{i}" for i in range(9)]
     obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
-    var = pd.DataFrame({
+    var = pd.DataFrame(
+        {
             "protein_id": var_names,
-            "group": ["g1", "g1", "g2", "g2", "g2", np.nan, np.nan, np.nan, np.nan],
-        }, index=var_names,
+            "group": [
+                "g1", "g1", "g2", "g2", "g2",
+                np.nan, np.nan, np.nan, np.nan,
+            ],
+        },
+        index=var_names,
     )
     return AnnData(X=X, obs=obs, var=var)
 
 
 def _make_adata_filter_var_base() -> AnnData:
-    """Five obs, six vars with increasing missingness across vars; some zeros."""
+    """Five obs, six vars with increasing missingness
+    across vars; some zeros."""
     n = np.nan
     X = np.array(
         [
@@ -141,12 +147,17 @@ def _make_adata_filter_var_groupby_singletons() -> AnnData:
         dtype=float,
     )
     obs_names = [f"obs{i}" for i in range(2)]
-    obs = pd.DataFrame({"sample_id": obs_names, "group": ["g1", "g2"]}, index=obs_names)
+    obs = pd.DataFrame(
+        {"sample_id": obs_names, "group": ["g1", "g2"]},
+        index=obs_names,
+    )
     var_names = [f"protein_{i}" for i in range(3)]
-    var = pd.DataFrame({
+    var = pd.DataFrame(
+        {
             "protein_id": var_names,
             "group": ["g1", "g2", "g2"],
-        }, index=var_names,
+        },
+        index=var_names,
     )
     return AnnData(X=X, obs=obs, var=var)
 
@@ -165,10 +176,12 @@ def _make_adata_filter_var_groupby() -> AnnData:
         dtype=float,
     )
     obs_names = [f"obs{i}" for i in range(5)]
-    obs = pd.DataFrame({
-        "sample_id": obs_names,
-        "group": ["g1", "g1", "g2", "g2", "g2"],
-        }, index=obs_names,
+    obs = pd.DataFrame(
+        {
+            "sample_id": obs_names,
+            "group": ["g1", "g1", "g2", "g2", "g2"],
+        },
+        index=obs_names,
     )
     var_names = [f"protein_{i}" for i in range(5)]
     var = pd.DataFrame({"protein_id": var_names}, index=var_names)
@@ -199,15 +212,22 @@ def _make_adata_filter_var_groupby_na() -> AnnData:
     obs = pd.DataFrame(
         {
             "sample_id": obs_names,
-            "group": ["g1", "g1", "g2", "g2", "g2", np.nan, np.nan, np.nan, np.nan],
+            "group": [
+                "g1", "g1", "g2", "g2", "g2",
+                np.nan, np.nan, np.nan, np.nan,
+            ],
         },
         index=obs_names,
     )
     var_names = [f"protein_{i}" for i in range(5)]
-    var = pd.DataFrame({
+    var = pd.DataFrame(
+        {
             "protein_id": var_names,
-            "group": ["g1", "g1", "g2", "g2", np.nan],
-        }, index=var_names,
+            "group": [
+                "g1", "g1", "g2", "g2", np.nan,
+            ],
+        },
+        index=var_names,
     )
     return AnnData(X=X, obs=obs, var=var)
 
@@ -531,23 +551,6 @@ def _make_adata_rzv_peptide_level() -> AnnData:
     return AnnData(X=X, obs=obs, var=var)
 
 
-def _make_adata_rzv_float32() -> AnnData:
-    """3 obs × 3 vars, float32 dtype.  p1 constant.
-
-    Expected kept: [p0, p2].
-    """
-    X = np.array(
-        [[1.0, 5.0, 10.0],
-         [2.0, 5.0, 20.0],
-         [3.0, 5.0, 30.0]],
-        dtype=np.float32,
-    )
-    obs_names = ["s0", "s1", "s2"]
-    var_names = ["p0", "p1", "p2"]
-    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
-    var = pd.DataFrame({"protein_id": var_names}, index=var_names)
-    return AnnData(X=X, obs=obs, var=var)
-
 def _make_adata_remove_contaminants_base() -> AnnData:
     """5 obs, 5 vars"""
     X = np.array(
@@ -597,6 +600,7 @@ def _make_adata_remove_contaminants_peptide_level() -> AnnData:
         index=var_names,
     )
     return AnnData(X=X, obs=obs, var=var)
+
 
 def test_filter_axis_obs_min_fraction():
     adata = _make_adata_filter_obs_base()
@@ -762,6 +766,7 @@ def test_filter_axis_obs_groupby_singletons():
         assert returned is None
         assert list(adata_inplace.obs_names) == expected
 
+
 def test_filter_axis_obs_groupby_multiple():
     adata = _make_adata_filter_obs_groupby()
 
@@ -869,6 +874,7 @@ def test_filter_axis_obs_groupby_with_nan_group():
         assert returned is None
         assert list(adata_inplace.obs_names) == expected
 
+
 def test_filter_axis_var_min_fraction():
     adata = _make_adata_filter_var_base()
 
@@ -929,7 +935,10 @@ def test_filter_axis_var_min_fraction_and_min_count():
     adata = _make_adata_filter_var_base()
 
     cases = {
-        (0.4, 3): ["protein_0", "protein_1", "protein_2", "protein_4", "protein_5"],
+        (0.4, 3): [
+            "protein_0", "protein_1", "protein_2",
+            "protein_4", "protein_5",
+        ],
         (1.0, 5): ["protein_0", "protein_4"],
         (0.0, 0): list(adata.var_names),
     }
@@ -976,7 +985,9 @@ def test_filter_axis_var_zero_to_na():
         inplace=True,
     )
     assert returned is None
-    assert list(adata_inplace.var_names) == ["protein_0", "protein_1", "protein_4"]
+    assert list(adata_inplace.var_names) == [
+        "protein_0", "protein_1", "protein_4",
+    ]
 
 
 def test_filter_axis_var_groupby_singletons():
@@ -1215,11 +1226,11 @@ def test_filter_proteins_by_peptide_count_max():
 
 def test_filter_proteins_by_peptide_count_min_and_max():
     io = {
-        (2,2): ["pep1", "pep2"],
-        (2,3): ["pep1", "pep2", "pep3", "pep4", "pep5"],
+        (2, 2): ["pep1", "pep2"],
+        (2, 3): ["pep1", "pep2", "pep3", "pep4", "pep5"],
     }
 
-    for (min_count,max_count), expected in io.items():
+    for (min_count, max_count), expected in io.items():
         adata = _make_peptide_adata()
         filtered = filter_proteins_by_peptide_count(
             adata,
@@ -1266,6 +1277,7 @@ def test_filter_proteins_by_peptide_count_requires_peptide_level():
     with pytest.raises(ValueError):
         filter_proteins_by_peptide_count(adata, min_count=1)
 
+
 class TestRemoveZeroVarianceVars:
     """Tests for ``remove_zero_variance_vars``."""
 
@@ -1280,6 +1292,7 @@ class TestRemoveZeroVarianceVars:
         if inplace:
             assert result is None
         else:
+            assert result is not None
             assert list(original.var_names) == ["p0", "p1", "p2", "p3", "p4"]
         assert list(target.var_names) == ["p0", "p1", "p2"]
         assert target.n_obs == original.n_obs
@@ -1293,6 +1306,10 @@ class TestRemoveZeroVarianceVars:
         ):
             result = remove_zero_variance_vars(adata, inplace=inplace)
         target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
         assert list(target.var_names) == ["p0", "p1"]
 
     @pytest.mark.parametrize("inplace", [True, False])
@@ -1300,7 +1317,12 @@ class TestRemoveZeroVarianceVars:
         adata = _make_adata_rzv_all_constant()
         result = remove_zero_variance_vars(adata, inplace=inplace)
         target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
         assert list(target.var_names) == []
+        assert target.var.empty
         assert target.n_obs == 6
 
     @pytest.mark.parametrize("inplace", [True, False])
@@ -1308,6 +1330,10 @@ class TestRemoveZeroVarianceVars:
         adata = _make_adata_rzv_all_vary()
         result = remove_zero_variance_vars(adata, inplace=inplace)
         target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
         assert list(target.var_names) == ["p0", "p1", "p2"]
 
     @pytest.mark.parametrize("inplace", [True, False])
@@ -1315,6 +1341,10 @@ class TestRemoveZeroVarianceVars:
         adata = _make_adata_rzv_single_var_varies()
         result = remove_zero_variance_vars(adata, inplace=inplace)
         target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
         assert list(target.var_names) == ["p0"]
 
     @pytest.mark.parametrize("inplace", [True, False])
@@ -1322,7 +1352,59 @@ class TestRemoveZeroVarianceVars:
         adata = _make_adata_rzv_single_var_constant()
         result = remove_zero_variance_vars(adata, inplace=inplace)
         target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
         assert list(target.var_names) == []
+        assert target.var.empty
+
+    @pytest.mark.parametrize("inplace", [True, False])
+    def test_single_observation_removes_all(self, inplace):
+        # 1 obs × 3 vars: variance is always 0 with ddof=0 for a single row
+        X = np.array([[1.0, 2.0, 3.0]])
+        obs = pd.DataFrame({"sample_id": ["s0"]}, index=["s0"])
+        var = pd.DataFrame(
+            {"protein_id": ["p0", "p1", "p2"]},
+            index=["p0", "p1", "p2"],
+        )
+        adata = AnnData(X=X, obs=obs, var=var)
+        result = remove_zero_variance_vars(adata, inplace=inplace)
+        target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
+        assert list(target.var_names) == []
+        assert target.var.empty
+
+    def test_mixed_nan_and_zero_variance_both_removed(self):
+        # p0: varies; p1: all-NaN; p2: constant (var=0); p3: varies
+        n = np.nan
+        X = np.array(
+            [
+                [1.0, n, 5.0, 10.0],
+                [2.0, n, 5.0, 20.0],
+                [3.0, n, 5.0, 30.0],
+                [4.0, n, 5.0, 40.0],
+            ],
+        )
+        obs = pd.DataFrame(
+            {"sample_id": ["s0", "s1", "s2", "s3"]},
+            index=["s0", "s1", "s2", "s3"],
+        )
+        var = pd.DataFrame(
+            {"protein_id": ["p0", "p1", "p2", "p3"]},
+            index=["p0", "p1", "p2", "p3"],
+        )
+        adata = AnnData(X=X, obs=obs, var=var)
+        with pytest.warns(
+            UserWarning,
+            match=r"1 variable\(s\) contained only NaN values",
+        ):
+            filtered = remove_zero_variance_vars(adata, inplace=False)
+        assert filtered is not None
+        assert list(filtered.var_names) == ["p0", "p3"]
 
     def test_multiple_all_nan_columns_warning_count(self):
         adata = _make_adata_rzv_multiple_allnan()
@@ -1337,24 +1419,35 @@ class TestRemoveZeroVarianceVars:
 
     def test_atol_boundary_equal_variance_removed(self):
         adata = _make_adata_rzv_atol_boundary()
+        # p0: var=1.0 (== atol) → removed
+        # p1: var=1.0 (== atol) → removed
+        # p2: var=6.25 (> atol) → kept
         filtered = remove_zero_variance_vars(
             adata, atol=1.0, inplace=False,
         )
+        assert filtered is not None
         assert list(filtered.var_names) == ["p2"]
 
     def test_atol_zero_keeps_tiny_variance(self):
         adata = _make_adata_rzv_atol_zero()
+        # p0: var=0.0 (== atol) → removed
+        # p1: var≈3.3e-17 (> atol) → kept
+        # p2: var≈0.667 (> atol) → kept
         filtered = remove_zero_variance_vars(
             adata, atol=0.0, inplace=False,
         )
+        assert filtered is not None
         assert list(filtered.var_names) == ["p1", "p2"]
 
     def test_large_atol_removes_everything(self):
         adata = _make_adata_rzv_all_vary()
+        # all vars have variance < 1e10 → all removed
         filtered = remove_zero_variance_vars(
             adata, atol=1e10, inplace=False,
         )
+        assert filtered is not None
         assert list(filtered.var_names) == []
+        assert filtered.var.empty
 
     def test_negative_atol_raises(self):
         adata = _make_adata_rzv_base()
@@ -1372,11 +1465,16 @@ class TestRemoveZeroVarianceVars:
             adata, group_by="group", inplace=inplace,
         )
         target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
         assert list(target.var_names) == ["p0"]
 
     @pytest.mark.parametrize("inplace", [True, False])
     def test_groupby_singleton_groups_removes_all(self, inplace):
         adata = _make_adata_rzv_groupby_singletons()
+        # each group has 1 obs → var=0 for all vars in every group
         with pytest.warns(
             UserWarning,
             match=r"at least one group",
@@ -1385,7 +1483,12 @@ class TestRemoveZeroVarianceVars:
                 adata, group_by="group", inplace=inplace,
             )
         target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
         assert list(target.var_names) == []
+        assert target.var.empty
 
     def test_groupby_all_nan_in_one_group_warns(self):
         adata = _make_adata_rzv_groupby_allnan_one_group()
@@ -1539,14 +1642,7 @@ class TestRemoveZeroVarianceVars:
             original_X[:, kept_idx],
         )
 
-    # ── G. Data type variants ──────────────────────────────────────
-
-    def test_float32_matrix(self):
-        adata = _make_adata_rzv_float32()
-        filtered = remove_zero_variance_vars(adata, inplace=False)
-        assert list(filtered.var_names) == ["p0", "p2"]
-
-    # ── H. Peptide-level data ──────────────────────────────────────
+    # ── G. Peptide-level data ─────────────────────────────────────
 
     @pytest.mark.parametrize("inplace", [True, False])
     def test_peptide_level_data_basic(self, inplace):
@@ -1556,6 +1652,10 @@ class TestRemoveZeroVarianceVars:
                 adata, inplace=inplace,
             )
         target = adata if inplace else result
+        if inplace:
+            assert result is None
+        else:
+            assert result is not None
         assert list(target.var_names) == ["pep0", "pep2"]
         assert "peptide_id" in target.var.columns
         assert "protein_id" in target.var.columns
@@ -1563,20 +1663,28 @@ class TestRemoveZeroVarianceVars:
     def test_peptide_level_data_with_groupby(self):
         adata = _make_adata_rzv_peptide_level()
         adata.obs["group"] = ["A", "A", "B", "B"]
+        # pep0: varies in both groups → kept
+        # pep1: constant in both groups (var=0) → removed
+        # pep2: varies in both groups → kept
+        # pep3: all-NaN in both groups → removed (warning)
         with pytest.warns(UserWarning, match=r"at least one group"):
             filtered = remove_zero_variance_vars(
                 adata, group_by="group", inplace=False,
             )
+        assert filtered is not None
+        assert list(filtered.var_names) == ["pep0", "pep2"]
         assert "peptide_id" in filtered.var.columns
         assert "protein_id" in filtered.var.columns
+
+
 class TestRemoveContaminants:
     @pytest.fixture
     def fasta(self, tmp_path):
         fasta_content = (
-        ">sp|protein_1\n"
-        "AAAA\n"
-        ">sp|protein_2\n"
-        "CCCC\n"
+            ">sp|protein_1\n"
+            "AAAA\n"
+            ">sp|protein_2\n"
+            "CCCC\n"
         )
         fasta_path = tmp_path / "test.fasta"
         fasta_path.write_text(fasta_content)
@@ -1650,7 +1758,9 @@ class TestRemoveContaminants:
             contaminant_path=csv_file,
             inplace=False,
         )
-        assert list(filtered.var_names) == ["protein_0", "protein_1", "protein_3"]
+        assert list(filtered.var_names) == [
+            "protein_0", "protein_1", "protein_3",
+        ]
 
     def test_tsv_filters_using_first_column(self, tsv_file):
         adata = _make_adata_remove_contaminants_base()
@@ -1659,21 +1769,33 @@ class TestRemoveContaminants:
             contaminant_path=tsv_file,
             inplace=False,
         )
-        assert list(filtered.var_names) == ["protein_1", "protein_2", "protein_4"]
-
-    def test_custom_protein_key_column(self, fasta):
-        adata = _make_adata_remove_contaminants_base()
-        adata.var["uniprot_id"] = [
-            "u0", "protein_1", "protein_2", "u3", "u4",
+        assert list(filtered.var_names) == [
+            "protein_1", "protein_2", "protein_4",
         ]
+
+    def test_custom_protein_key_column(self, tmp_path):
+        adata = _make_adata_remove_contaminants_base()
+        # uniprot_ids deliberately don't overlap with var_names and are
+        # in a different order to confirm filtering uses protein_key,
+        # not var_names or var.index
+        adata.var["uniprot_id"] = [
+            "Q99714", "P12345", "P67890", "O75822", "Q9Y6K9",
+        ]
+        fasta_path = tmp_path / "custom_key.fasta"
+        fasta_path.write_text(
+            ">sp|P12345\nAAAA\n"
+            ">sp|P67890\nCCCC\n",
+        )
 
         filtered = remove_contaminants(
             adata,
-            contaminant_path=fasta,
+            contaminant_path=fasta_path,
             protein_key="uniprot_id",
             inplace=False,
         )
-        assert list(filtered.var_names) == ["protein_0", "protein_3", "protein_4"]
+        assert list(filtered.var_names) == [
+            "protein_0", "protein_3", "protein_4",
+        ]
 
     def test_custom_header_parser_is_used(self, tmp_path):
         fasta_path = tmp_path / "custom_header.fasta"
@@ -1689,7 +1811,9 @@ class TestRemoveContaminants:
             header_parser=lambda h: h.split("__")[1],
             inplace=False,
         )
-        assert list(filtered.var_names) == ["protein_1", "protein_2", "protein_3"]
+        assert list(filtered.var_names) == [
+            "protein_1", "protein_2", "protein_3",
+        ]
 
     def test_header_parser_empty_id_warns_and_skips(self, tmp_path):
         fasta_path = tmp_path / "empty_id.fasta"
@@ -1747,7 +1871,10 @@ class TestRemoveContaminants:
         adata = _make_adata_remove_contaminants_base()
         missing_path = tmp_path / "does_not_exist.fasta"
 
-        with pytest.raises(FileNotFoundError, match=r"Contaminant file not found"):
+        with pytest.raises(
+            FileNotFoundError,
+            match=r"Contaminant file not found",
+        ):
             remove_contaminants(
                 adata,
                 contaminant_path=missing_path,
@@ -1770,7 +1897,10 @@ class TestRemoveContaminants:
         path.write_text("protein_1\n")
         adata = _make_adata_remove_contaminants_base()
 
-        with pytest.raises(ValueError, match=r"Unsupported contaminant file type"):
+        with pytest.raises(
+            ValueError,
+            match=r"Unsupported contaminant file type",
+        ):
             remove_contaminants(
                 adata,
                 contaminant_path=path,

@@ -94,6 +94,7 @@ jobs:
             tests/download/__init__.py \
             tests/download/test_karayel_2020.py \
             tests/download/test_williams_2018.py \
+            tests/read/test_long.py \
             tests/utils/test_anndata.py \
             tests/utils/test_parsers.py \
             --statistics \

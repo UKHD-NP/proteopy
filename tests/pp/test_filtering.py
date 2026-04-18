@@ -370,24 +370,6 @@ def _make_adata_rzv_multiple_allnan() -> AnnData:
     return AnnData(X=X, obs=obs, var=var)
 
 
-def _make_adata_rzv_atol_boundary() -> AnnData:
-    """2 obs × 3 vars.  var(p0)=1.0, var(p1)=1.0, var(p2)=6.25.
-
-    With atol=1.0: p0 and p1 removed (<=), p2 kept.
-    """
-    X = np.array(
-        [
-            [1.0, 0.0, 0.0],
-            [-1.0, 2.0, 5.0],
-        ],
-    )
-    obs_names = ["s0", "s1"]
-    var_names = ["p0", "p1", "p2"]
-    obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
-    var = pd.DataFrame({"protein_id": var_names}, index=var_names)
-    return AnnData(X=X, obs=obs, var=var)
-
-
 def _make_adata_rzv_atol_zero() -> AnnData:
     """3 obs × 3 vars.  p0 constant (var=0), p1 tiny variance (~1e-16),
     p2 clear variance.
@@ -1418,13 +1400,20 @@ class TestRemoveZeroVarianceVars:
     # ── B. atol boundary behavior ───────────────────────────────────
 
     def test_atol_boundary_equal_variance_removed(self):
-        adata = _make_adata_rzv_atol_boundary()
-        # p0: var=1.0 (== atol) → removed
-        # p1: var=1.0 (== atol) → removed
-        # p2: var=6.25 (> atol) → kept
-        filtered = remove_zero_variance_vars(
-            adata, atol=1.0, inplace=False,
+        # p0: var=0.25 (< atol=1.0) → removed
+        # p1: var=1.0  (== atol=1.0) → removed
+        # p2: var=6.25 (> atol=1.0) → kept
+        X = np.array(
+            [
+                [0.5, 1.0, 0.0],
+                [-0.5, -1.0, 5.0],
+            ],
         )
+        obs = pd.DataFrame({"sample_id": ["s0", "s1"]}, index=["s0", "s1"])
+        var = pd.DataFrame({"protein_id": ["p0", "p1", "p2"]}, index=["p0", "p1", "p2"])
+        adata = AnnData(X=X, obs=obs, var=var)
+
+        filtered = remove_zero_variance_vars(adata, atol=1.0, inplace=False)
         assert filtered is not None
         assert list(filtered.var_names) == ["p2"]
 

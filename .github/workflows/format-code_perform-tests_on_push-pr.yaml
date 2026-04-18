@@ -83,6 +83,7 @@ jobs:
             proteopy/utils/anndata.py \
             proteopy/utils/stat_tests.py \
             tests/__init__.py \
+            tests/pp/test_filtering.py \
             tests/pp/test_quantification.py \
             tests/read/__init__.py \
             tests/tl/__init__.py \

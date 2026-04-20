@@ -56,7 +56,7 @@ dev = [
     "pre-commit",
     "myst_parser",
     "nbsphinx",
-
+    "openpyxl",
     "pylint",
     "pytest",
     "sphinx-autobuild",

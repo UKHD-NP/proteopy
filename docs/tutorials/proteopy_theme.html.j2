@@ -1,0 +1,44 @@
+{%- extends 'lab/index.html.j2' -%}
+
+{%- block html_head_css -%}
+<style>
+  /* Mirror .vscode/settings.json syntax colors for Pygments output */
+
+  /* Base text */
+  .highlight { color: #002E3B; }
+
+  /* Strings (all subtypes) */
+  .highlight .s,  .highlight .sa, .highlight .sb, .highlight .sc,
+  .highlight .dl, .highlight .sd, .highlight .s2, .highlight .sh,
+  .highlight .s1, .highlight .sx, .highlight .sr, .highlight .ss { color: #145BC7; font-style: normal; }
+  /* String escape sequences (\t, \n …) */
+  .highlight .se { color: #145BC7; font-weight: normal; }
+  /* String interpolation */
+  .highlight .si { color: #145BC7; font-weight: normal; font-style: normal; }
+
+  /* Numbers */
+  .highlight .m,  .highlight .mb, .highlight .mf, .highlight .mh,
+  .highlight .mi, .highlight .mo, .highlight .il { color: #098094; }
+
+  /* Keyword constants: True, False, None */
+  .highlight .kc { color: #098094; font-weight: bold; }
+  /* Keyword namespace: import, from, as */
+  .highlight .kn { color: #098094; font-weight: bold; }
+  /* Other keywords: def, return, if, for … */
+  .highlight .k, .highlight .kd, .highlight .kr, .highlight .kp { color: #098094; font-weight: bold; }
+
+  /* Builtin types/names: int, bool, str, float, list, … */
+  .highlight .nb { color: #098094; }
+
+  /* Operators */
+  .highlight .o  { color: #194A69; font-weight: normal; }
+  /* Operator words: and, or, not, in, is */
+  .highlight .ow { color: #194A69; font-weight: normal; }
+
+  /* Punctuation: parens, brackets, braces, commas, dots */
+  .highlight .p { color: #276585; }
+
+  /* Names: variables, keyword-argument names */
+  .highlight .n,  .highlight .na { color: #002E3B; }
+</style>
+{%- endblock html_head_css -%}

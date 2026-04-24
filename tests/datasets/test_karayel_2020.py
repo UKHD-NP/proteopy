@@ -116,12 +116,6 @@ class TestKarayel2020:
         )
         assert h == _EXPECTED_VAR_NAMES_HASH
 
-
-# -- fill_na tests ---------------------------------------------------
-
-class TestKarayel2020FillNa:
-    """Verify fill_na parameter behaviour."""
-
     def test_fill_na_zero_removes_nan(self):
         result = karayel_2020(fill_na=0)
         assert not np.isnan(result.X).any()

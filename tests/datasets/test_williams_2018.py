@@ -116,12 +116,6 @@ class TestWilliams2018:
         )
         assert h == _EXPECTED_VAR_NAMES_HASH
 
-
-# -- fill_na tests ---------------------------------------------------
-
-class TestWilliams2018FillNa:
-    """Verify fill_na parameter behaviour."""
-
     def test_fill_na_zero_removes_nan(self):
         result = williams_2018(fill_na=0)
         assert not np.isnan(result.X).any()

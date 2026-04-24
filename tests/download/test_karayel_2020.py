@@ -51,7 +51,7 @@ def _sha256(data: bytes) -> str:
 # -- Content tests ---------------------------------------------------
 
 class TestKarayel2020Download:
-    """Verify downloaded file content and structure."""
+    """Verify downloaded file content, structure, and error handling."""
 
     @pytest.fixture(scope="class")
     def paths(self, tmp_path_factory):
@@ -111,12 +111,6 @@ class TestKarayel2020Download:
             == _EXPECTED_CELL_TYPES
         )
 
-
-# -- Separator tests -------------------------------------------------
-
-class TestKarayel2020DownloadSeparator:
-    """Verify separator auto-detection from file extension."""
-
     def test_csv_extension_uses_comma(self, tmp_path):
         p = _make_paths(tmp_path, ext=".csv")
         karayel_2020(*p)
@@ -135,12 +129,6 @@ class TestKarayel2020DownloadSeparator:
             == _EXPECTED_INTENSITIES_COLUMNS
         )
 
-
-# -- Error tests -----------------------------------------------------
-
-class TestKarayel2020DownloadErrors:
-    """Verify input validation and error handling."""
-
     def test_file_exists_error(self, tmp_path):
         p = _make_paths(tmp_path)
         karayel_2020(*p)
@@ -149,10 +137,12 @@ class TestKarayel2020DownloadErrors:
 
     def test_force_overwrites(self, tmp_path):
         p = _make_paths(tmp_path)
-        karayel_2020(*p)
+        dummy = b"dummy"
+        for path in p:
+            path.write_bytes(dummy)
         karayel_2020(*p, force=True)
         for path in p:
-            assert path.exists()
+            assert path.read_bytes() != dummy
 
     def test_overlapping_paths_raises(self, tmp_path):
         same = tmp_path / "same.tsv"
@@ -189,3 +179,15 @@ class TestKarayel2020DownloadErrors:
             TypeError, match="force must be bool",
         ):
             karayel_2020(*p, force=1)
+
+    def test_fill_na_zero_removes_nan(self, tmp_path):
+        p = _make_paths(tmp_path)
+        karayel_2020(*p, fill_na=0)
+        df = pd.read_csv(p[0], sep="\t")
+        assert not df["intensity"].isna().any()
+
+    def test_default_intensities_contain_nan(self, tmp_path):
+        p = _make_paths(tmp_path)
+        karayel_2020(*p)
+        df = pd.read_csv(p[0], sep="\t")
+        assert df["intensity"].isna().any()

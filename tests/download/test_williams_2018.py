@@ -53,7 +53,7 @@ def _sha256(data: bytes) -> str:
 # -- Content tests ---------------------------------------------------
 
 class TestWilliams2018Download:
-    """Verify downloaded file content and structure."""
+    """Verify downloaded file content, structure, and error handling."""
 
     @pytest.fixture(scope="class")
     def paths(self, tmp_path_factory):
@@ -113,12 +113,6 @@ class TestWilliams2018Download:
             == _EXPECTED_TISSUES
         )
 
-
-# -- Separator tests -------------------------------------------------
-
-class TestWilliams2018DownloadSeparator:
-    """Verify separator auto-detection from file extension."""
-
     def test_csv_extension_uses_comma(self, tmp_path):
         p = _make_paths(tmp_path, ext=".csv")
         williams_2018(*p)
@@ -137,12 +131,6 @@ class TestWilliams2018DownloadSeparator:
             == _EXPECTED_INTENSITIES_COLUMNS
         )
 
-
-# -- Error tests -----------------------------------------------------
-
-class TestWilliams2018DownloadErrors:
-    """Verify input validation and error handling."""
-
     def test_file_exists_error(self, tmp_path):
         p = _make_paths(tmp_path)
         williams_2018(*p)
@@ -151,10 +139,12 @@ class TestWilliams2018DownloadErrors:
 
     def test_force_overwrites(self, tmp_path):
         p = _make_paths(tmp_path)
-        williams_2018(*p)
+        dummy = b"dummy"
+        for path in p:
+            path.write_bytes(dummy)
         williams_2018(*p, force=True)
         for path in p:
-            assert path.exists()
+            assert path.read_bytes() != dummy
 
     def test_overlapping_paths_raises(self, tmp_path):
         same = tmp_path / "same.tsv"
@@ -191,3 +181,15 @@ class TestWilliams2018DownloadErrors:
             TypeError, match="force must be bool",
         ):
             williams_2018(*p, force=1)
+
+    def test_fill_na_zero_removes_nan(self, tmp_path):
+        p = _make_paths(tmp_path)
+        williams_2018(*p, fill_na=0)
+        df = pd.read_csv(p[0], sep="\t")
+        assert not df["intensity"].isna().any()
+
+    def test_default_intensities_contain_nan(self, tmp_path):
+        p = _make_paths(tmp_path)
+        williams_2018(*p)
+        df = pd.read_csv(p[0], sep="\t")
+        assert df["intensity"].isna().any()

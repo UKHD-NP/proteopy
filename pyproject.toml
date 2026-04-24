@@ -37,6 +37,7 @@ dependencies = [
     "biopython",
     "matplotlib",
     "numpy",
+    "openpyxl",
     "packaging>=26.0",
     "pandas",
     "pyarrow",

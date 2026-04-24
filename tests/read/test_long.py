@@ -470,3 +470,77 @@ class TestLong:
         )
         # s2 first (from annotation), then remaining from pivot order.
         assert list(adata.obs_names) == ["s2", "s1", "s3"]
+
+    # -- Verbose annotation mismatch messages -------------------------
+
+    def test_verbose_sample_annotation_ignored(self, capsys):
+        """Prints count of annotation samples not in intensities."""
+        df = _make_peptide_intensities()
+        sample_ann = _make_sample_annotation(
+            ["s1", "s2", "s_extra"],
+        )
+        adata = long(
+            df,
+            level="peptide",
+            sample_annotation=sample_ann,
+            verbose=True,
+        )
+
+        assert adata.shape[0] == 2
+        out = capsys.readouterr().out
+        assert "1 sample_id" in out
+        assert "not present in the intensity table" in out
+
+    def test_verbose_sample_annotation_missing(self, capsys):
+        """Prints count of intensity samples not in annotation."""
+        df = _make_peptide_intensities()
+        sample_ann = _make_sample_annotation(["s1"])
+        adata = long(
+            df,
+            level="peptide",
+            sample_annotation=sample_ann,
+            verbose=True,
+        )
+
+        assert adata.shape[0] == 2
+        out = capsys.readouterr().out
+        assert "1 sample_id" in out
+        assert "did not have a matching" in out
+
+    def test_verbose_var_annotation_ignored(self, capsys):
+        """Prints count of annotation vars not in intensity matrix."""
+        df = _make_peptide_intensities()
+        var_ann = _make_peptide_annotation(
+            ["PEP1", "PEP2", "PEP_EXTRA"],
+            protein_ids=["PROT1", "PROT1", "PROT1"],
+        )
+        adata = long(
+            df,
+            level="peptide",
+            var_annotation=var_ann,
+            verbose=True,
+        )
+
+        assert adata.shape[1] == 2
+        out = capsys.readouterr().out
+        assert "1 peptide" in out
+        assert "not present in the intensity matrix" in out
+
+    def test_verbose_var_annotation_missing(self, capsys):
+        """Prints count of intensity vars not in annotation."""
+        df = _make_peptide_intensities()
+        var_ann = _make_peptide_annotation(
+            ["PEP1"],
+            protein_ids=["PROT1"],
+        )
+        adata = long(
+            df,
+            level="peptide",
+            var_annotation=var_ann,
+            verbose=True,
+        )
+
+        assert adata.shape[1] == 2
+        out = capsys.readouterr().out
+        assert "1 peptide" in out
+        assert "did not have a matching" in out

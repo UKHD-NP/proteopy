@@ -89,6 +89,7 @@ jobs:
             tests/tl/__init__.py \
             tests/utils/__init__.py \
             tests/utils/test_anndata.py \
+            tests/read/test_long.py \
             tests/utils/test_parsers.py \
             --statistics \
             --count \

@@ -782,16 +782,34 @@ def long(
         obs: 'sample_id'
         var: 'peptide_id', 'protein_id'
 
-    **Example 3**: Peptide-level read with non-standard column
+    **Example 3**: Minimal protein-level read.
+
+    >>> intensities = pd.DataFrame({
+    ...     "sample_id": [
+    ...         "S1", "S1", "S2", "S2",
+    ...     ],
+    ...     "protein_id": [
+    ...         "PROT1", "PROT2", "PROT1", "PROT2",
+    ...     ],
+    ...     "intensity": [
+    ...         12450.0, 8730.0, 15320.0, 6890.0,
+    ...     ],
+    ... })
+    >>> adata = pr.read.long(
+    ...     intensities, level="protein",
+    ... )
+    >>> adata
+    AnnData object with n_obs × n_vars = 2 × 2
+        obs: 'sample_id'
+        var: 'protein_id'
+
+    **Example 4**: Protein-level read with non-standard column
     names remapped via ``column_map``.
 
     >>> intensities = pd.DataFrame({
     ...     "run": ["S1", "S1", "S2", "S2"],
-    ...     "seq": [
-    ...         "PEP1", "PEP2", "PEP1", "PEP2",
-    ...     ],
     ...     "prot": [
-    ...         "PROT1", "PROT1", "PROT1", "PROT1",
+    ...         "PROT1", "PROT2", "PROT1", "PROT2",
     ...     ],
     ...     "quant": [
     ...         12450.0, 8730.0, 15320.0, 6890.0,
@@ -799,10 +817,9 @@ def long(
     ... })
     >>> adata = pr.read.long(
     ...     intensities,
-    ...     level="peptide",
+    ...     level="protein",
     ...     column_map={
     ...         "sample_id": "run",
-    ...         "peptide_id": "seq",
     ...         "protein_id": "prot",
     ...         "intensity": "quant",
     ...     },
@@ -810,7 +827,7 @@ def long(
     >>> adata
     AnnData object with n_obs × n_vars = 2 × 2
         obs: 'sample_id'
-        var: 'peptide_id', 'protein_id'
+        var: 'protein_id'
     """
     # -- Validate arguments
     if level is None:

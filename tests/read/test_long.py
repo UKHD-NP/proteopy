@@ -105,6 +105,28 @@ def _make_protein_annotation(protein_ids, extra=None):
     return pd.DataFrame(data)
 
 
+def _write_long_table(df, tmp_path, suffix=".csv", sep=","):
+    """Write *df* to ``tmp_path/intensities<suffix>`` with *sep*."""
+    path = tmp_path / f"intensities{suffix}"
+    df.to_csv(path, sep=sep, index=False)
+    return path
+
+
+def _as_intensities(df, fmt, tmp_path):
+    """Return *df* unchanged or write it as csv/tsv and return the path.
+
+    Used to parametrize tests across the in-memory and file-based input
+    paths without duplicating their assertions.
+    """
+    if fmt == "dataframe":
+        return df
+    if fmt == "csv":
+        return _write_long_table(df, tmp_path, ".csv", ",")
+    if fmt == "tsv":
+        return _write_long_table(df, tmp_path, ".tsv", "\t")
+    raise ValueError(f"unknown format: {fmt!r}")
+
+
 # ------------------------------------------------------------------
 # Tests
 # ------------------------------------------------------------------
@@ -183,10 +205,19 @@ class TestLong:
 
     # -- Peptide-level happy paths ------------------------------------
 
-    def test_peptide_minimal_with_protein_in_intensities(self):
-        """Basic case: intensities carry ``protein_id`` directly."""
+    @pytest.mark.parametrize("fmt", ["dataframe", "csv", "tsv"])
+    def test_peptide_minimal_with_protein_in_intensities(
+        self, fmt, tmp_path,
+    ):
+        """Basic case: intensities carry ``protein_id`` directly.
+
+        Parametrized to also exercise the file-loading branch of
+        ``load_dataframe`` for ``.csv`` (auto-detected ``,``) and
+        ``.tsv`` (auto-detected ``\\t``) inputs.
+        """
         df = _make_peptide_intensities()
-        adata = long(df, level="peptide")
+        intensities = _as_intensities(df, fmt, tmp_path)
+        adata = long(intensities, level="peptide")
 
         assert adata.shape == (2, 2)
         assert list(adata.obs_names) == ["s1", "s2"]
@@ -233,12 +264,37 @@ class TestLong:
         with pytest.raises(ValueError, match="could not be mapped"):
             long(df, level="peptide", var_annotation=var_ann)
 
+    def test_peptide_with_multiple_protein_mappings(self):
+        """Multiple peptides can map to several distinct proteins."""
+        df = _make_peptide_intensities(
+            sample_ids=["s1", "s1", "s1", "s2", "s2", "s2"],
+            peptide_ids=["PEP1", "PEP2", "PEP3"] * 2,
+            protein_ids=[
+                "PROT1", "PROT2", "PROT2",
+                "PROT1", "PROT2", "PROT2",
+            ],
+            intensities=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        )
+        adata = long(df, level="peptide")
+
+        assert adata.shape == (2, 3)
+        assert list(adata.var_names) == ["PEP1", "PEP2", "PEP3"]
+        assert list(adata.var["protein_id"]) == [
+            "PROT1", "PROT2", "PROT2",
+        ]
+        np.testing.assert_allclose(
+            adata.X,
+            np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+        )
+
     # -- Protein-level happy paths ------------------------------------
 
-    def test_protein_minimal(self):
+    @pytest.mark.parametrize("fmt", ["dataframe", "csv", "tsv"])
+    def test_protein_minimal(self, fmt, tmp_path):
         """Basic protein-level read produces a valid AnnData."""
         df = _make_protein_intensities()
-        adata = long(df, level="protein")
+        intensities = _as_intensities(df, fmt, tmp_path)
+        adata = long(intensities, level="protein")
 
         assert adata.shape == (2, 2)
         assert list(adata.obs_names) == ["s1", "s2"]
@@ -345,6 +401,10 @@ class TestLong:
         assert list(adata.obs_names) == ["s1", "s2"]
         assert list(adata.var_names) == ["PEP1", "PEP2"]
         assert list(adata.var["protein_id"]) == ["PROT1", "PROT1"]
+        np.testing.assert_allclose(
+            adata.X,
+            np.array([[1.0, 2.0], [3.0, 4.0]]),
+        )
 
     def test_column_map_remaps_protein_level(self):
         """Non-standard protein columns are canonicalized."""
@@ -366,8 +426,102 @@ class TestLong:
         assert adata.shape == (2, 2)
         assert list(adata.obs_names) == ["s1", "s2"]
         assert list(adata.var_names) == ["PROT1", "PROT2"]
+        np.testing.assert_allclose(
+            adata.X,
+            np.array([[1.0, 2.0], [3.0, 4.0]]),
+        )
 
     # -- Missing-value handling ---------------------------------------
+
+    def test_missing_pair_is_nan_peptide_level(self):
+        """Missing (sample, peptide) pairs become ``np.nan`` in ``.X``."""
+        df = _make_peptide_intensities(
+            sample_ids=["s1", "s1", "s2"],
+            peptide_ids=["PEP1", "PEP2", "PEP1"],
+            protein_ids=["PROT1", "PROT1", "PROT1"],
+            intensities=[1.0, 2.0, 3.0],
+        )
+        adata = long(df, level="peptide")
+
+        assert adata.shape == (2, 2)
+        assert np.isnan(adata.X[1, 1])
+        np.testing.assert_allclose(
+            adata.X[~np.isnan(adata.X)],
+            np.array([1.0, 2.0, 3.0]),
+        )
+
+    def test_missing_pair_is_nan_protein_level(self):
+        """Same NaN guarantee at protein level."""
+        df = _make_protein_intensities(
+            sample_ids=["s1", "s1", "s2"],
+            protein_ids=["PROT1", "PROT2", "PROT1"],
+            intensities=[1.0, 2.0, 3.0],
+        )
+        adata = long(df, level="protein")
+
+        assert adata.shape == (2, 2)
+        assert np.isnan(adata.X[1, 1])
+        np.testing.assert_allclose(
+            adata.X[~np.isnan(adata.X)],
+            np.array([1.0, 2.0, 3.0]),
+        )
+
+    def test_csv_missing_row_becomes_nan(self, tmp_path):
+        """A row absent from a csv input still pivots to NaN."""
+        df = _make_peptide_intensities(
+            sample_ids=["s1", "s1", "s2"],
+            peptide_ids=["PEP1", "PEP2", "PEP1"],
+            protein_ids=["PROT1", "PROT1", "PROT1"],
+            intensities=[1.0, 2.0, 3.0],
+        )
+        path = _write_long_table(df, tmp_path, ".csv", ",")
+        adata = long(path, level="peptide")
+
+        assert adata.shape == (2, 2)
+        assert np.isnan(adata.X[1, 1])
+        np.testing.assert_allclose(
+            adata.X[~np.isnan(adata.X)],
+            np.array([1.0, 2.0, 3.0]),
+        )
+
+    def test_csv_empty_intensity_field_becomes_nan(self, tmp_path):
+        """A blank intensity cell in a csv parses to NaN in ``.X``.
+
+        Unique to file inputs: the row exists but the value is empty,
+        which pandas reads as NaN. The pivot must keep that NaN.
+        """
+        path = tmp_path / "intensities.csv"
+        path.write_text(
+            "sample_id,peptide_id,protein_id,intensity\n"
+            "s1,PEP1,PROT1,1.0\n"
+            "s1,PEP2,PROT1,\n"
+            "s2,PEP1,PROT1,3.0\n"
+            "s2,PEP2,PROT1,4.0\n"
+        )
+        adata = long(path, level="peptide")
+
+        assert adata.shape == (2, 2)
+        assert np.isnan(adata.X[0, 1])
+        np.testing.assert_allclose(
+            adata.X[~np.isnan(adata.X)],
+            np.array([1.0, 3.0, 4.0]),
+        )
+
+    def test_sep_parameter_overrides_extension(self, tmp_path):
+        """Explicit ``sep`` lets non-csv/tsv files load correctly."""
+        df = _make_peptide_intensities()
+        path = tmp_path / "intensities.txt"
+        df.to_csv(path, sep=";", index=False)
+
+        adata = long(path, level="peptide", sep=";")
+
+        assert adata.shape == (2, 2)
+        assert list(adata.obs_names) == ["s1", "s2"]
+        assert list(adata.var_names) == ["PEP1", "PEP2"]
+        np.testing.assert_allclose(
+            adata.X,
+            np.array([[1.0, 2.0], [3.0, 4.0]]),
+        )
 
     def test_fill_na_replaces_missing_intensities(self):
         """Missing (sample, peptide) pairs become ``fill_na``."""

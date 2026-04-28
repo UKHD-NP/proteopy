@@ -13,8 +13,8 @@ from proteopy.datasets import karayel_2020
 _EXPECTED_SHAPE = (20, 7758)
 
 _EXPECTED_X_HASH = (
-    "eb0692166e44df0d32558495a5bcd44e"
-    "2bbcb2c8a46be2b8ba468f7a552f3c0d"
+    "3f40838356b56b8f230bdb02bde8d16d"
+    "c574fcc41d106bdce02ebe666f4e02db"
 )
 _EXPECTED_OBS_NAMES_HASH = (
     "fef7fd91a6e93d20b719f61c63098865"
@@ -45,6 +45,16 @@ def adata():
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _encode_index(index) -> bytes:
+    """Encode a pandas Index for hashing.
+
+    Joins the entries with ``","`` and UTF-8 encodes the result so
+    that the value is a deterministic byte string that can be fed
+    into ``hashlib.sha256``.
+    """
+    return ",".join(index).encode()
 
 
 # -- Content tests ---------------------------------------------------
@@ -99,21 +109,15 @@ class TestKarayel2020:
         assert np.isnan(adata.X).any()
 
     def test_x_hash(self, adata):
-        h = _sha256(
-            np.nan_to_num(adata.X, nan=0.0).tobytes(),
-        )
+        h = _sha256(adata.X.tobytes())
         assert h == _EXPECTED_X_HASH
 
     def test_obs_names_hash(self, adata):
-        h = _sha256(
-            ",".join(adata.obs_names).encode(),
-        )
+        h = _sha256(_encode_index(adata.obs_names))
         assert h == _EXPECTED_OBS_NAMES_HASH
 
     def test_var_names_hash(self, adata):
-        h = _sha256(
-            ",".join(adata.var_names).encode(),
-        )
+        h = _sha256(_encode_index(adata.var_names))
         assert h == _EXPECTED_VAR_NAMES_HASH
 
     def test_fill_na_zero_removes_nan(self):

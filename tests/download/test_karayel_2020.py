@@ -36,7 +36,7 @@ _EXPECTED_CELL_TYPES = [
 
 # -- Helpers ---------------------------------------------------------
 
-def _make_paths(tmp_path, ext=".tsv"):
+def _files(tmp_path, ext=".tsv"):
     return (
         tmp_path / f"intensities{ext}",
         tmp_path / f"var_annotation{ext}",
@@ -54,65 +54,65 @@ class TestKarayel2020Download:
     """Verify downloaded file content, structure, and error handling."""
 
     @pytest.fixture(scope="class")
-    def paths(self, tmp_path_factory):
+    def files(self, tmp_path_factory):
         tmp = tmp_path_factory.mktemp("karayel_dl")
-        p = _make_paths(tmp)
+        p = _files(tmp)
         karayel_2020(*p)
         return p
 
-    def test_files_created(self, paths):
-        for p in paths:
+    def test_files_created(self, files):
+        for p in files:
             assert p.exists()
 
-    def test_intensities_columns(self, paths):
-        df = pd.read_csv(paths[0], sep="\t", nrows=0)
+    def test_intensities_columns(self, files):
+        df = pd.read_csv(files[0], sep="\t", nrows=0)
         assert (
             df.columns.tolist()
             == _EXPECTED_INTENSITIES_COLUMNS
         )
 
-    def test_var_annotation_columns(self, paths):
-        df = pd.read_csv(paths[1], sep="\t", nrows=0)
+    def test_var_annotation_columns(self, files):
+        df = pd.read_csv(files[1], sep="\t", nrows=0)
         assert df.columns.tolist() == _EXPECTED_VAR_COLUMNS
 
-    def test_sample_annotation_columns(self, paths):
-        df = pd.read_csv(paths[2], sep="\t", nrows=0)
+    def test_sample_annotation_columns(self, files):
+        df = pd.read_csv(files[2], sep="\t", nrows=0)
         assert (
             df.columns.tolist()
             == _EXPECTED_SAMPLE_COLUMNS
         )
 
-    def test_intensities_hash(self, paths):
+    def test_intensities_hash(self, files):
         assert (
-            _sha256(paths[0].read_bytes())
+            _sha256(files[0].read_bytes())
             == _EXPECTED_INTENSITIES_HASH
         )
 
-    def test_var_annotation_hash(self, paths):
+    def test_var_annotation_hash(self, files):
         assert (
-            _sha256(paths[1].read_bytes())
+            _sha256(files[1].read_bytes())
             == _EXPECTED_VAR_HASH
         )
 
-    def test_sample_annotation_hash(self, paths):
+    def test_sample_annotation_hash(self, files):
         assert (
-            _sha256(paths[2].read_bytes())
+            _sha256(files[2].read_bytes())
             == _EXPECTED_SAMPLE_HASH
         )
 
-    def test_sample_count(self, paths):
-        df = pd.read_csv(paths[2], sep="\t")
+    def test_sample_count(self, files):
+        df = pd.read_csv(files[2], sep="\t")
         assert len(df) == 20
 
-    def test_cell_types_in_file(self, paths):
-        df = pd.read_csv(paths[2], sep="\t")
+    def test_cell_types_in_file(self, files):
+        df = pd.read_csv(files[2], sep="\t")
         assert (
             sorted(df["cell_type"].unique())
             == _EXPECTED_CELL_TYPES
         )
 
     def test_csv_extension_uses_comma(self, tmp_path):
-        p = _make_paths(tmp_path, ext=".csv")
+        p = _files(tmp_path, ext=".csv")
         karayel_2020(*p)
         df = pd.read_csv(p[0], sep=",", nrows=0)
         assert (
@@ -121,7 +121,7 @@ class TestKarayel2020Download:
         )
 
     def test_tsv_extension_uses_tab(self, tmp_path):
-        p = _make_paths(tmp_path, ext=".tsv")
+        p = _files(tmp_path, ext=".tsv")
         karayel_2020(*p)
         df = pd.read_csv(p[0], sep="\t", nrows=0)
         assert (
@@ -130,19 +130,24 @@ class TestKarayel2020Download:
         )
 
     def test_file_exists_error(self, tmp_path):
-        p = _make_paths(tmp_path)
+        p = _files(tmp_path)
         karayel_2020(*p)
         with pytest.raises(FileExistsError):
             karayel_2020(*p)
 
     def test_force_overwrites(self, tmp_path):
-        p = _make_paths(tmp_path)
+        p = _files(tmp_path)
         dummy = b"dummy"
         for path in p:
             path.write_bytes(dummy)
         karayel_2020(*p, force=True)
         for path in p:
             assert path.read_bytes() != dummy
+        assert (
+            _sha256(p[0].read_bytes()) == _EXPECTED_INTENSITIES_HASH
+        )
+        assert _sha256(p[1].read_bytes()) == _EXPECTED_VAR_HASH
+        assert _sha256(p[2].read_bytes()) == _EXPECTED_SAMPLE_HASH
 
     def test_overlapping_paths_raises(self, tmp_path):
         same = tmp_path / "same.tsv"
@@ -160,34 +165,34 @@ class TestKarayel2020Download:
             )
 
     def test_invalid_sep_type_raises(self, tmp_path):
-        p = _make_paths(tmp_path)
+        p = _files(tmp_path)
         with pytest.raises(
             TypeError, match="sep must be str or None",
         ):
             karayel_2020(*p, sep=123)
 
     def test_fill_na_bool_raises(self, tmp_path):
-        p = _make_paths(tmp_path)
+        p = _files(tmp_path)
         with pytest.raises(
             TypeError, match="fill_na must be",
         ):
             karayel_2020(*p, fill_na=True)
 
     def test_force_non_bool_raises(self, tmp_path):
-        p = _make_paths(tmp_path)
+        p = _files(tmp_path)
         with pytest.raises(
             TypeError, match="force must be bool",
         ):
             karayel_2020(*p, force=1)
 
     def test_fill_na_zero_removes_nan(self, tmp_path):
-        p = _make_paths(tmp_path)
+        p = _files(tmp_path)
         karayel_2020(*p, fill_na=0)
         df = pd.read_csv(p[0], sep="\t")
         assert not df["intensity"].isna().any()
 
     def test_default_intensities_contain_nan(self, tmp_path):
-        p = _make_paths(tmp_path)
+        p = _files(tmp_path)
         karayel_2020(*p)
         df = pd.read_csv(p[0], sep="\t")
         assert df["intensity"].isna().any()

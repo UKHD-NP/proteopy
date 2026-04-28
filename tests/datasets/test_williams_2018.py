@@ -13,8 +13,8 @@ from proteopy.datasets import williams_2018
 _EXPECTED_SHAPE = (40, 32690)
 
 _EXPECTED_X_HASH = (
-    "7e2f09df180f6de947052a38e10d68f0"
-    "4dc3d97b75ce055bbe362851b64b8a54"
+    "a2406828c5c11c28c566ac2bf9f694ac"
+    "eb90550ab37d91f085746b8b7fddf2c5"
 )
 _EXPECTED_OBS_NAMES_HASH = (
     "4a510a6124dd8b917c42f4270353aee2"
@@ -45,6 +45,16 @@ def adata():
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _encode_index(index) -> bytes:
+    """Encode a pandas Index for hashing.
+
+    Joins the entries with ``","`` and UTF-8 encodes the result so
+    that the value is a deterministic byte string that can be fed
+    into ``hashlib.sha256``.
+    """
+    return ",".join(index).encode()
 
 
 # -- Content tests ---------------------------------------------------
@@ -99,21 +109,15 @@ class TestWilliams2018:
         assert np.isnan(adata.X).any()
 
     def test_x_hash(self, adata):
-        h = _sha256(
-            np.nan_to_num(adata.X, nan=0.0).tobytes(),
-        )
+        h = _sha256(adata.X.tobytes())
         assert h == _EXPECTED_X_HASH
 
     def test_obs_names_hash(self, adata):
-        h = _sha256(
-            ",".join(adata.obs_names).encode(),
-        )
+        h = _sha256(_encode_index(adata.obs_names))
         assert h == _EXPECTED_OBS_NAMES_HASH
 
     def test_var_names_hash(self, adata):
-        h = _sha256(
-            ",".join(adata.var_names).encode(),
-        )
+        h = _sha256(_encode_index(adata.var_names))
         assert h == _EXPECTED_VAR_NAMES_HASH
 
     def test_fill_na_zero_removes_nan(self):

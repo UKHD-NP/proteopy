@@ -782,26 +782,30 @@ def long(
         obs: 'sample_id'
         var: 'peptide_id', 'protein_id'
 
-    **Example 3**: Minimal protein-level read.
+    **Example 3**: Minimal protein-level read from a CSV file.
 
-    >>> intensities = pd.DataFrame({
-    ...     "sample_id": [
-    ...         "S1", "S1", "S2", "S2",
-    ...     ],
-    ...     "protein_id": [
-    ...         "PROT1", "PROT2", "PROT1", "PROT2",
-    ...     ],
-    ...     "intensity": [
-    ...         12450.0, 8730.0, 15320.0, 6890.0,
-    ...     ],
-    ... })
+    >>> import tempfile
+    >>> from pathlib import Path
+    >>> csv_text = (
+    ...     "sample_id,protein_id,intensity\n"
+    ...     "S1,PROT1,12450.0\n"
+    ...     "S1,PROT2,8730.0\n"
+    ...     "S2,PROT1,15320.0\n"
+    ...     "S2,PROT2,6890.0\n"
+    ... )
+    >>> tmp = tempfile.NamedTemporaryFile(
+    ...     suffix=".csv", delete=False, mode="w",
+    ... )
+    >>> _ = tmp.write(csv_text)
+    >>> tmp.close()
     >>> adata = pr.read.long(
-    ...     intensities, level="protein",
+    ...     Path(tmp.name), level="protein",
     ... )
     >>> adata
     AnnData object with n_obs × n_vars = 2 × 2
         obs: 'sample_id'
         var: 'protein_id'
+    >>> Path(tmp.name).unlink()
 
     **Example 4**: Protein-level read with non-standard column
     names remapped via ``column_map``.

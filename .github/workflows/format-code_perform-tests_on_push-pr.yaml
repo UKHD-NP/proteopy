@@ -118,6 +118,16 @@ jobs:
         run: |
           pylint $PY_FILES --disable=all --enable=E,F
 
+      - name: Get month
+        id: date
+        run: echo "month=$(date +'%Y-%m')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache downloaded datasets
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/proteopy
+          key: proteopy-datasets-${{ runner.os }}-${{ steps.date.outputs.month }}
+
       - name: Test with pytest
         run: |
           pytest -v -s tests/

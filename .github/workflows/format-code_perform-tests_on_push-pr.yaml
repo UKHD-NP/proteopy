@@ -20,11 +20,12 @@ jobs:
 
   build:
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     strategy:
       matrix:
-        python-version: ["3.10", "3.11" ]
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11"]
 
     steps:
 
@@ -36,6 +37,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
+        shell: bash
         run: |
           python -m pip install --upgrade pip
           pip install pylint flake8 pytest
@@ -44,23 +46,21 @@ jobs:
           fi
 
       - name: Install package
+        shell: bash
         run: |
           pip install -e .
 
       - name: Collect Python files
         id: pyfiles
+        shell: bash
         run: |
-          EXCLUDE_DIRS=(
-            "^docs/"
-          )
-          PATTERN=$(IFS="|"; echo "${EXCLUDE_DIRS[*]}")
-          PY_FILES=$(git ls-files "*.py" \
-            | grep -vE "$PATTERN")
+          PY_FILES=$(git ls-files "*.py" | grep -vE "^docs/")
           echo "PY_FILES<<EOF" >> "$GITHUB_ENV"
           echo "$PY_FILES" >> "$GITHUB_ENV"
           echo "EOF" >> "$GITHUB_ENV"
 
       - name: Strict lint with flake8
+        shell: bash
         run: |
           # Syntax errors / undefined names
           flake8 $PY_FILES \
@@ -104,6 +104,7 @@ jobs:
             --max-line-length=127
 
       - name: Optional flake8 stats
+        shell: bash
         run: |
           # optional linting stats
           flake8 $PY_FILES \
@@ -115,17 +116,28 @@ jobs:
             --max-line-length=127
 
       - name: Lint with pylint
+        shell: bash
         run: |
           pylint $PY_FILES --disable=all --enable=E,F
 
       - name: Get month
         id: date
+        shell: bash
         run: echo "month=$(date +'%Y-%m')" >> "$GITHUB_OUTPUT"
+
+      - name: Get pooch cache directory
+        id: cache-dir
+        shell: python
+        run: |
+          import pooch, os
+          cache = str(pooch.os_cache("proteopy"))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"path={cache}\n")
 
       - name: Cache downloaded datasets
         uses: actions/cache@v4
         with:
-          path: ~/.cache/proteopy
+          path: ${{ steps.cache-dir.outputs.path }}
           key: proteopy-datasets-${{ runner.os }}-${{ steps.date.outputs.month }}
 
       - name: Test with pytest

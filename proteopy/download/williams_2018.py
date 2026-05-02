@@ -222,6 +222,7 @@ def williams_2018(
         intensities_path,
         sep=sep_intensities,
         index=False,
+        lineterminator='\n',
     )
 
     # Save .var annotation
@@ -235,6 +236,7 @@ def williams_2018(
         var_annotation_path,
         sep=sep_var,
         index=False,
+        lineterminator='\n',
     )
 
     # Save .obs annotation
@@ -248,4 +250,5 @@ def williams_2018(
         sample_annotation_path,
         sep=sep_sample,
         index=False,
+        lineterminator='\n',
     )

@@ -25,9 +25,9 @@ def _make_log_adata_with_missing(
 
     Raw intensities are drawn from a lognormal (the empirical shape of
     MS1 quantitative intensities) then log2-transformed, yielding a
-    Gaussian log-intensity distribution with mean ≈ 23 and sd ≈ 2.5
-    — values typical for label-free DIA/DDA proteomics. NaN missingness
-    is injected MCAR. Sized for KS/LRT statistical power.
+    Gaussian log-intensity distribution with mean ≈ 23 and sd ≈ 2.5.
+    NaN missingness is injected MCAR.
+    Sized for KS/LRT statistical power.
     """
     rng = np.random.default_rng(seed)
     # ln-space params chosen so log2(raw) ~ N(23, 2.5)
@@ -52,8 +52,8 @@ def _make_small_log_adata() -> AnnData:
     X = np.array(
         [
             [10.0, 12.0, n],
-            [11.0, n,   14.0],
-            [n,    13.0, 15.0],
+            [11.0, n, 14.0],
+            [n, 13.0, 15.0],
             [12.0, 14.0, n],
         ],
         dtype=float,
@@ -75,7 +75,7 @@ def _make_grouped_log_adata(
 
     Both groups draw raw intensities from a lognormal then log2-transform,
     matching the Gaussian shape of real proteomics log-intensities. The
-    medians differ by ~6 log2 units (e.g., enriched vs depleted samples).
+    medians differ by ~6 log2 units.
     """
     rng = np.random.default_rng(seed)
     sigma_ln = 1.5 * np.log(2)  # log2-sd ≈ 1.5
@@ -104,10 +104,11 @@ def _make_grouped_log_adata(
 
 
 def _make_non_log_adata() -> AnnData:
-    """Raw-intensity-scale proteomics AnnData (fails the log-transform heuristic).
+    """Raw-intensity-scale proteomics AnnData.
 
-    Lognormal raw intensities, equivalent to the sister log2 fixture but
-    NOT log-transformed; used to exercise the ``force=False`` log check.
+    Fails the log-transform heuristic. Lognormal raw intensities,
+    equivalent to the sister log2 fixture but NOT log-transformed;
+    used to exercise the ``force=False`` log check.
     """
     rng = np.random.default_rng(2)
     X = rng.lognormal(mean=23.0 * np.log(2), sigma=2.5 * np.log(2),
@@ -161,11 +162,12 @@ class TestImputeDownshift:
         assert mask.shape == X_in.shape
         np.testing.assert_array_equal(mask, expected_mask)
 
-    def test_no_nan_in_output(self):
+    def test_no_nan_or_zero_in_output(self):
         adata = _make_small_log_adata()
         result = impute_downshift(adata, inplace=False)
         X_out = np.asarray(result.X)
         assert np.isfinite(X_out).all()
+        assert (X_out != 0).all()
 
     def test_uns_metadata_keys_and_values(self):
         adata = _make_small_log_adata()
@@ -190,14 +192,42 @@ class TestImputeDownshift:
             100.0 * n_missing_in / adata.X.size,
         )
 
+    def test_no_missing_values_returns_input_unchanged(self):
+        """When there is nothing to impute, output equals input and the
+        mask is all False."""
+        rng = np.random.default_rng(0)
+        raw = rng.lognormal(
+            mean=23.0 * np.log(2), sigma=2.5 * np.log(2),
+            size=(20, 30),
+        )
+        X = np.log2(raw)
+        obs_names = [f"s{i}" for i in range(20)]
+        var_names = [f"p{i}" for i in range(30)]
+        obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
+        var = pd.DataFrame({"protein_id": var_names}, index=var_names)
+        adata = AnnData(X=X, obs=obs, var=var)
+        X_in = adata.X.copy()
+
+        result = impute_downshift(
+            adata, zero_to_na=False, inplace=False,
+        )
+
+        np.testing.assert_array_equal(np.asarray(result.X), X_in)
+        mask = np.asarray(result.layers["imputation_mask_X"])
+        assert not mask.any()
+        assert result.uns["imputation"]["n_imputed"] == 0
+        assert result.uns["imputation"]["pct_imputed"] == 0.0
+
     def test_zero_to_na_false_keeps_zeros(self):
         adata = _make_small_log_adata()
         # Inject a couple of zeros that should NOT be imputed.
         adata.X[0, 0] = 0.0
         adata.X[3, 0] = 0.0
 
+        # force=True decouples this test from the log-transform heuristic
+        # — its purpose is zero handling, not log detection.
         result = impute_downshift(
-            adata, zero_to_na=False, inplace=False,
+            adata, zero_to_na=False, force=True, inplace=False,
         )
 
         X_out = np.asarray(result.X)
@@ -292,7 +322,8 @@ class TestImputeDownshift:
         [(0.3, "smaller"), (2.0, "bigger")],
     )
     def test_imputed_variance_vs_observed(self, width, direction):
-        """Imputed variance is `(width*sd)^2`; smaller or bigger by user choice."""
+        """Imputed variance is `(width*sd)^2`; smaller or bigger
+        by user choice."""
         adata_in = _make_log_adata_with_missing()
         result = impute_downshift(
             adata_in.copy(),
@@ -336,7 +367,7 @@ class TestImputeDownshift:
         )
         observed, imputed = self._split_observed_imputed(adata_in, result)
         mu_th, sigma_th, _, _ = self._theoretical_params(observed, 1.8, 0.3)
-        # Fail-to-reject: imputed values look like draws from N(mu_th, sigma_th).
+        # Fail-to-reject: imputed values look like theoretical normal draws.
         result_ks = kstest(imputed, "norm", args=(mu_th, sigma_th))
         assert result_ks.pvalue > 0.01
 
@@ -485,17 +516,20 @@ class TestImputeDownshift:
         assert mean_a < mean_b - 3.0  # groups separated by ~6 in log-space
 
         # Sanity: input not mutated.
-        assert np.array_equal(adata.X, X_in, equal_nan=True) or True
+        assert np.array_equal(adata.X, X_in, equal_nan=True)
 
     def test_group_by_fallback_to_global_when_group_too_small(self):
         adata = _make_grouped_log_adata(
             n_per_group=20, n_vars=50, miss_frac=0.25, seed=1,
         )
-        # Build a third group "C" with only 1 observation: forces fallback
-        # to global stats during imputation for that obs.
+        # Build a third group "C" with only 1 observation AND fewer than
+        # 3 finite values across that row — this is what triggers the
+        # fallback path (`grp_vals.size >= 3` is False).
         groups = list(adata.obs["group"].astype(object).to_numpy())
         groups[0] = "C"
         adata.obs["group"] = groups
+        # Keep only 2 finite values in the C-group row; rest become NaN.
+        adata.X[0, 2:] = np.nan
 
         result = impute_downshift(
             adata, group_by="group",
@@ -504,13 +538,18 @@ class TestImputeDownshift:
         )
         mask = np.asarray(result.layers["imputation_mask_X"])
         X_out = np.asarray(result.X)
-        # Global median is between groups A and B (~18.5). With downshift
-        # 1.8 * (global sd ~3.5) ≈ 6.3 → fallback imputes around ~12.
+
+        # With group A median ≈ 18 (sd≈1.5) and group B median ≈ 24
+        # (sd≈1.5), the global pool has median ≈ 21 and sd ≈ 3.3, so
+        # the fallback imputes around 21 - 1.8*3.3 ≈ 15.0. Group-C's
+        # own 2 finite values (drawn from group A's distribution) would
+        # have given mean ≈ 18 - small shift → around 17. The interval
+        # below distinguishes the two paths.
         c_idx = np.where(adata.obs["group"].to_numpy() == "C")[0]
         c_imputed = X_out[c_idx, :][mask[c_idx, :]]
-        # Should land near the global downshifted distribution, not 15-1.8*1.5.
-        assert c_imputed.mean() < 18.5
-        assert c_imputed.mean() > 5.0
+        assert c_imputed.size > 40  # most of the row was imputed
+        assert c_imputed.mean() < 16.5  # fallback (global), not group-A
+        assert c_imputed.mean() > 12.0
 
     def test_group_by_invalid_column_raises_keyerror(self):
         adata = _make_small_log_adata()
@@ -597,9 +636,9 @@ class TestImputeDownshift:
         # 2 finite values total, the rest NaN.
         X = np.array(
             [
-                [10.0, n,    n],
-                [n,    11.0, n],
-                [n,    n,    n],
+                [10.0, n, n],
+                [n, 11.0, n],
+                [n, n, n],
             ],
             dtype=float,
         )
@@ -658,9 +697,9 @@ class TestImputeRowsHelper:
         Y_imp = np.full((3, 4), -999.0)
         miss_mask = np.array(
             [
-                [True,  False, True,  False],
+                [True, False, True, False],
                 [False, False, False, False],
-                [False, True,  False, True],
+                [False, True, False, True],
             ],
         )
         rng = np.random.default_rng(0)
@@ -752,10 +791,12 @@ class TestImputeByGroupHelper:
                 rng_data.normal(10.0, 1.0, size=(n_per, n_vars)),
             ],
         )
-        # Mark half the cells as missing.
+        # In the production flow, miss_mask is derived from Y itself
+        # (`miss_mask = ~np.isfinite(Y)`), so Y has NaN at miss positions
+        # before _impute_by_group is called. Mirror that here.
         miss_mask = rng_data.random(size=Y.shape) < 0.5
+        Y[miss_mask] = np.nan
         Y_imp = Y.copy()
-        Y_imp[miss_mask] = np.nan
         groups = pd.Series(["A"] * n_per + ["B"] * n_per)
 
         _impute_by_group(

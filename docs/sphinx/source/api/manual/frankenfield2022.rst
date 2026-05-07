@@ -2,7 +2,7 @@ Frankenfield 2022 -- Universal Protein Contaminant Library
 ==========================================================
 
 .. bibliography::
-   :filter: key == "frankenfield-2022"
+   :filter: key == "Frankenfield-2022"
 
 .. rubric:: Overview
 

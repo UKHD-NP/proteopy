@@ -269,8 +269,8 @@ def contaminants(
     References
     ----------
     .. [1] Frankenfield AM, Ni J, Ahmed M, and Hao L.
-       "Protein contaminants matter: building universal protein
-       contaminant libraries for DDA and DIA proteomics."
+       "Protein Contaminants Matter: Building Universal Protein
+       Contaminant Libraries for DDA and DIA Proteomics."
        *Journal of Proteome Research*, 21(9):2104-2113, 2022.
        DOI: 10.1021/acs.jproteome.2c00145.
     .. [2] The Global Proteome Machine Organization. "Common

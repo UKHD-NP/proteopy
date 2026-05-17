@@ -1,0 +1,72 @@
+# ProteoPy pre-commit configuration.
+#
+# Two-stage strategy:
+#   - pre-commit (fast): formatting + cheap linters, run on every commit
+#   - pre-push   (slow): full linters + tests, run before pushing
+#
+# Install both hook types once per clone:
+#   pre-commit install
+#   pre-commit install --hook-type pre-push
+#
+# Manual runs:
+#   pre-commit run --all-files                       # everything (commit stage)
+#   pre-commit run --all-files --hook-stage pre-push # everything (push stage)
+
+minimum_pre_commit_version: "3.5.0"
+
+default_language_version:
+  python: python3.11
+
+# Hooks must opt-in to a stage via `stages:` on each hook entry.
+# We do NOT set default_stages, so each hook is explicit.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # -- Whitespace / EOL hygiene
+      - id: trailing-whitespace
+        stages: [pre-commit, pre-push]
+      - id: end-of-file-fixer
+        stages: [pre-commit, pre-push]
+      - id: mixed-line-ending
+        args: ["--fix=lf"]
+        stages: [pre-commit, pre-push]
+
+      # -- Config-file syntax
+      - id: check-yaml
+        stages: [pre-commit, pre-push]
+      - id: check-toml
+        stages: [pre-commit, pre-push]
+      - id: check-json
+        stages: [pre-commit, pre-push]
+
+      # -- Repo hygiene
+      - id: check-merge-conflict
+        stages: [pre-commit, pre-push]
+      - id: check-case-conflict
+        stages: [pre-commit, pre-push]
+      - id: check-added-large-files
+        args: ["--maxkb=51200"]  # 50 MiB — GitHub's warning threshold
+        stages: [pre-commit, pre-push]
+
+      # -- Secret scanning
+      - id: detect-private-key
+        stages: [pre-commit, pre-push]
+
+      # -- Code hygiene
+      - id: check-docstring-first
+        stages: [pre-commit, pre-push]
+      - id: debug-statements
+        stages: [pre-commit, pre-push]
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest (full suite)
+        entry: pytest
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

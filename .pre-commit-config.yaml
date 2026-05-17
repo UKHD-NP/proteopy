@@ -31,6 +31,7 @@ repos:
         stages: [pre-commit, pre-push]
       - id: mixed-line-ending
         args: ["--fix=lf"]
+        exclude: '\.(bat|cmd|ps1)$'
         stages: [pre-commit, pre-push]
 
       # -- Config-file syntax

@@ -4,7 +4,7 @@ Utilities for downloading contaminant FASTA files.
 
 from pathlib import Path
 from urllib.request import urlopen
-from typing import Callable
+from collections.abc import Callable
 import hashlib
 import os
 import re
@@ -52,7 +52,7 @@ def _format_frankenfield_header(header: str) -> str:
 
     database, accession_number, protein_id = segments
     if accession_number.startswith("Cont_"):
-        accession_number = accession_number[len("Cont_"):]
+        accession_number = accession_number[len("Cont_") :]
     if accession_number not in _FRANKENFIELD_MANUAL_IDS:
         check_uniprot_accession_nr(accession_number)
 
@@ -68,11 +68,14 @@ def _format_fasta(
     """
     Rewrite FASTA headers using a formatter callable.
     """
-    with open(source_path, "r", encoding="utf-8") as src, open(
-        destination_path,
-        "w",
-        encoding="utf-8",
-    ) as dest:
+    with (
+        open(source_path, encoding="utf-8") as src,
+        open(
+            destination_path,
+            "w",
+            encoding="utf-8",
+        ) as dest,
+    ):
         for line in src:
             if line.startswith(">"):
                 header = line[1:].strip()
@@ -86,9 +89,13 @@ def _download(url: str, destination: Path) -> None:
     """
     Stream ``url`` to ``destination`` with a bounded timeout.
     """
-    with urlopen(url, timeout=_DOWNLOAD_TIMEOUT_SECONDS) as response, open(
-        destination, "wb",
-    ) as out:
+    with (
+        urlopen(url, timeout=_DOWNLOAD_TIMEOUT_SECONDS) as response,
+        open(
+            destination,
+            "wb",
+        ) as out,
+    ):
         shutil.copyfileobj(response, out)
 
 
@@ -145,8 +152,7 @@ def _check_no_existing(path: Path, force: bool) -> None:
     """
     if path.exists() and not force:
         raise FileExistsError(
-            f"File already exists at {path}. "
-            "Use force=True to overwrite.",
+            f"File already exists at {path}. Use force=True to overwrite.",
         )
 
 

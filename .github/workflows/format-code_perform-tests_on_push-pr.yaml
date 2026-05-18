@@ -56,17 +56,40 @@ jobs:
         id: range
         shell: bash
         run: |
+          # Pick initial from/to refs per event type.
           if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
-            echo "from=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
-            echo "to=${{ github.event.pull_request.head.sha }}" >> "$GITHUB_OUTPUT"
+            FROM="${{ github.event.pull_request.base.sha }}"
+            TO="${{ github.event.pull_request.head.sha }}"
           elif [ -n "${{ github.event.before }}" ] \
             && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
-            echo "from=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
-            echo "to=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            FROM="${{ github.event.before }}"
+            TO="${{ github.sha }}"
           else
-            echo "from=HEAD~1" >> "$GITHUB_OUTPUT"
-            echo "to=HEAD" >> "$GITHUB_OUTPUT"
+            FROM="HEAD~1"
+            TO="HEAD"
           fi
+
+          # Guard: after a force-push, `event.before` may point at an
+          # orphaned commit no longer reachable in CI's fetched history.
+          # Fall back to the merge-base with origin/main so lint covers
+          # the branch's divergence (mirrors what a PR would lint).
+          # For pushes to main itself, no divergence exists; use HEAD~1.
+          if ! git cat-file -e "${FROM}^{commit}" 2>/dev/null; then
+            if [ "${{ github.ref_name }}" = "main" ]; then
+              echo "::warning::from-ref ${FROM} unreachable on main; falling back to HEAD~1..HEAD"
+              FROM="HEAD~1"
+            elif MB=$(git merge-base origin/main HEAD 2>/dev/null); then
+              echo "::warning::from-ref ${FROM} unreachable (likely force-push); falling back to merge-base with origin/main ($MB)"
+              FROM="$MB"
+            else
+              echo "::warning::from-ref ${FROM} unreachable and no merge-base with origin/main; falling back to HEAD~1..HEAD"
+              FROM="HEAD~1"
+            fi
+            TO="HEAD"
+          fi
+
+          echo "from=$FROM" >> "$GITHUB_OUTPUT"
+          echo "to=$TO"   >> "$GITHUB_OUTPUT"
 
       - name: Cache pre-commit envs
         uses: actions/cache@v4

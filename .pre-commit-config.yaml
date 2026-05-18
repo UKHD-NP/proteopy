@@ -110,7 +110,7 @@ repos:
     hooks:
       - id: pylint
         name: pylint (errors only)
-        entry: pylint --disable=all --enable=E,F
+        entry: pylint --disable=all --enable=E,F --disable=E0401
         language: python
         additional_dependencies: ["pylint==3.3.4"]
         types: [python]

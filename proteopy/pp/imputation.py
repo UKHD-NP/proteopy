@@ -113,7 +113,7 @@ def _impute_rows(
         NumPy random generator used for reproducible sampling.
     """
     mu = median - downshift * sd
-    scale = max(width * sd, 1e-6)
+    scale = width * sd
     for i in row_indices:
         miss = miss_mask[i, :]
         if not miss.any():

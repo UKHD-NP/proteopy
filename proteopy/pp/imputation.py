@@ -24,19 +24,14 @@ def _validate_impute_downshift_input(  # noqa: C901
             f"`adata` must be an AnnData object, "
             f"got {type(adata).__name__}."
         )
-    if isinstance(downshift, bool) or not isinstance(
-        downshift, (int, float)
-    ):
+    if isinstance(downshift, bool) or not isinstance(downshift, (int, float)):
         raise TypeError(
             f"`downshift` must be a numeric value, "
             f"got {type(downshift).__name__}."
         )
-    if isinstance(width, bool) or not isinstance(
-        width, (int, float)
-    ):
+    if isinstance(width, bool) or not isinstance(width, (int, float)):
         raise TypeError(
-            f"`width` must be a numeric value, "
-            f"got {type(width).__name__}."
+            f"`width` must be a numeric value, got {type(width).__name__}."
         )
     if width <= 0:
         raise ValueError("`width` must be positive.")
@@ -47,17 +42,11 @@ def _validate_impute_downshift_input(  # noqa: C901
         )
     if not isinstance(inplace, bool):
         raise TypeError(
-            f"`inplace` must be a bool, "
-            f"got {type(inplace).__name__}."
+            f"`inplace` must be a bool, got {type(inplace).__name__}."
         )
     if not isinstance(force, bool):
-        raise TypeError(
-            f"`force` must be a bool, "
-            f"got {type(force).__name__}."
-        )
-    if random_state is not None and not isinstance(
-        random_state, int
-    ):
+        raise TypeError(f"`force` must be a bool, got {type(force).__name__}.")
+    if random_state is not None and not isinstance(random_state, int):
         raise TypeError(
             f"`random_state` must be an int or None, "
             f"got {type(random_state).__name__}."
@@ -69,15 +58,11 @@ def _validate_impute_downshift_input(  # noqa: C901
         )
     if not isinstance(verbose, bool):
         raise TypeError(
-            f"`verbose` must be a bool, "
-            f"got {type(verbose).__name__}."
+            f"`verbose` must be a bool, got {type(verbose).__name__}."
         )
     if group_by is not None:
         if group_by not in adata.obs.columns:
-            raise KeyError(
-                f"`group_by`='{group_by}' not found "
-                f"in adata.obs"
-            )
+            raise KeyError(f"`group_by`='{group_by}' not found in adata.obs")
     # -- Log-transform check on cleaned matrix so that
     #    zeros (now NaN) don't bias the heuristic
     if not force and Y is not None:
@@ -91,8 +76,14 @@ def _validate_impute_downshift_input(  # noqa: C901
 
 
 def _impute_rows(
-    Y_imp, miss_mask, row_indices,
-    median, sd, downshift, width, rng,
+    Y_imp,
+    miss_mask,
+    row_indices,
+    median,
+    sd,
+    downshift,
+    width,
+    rng,
 ):
     """Impute NaNs in the given rows from a downshifted normal.
 
@@ -128,57 +119,98 @@ def _impute_rows(
         if not miss.any():
             continue
         Y_imp[i, miss] = rng.normal(
-            loc=mu, scale=scale, size=int(miss.sum()),
+            loc=mu,
+            scale=scale,
+            size=int(miss.sum()),
         )
 
 
 def _impute_by_group(
-    Y, Y_imp, miss_mask, groups,
-    g_median, g_sd, downshift, width, rng,
+    Y,
+    Y_imp,
+    miss_mask,
+    groups,
+    g_median,
+    g_sd,
+    downshift,
+    width,
+    rng,
+    verbose=False,
 ):
-    """Impute per group, falling back to global stats."""
+    """Impute per group, falling back to global stats.
+
+    Falls back to ``(g_median, g_sd)`` for any group with fewer than
+    three finite values or with zero standard deviation (constant
+    values). When ``verbose`` is ``True``, prints up to the first
+    five group labels that trigger each fallback type.
+    """
+    max_report = 5
+    few_values = []
+    constant = []
     for label in groups.unique():
         row_idx = np.where(groups == label)[0]
-        grp_vals = Y[row_idx, :][
-            np.isfinite(Y[row_idx, :])
-        ]
+        grp_vals = Y[row_idx, :][np.isfinite(Y[row_idx, :])]
         if grp_vals.size >= 3:
             grp_median = float(np.median(grp_vals))
             grp_sd = float(np.std(grp_vals))
             if not np.isfinite(grp_sd) or grp_sd <= 0:
                 grp_median, grp_sd = g_median, g_sd
+                if len(constant) < max_report:
+                    constant.append(label)
         else:
             grp_median, grp_sd = g_median, g_sd
+            if len(few_values) < max_report:
+                few_values.append(label)
         _impute_rows(
-            Y_imp, miss_mask, row_idx,
-            grp_median, grp_sd,
-            downshift, width, rng,
+            Y_imp,
+            miss_mask,
+            row_idx,
+            grp_median,
+            grp_sd,
+            downshift,
+            width,
+            rng,
         )
+    if verbose:
+        if few_values:
+            labels = ", ".join(f"'{x}'" for x in few_values)
+            print(
+                f"Groups with fewer than 3 finite values "
+                f"(first {len(few_values)}): {labels}; "
+                f"falling back to global stats."
+            )
+        if constant:
+            labels = ", ".join(f"'{x}'" for x in constant)
+            print(
+                f"Groups with zero standard deviation "
+                f"(constant values; first {len(constant)}): "
+                f"{labels}; falling back to global stats."
+            )
 
 
 def _store_downshift_imputation_metadata(
-    target, miss_mask, n_missing,
-    width, downshift, group_by, random_state,
+    target,
+    miss_mask,
+    n_missing,
+    width,
+    downshift,
+    group_by,
+    random_state,
 ):
     """Write imputation mask and run metadata to ``target``."""
-    target.layers["imputation_mask_X"] = (
-        miss_mask.astype(bool)
-    )
+    target.layers["imputation_mask_X"] = miss_mask.astype(bool)
     target.uns.setdefault("imputation", {})
-    target.uns["imputation"].update(dict(
-        method="downshift_normal",
-        width=float(width),
-        downshift=float(downshift),
-        group_by=group_by,
-        random_state=(
-            None if random_state is None
-            else int(random_state)
-        ),
-        n_imputed=int(n_missing),
-        pct_imputed=float(
-            n_missing / miss_mask.size * 100.0
-        ),
-    ))
+    target.uns["imputation"].update(
+        dict(
+            method="downshift_normal",
+            width=float(width),
+            downshift=float(downshift),
+            group_by=group_by,
+            random_state=(None if random_state is None else int(random_state)),
+            n_imputed=int(n_missing),
+            pct_imputed=float(n_missing / miss_mask.size * 100.0),
+        )
+    )
 
 
 def impute_downshift(
@@ -207,9 +239,10 @@ def impute_downshift(
     - ``group_by=<obs column>`` — per-group distribution pooled across
       all samples sharing the same label in that column.
 
-    When a sample or group contains fewer than three finite values, the
-    global distribution (all finite values in ``.X``) is used as a
-    fallback.
+    When ``group_by`` is set and a group contains fewer than three
+    finite values, or its finite values are all constant (zero
+    standard deviation), the global distribution (all finite values
+    in ``.X``) is used as a fallback for that group.
 
     The function records an imputation mask in
     ``.layers["imputation_mask_X"]`` (``True`` where values were
@@ -245,7 +278,9 @@ def impute_downshift(
         Seed for the NumPy random generator. Pass ``None`` for a
         non-deterministic run.
     verbose : bool, optional
-        Print stats.
+        If ``True``, print summary statistics (measured / imputed
+        counts) and, when ``group_by`` is set, up to the first five
+        groups that trigger each per-group fallback to global stats.
 
     Returns
     -------
@@ -267,8 +302,9 @@ def impute_downshift(
         If any argument has an unexpected type.
     ValueError
         If ``width`` is not positive, fewer than three finite values
-        exist globally, or the data appear non-log-transformed and
-        ``force=False``.
+        exist globally, the global finite values are constant (zero
+        standard deviation), or the data appear non-log-transformed
+        and ``force=False``.
     KeyError
         If ``group_by`` is not a column in ``adata.obs``.
 
@@ -312,9 +348,16 @@ def impute_downshift(
     Y[~np.isfinite(Y)] = np.nan
 
     _validate_impute_downshift_input(
-        adata, downshift, width, zero_to_na,
-        inplace, force, random_state, group_by,
-        verbose, Y=Y,
+        adata,
+        downshift,
+        width,
+        zero_to_na,
+        inplace,
+        force,
+        random_state,
+        group_by,
+        verbose,
+        Y=Y,
     )
 
     miss_mask = ~np.isfinite(Y)
@@ -326,8 +369,7 @@ def impute_downshift(
     y_finite = Y[np.isfinite(Y)]
     if y_finite.size < 3:
         raise ValueError(
-            "Not enough finite values to estimate "
-            "imputation parameters."
+            "Not enough finite values to estimate imputation parameters."
         )
     g_median = float(np.median(y_finite))
     g_sd = float(np.std(y_finite))
@@ -343,13 +385,27 @@ def impute_downshift(
 
     if group_by is None:
         _impute_rows(
-            Y_imp, miss_mask, range(Y.shape[0]),
-            g_median, g_sd, downshift, width, rng,
+            Y_imp,
+            miss_mask,
+            range(Y.shape[0]),
+            g_median,
+            g_sd,
+            downshift,
+            width,
+            rng,
         )
     else:
         _impute_by_group(
-            Y, Y_imp, miss_mask, adata.obs[group_by],
-            g_median, g_sd, downshift, width, rng,
+            Y,
+            Y_imp,
+            miss_mask,
+            adata.obs[group_by],
+            g_median,
+            g_sd,
+            downshift,
+            width,
+            rng,
+            verbose=verbose,
         )
 
     Z_out = sparse.csr_matrix(Y_imp) if was_sparse else Y_imp
@@ -370,16 +426,26 @@ def impute_downshift(
         adata_out = adata.copy()
         adata_out.X = Z_out
         _store_downshift_imputation_metadata(
-            adata_out, miss_mask, n_missing,
-            width, downshift, group_by, random_state,
+            adata_out,
+            miss_mask,
+            n_missing,
+            width,
+            downshift,
+            group_by,
+            random_state,
         )
         check_proteodata(adata_out)
         return adata_out
     else:
         adata.X = Z_out
         _store_downshift_imputation_metadata(
-            adata, miss_mask, n_missing,
-            width, downshift, group_by, random_state,
+            adata,
+            miss_mask,
+            n_missing,
+            width,
+            downshift,
+            group_by,
+            random_state,
         )
         check_proteodata(adata)
         return None

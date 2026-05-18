@@ -111,7 +111,8 @@ repos:
       - id: pylint
         name: pylint (errors only)
         entry: pylint --disable=all --enable=E,F
-        language: system
+        language: python
+        additional_dependencies: ["pylint==3.3.4"]
         types: [python]
         exclude: ^docs/
         require_serial: true

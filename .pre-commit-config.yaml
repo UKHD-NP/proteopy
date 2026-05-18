@@ -95,16 +95,14 @@ repos:
         exclude: ^tests/data/
         stages: [pre-commit, pre-push]
 
-  # -- Linting: flake8 on every staged .py file (no allowlist)
+  # -- Linting: flake8 on every staged .py file
+  #    Configuration lives in .flake8 (max-line-length, ignores, exclude,
+  #    max-complexity, show-source) so IDE / manual `flake8 ...` runs
+  #    behave identically to the hook.
   - repo: https://github.com/pycqa/flake8
     rev: 7.1.1
     hooks:
       - id: flake8
-        args:
-          - "--max-complexity=10"
-          - "--max-line-length=79"
-          - "--show-source"
-        exclude: ^docs/
         stages: [pre-commit, pre-push]
 
   # -- Linting: pylint errors/fatals only (mirrors CI behavior)

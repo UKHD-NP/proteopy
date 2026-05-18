@@ -1,0 +1,32 @@
+# Cross-platform line-ending normalization.
+# Working trees always get LF for text files (except Windows scripts).
+# Mirrors the pre-commit `mixed-line-ending` hook's expectations
+# so git itself is the first line of defence on the OS matrix.
+
+* text=auto eol=lf
+
+# -- Windows scripts require CRLF
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# -- Binary formats relevant to proteomics / scientific Python
+#    Declared explicitly so git skips diff/merge attempts on them.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.pdf       binary
+*.h5        binary
+*.h5ad      binary
+*.hdf5      binary
+*.parquet   binary
+*.xlsx      binary
+*.xls       binary
+*.npy       binary
+*.npz       binary
+*.pkl       binary
+*.pickle    binary
+*.zip       binary
+*.gz        binary
+*.tar       binary

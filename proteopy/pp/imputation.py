@@ -215,7 +215,7 @@ def _store_downshift_imputation_metadata(
 
 def impute_downshift(
     adata,
-    zero_to_na: bool = True,
+    zero_to_na: bool = False,
     downshift: float = 1.8,
     width: float = 0.3,
     group_by: str | None = None,

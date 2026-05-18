@@ -14,9 +14,10 @@
 
 minimum_pre_commit_version: "3.5.0"
 
-default_language_version:
-  python: python3.11
-
+# Hook env Python version is whatever runs pre-commit itself.
+# Tool versions are pinned via each hook's `rev:`, which is what
+# actually controls output reproducibility.
+#
 # Hooks must opt-in to a stage via `stages:` on each hook entry.
 # We do NOT set default_stages, so each hook is explicit.
 

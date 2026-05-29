@@ -1863,7 +1863,7 @@ class TestRemoveContaminants:
 
         with pytest.raises(
             FileNotFoundError,
-            match=r"Contaminant file not found",
+            match=r"File not found",
         ):
             remove_contaminants(
                 adata,
@@ -1889,7 +1889,7 @@ class TestRemoveContaminants:
 
         with pytest.raises(
             ValueError,
-            match=r"Unsupported contaminant file type",
+            match=r"Unsupported file type",
         ):
             remove_contaminants(
                 adata,

@@ -1,14 +1,13 @@
 import warnings
-from pathlib import Path
 from typing import Callable
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 import anndata as ad
-from Bio import SeqIO
 
 from proteopy.utils.functools import partial_with_docsig
 from proteopy.utils.anndata import check_proteodata, is_proteodata
+from proteopy.utils.parsers import read_protein_ids
 
 
 def filter_axis(
@@ -637,48 +636,13 @@ def remove_contaminants(
     """
     check_proteodata(adata)
 
-    if header_parser is None:
-        def header_parser(header: str) -> str:
-            parts = header.split("|")
-            return parts[1] if len(parts) > 1 else header
-
-    def _load_contaminant_ids_from_fasta(fasta_path: Path) -> set[str]:
-        contaminant_ids = set()
-        for record in SeqIO.parse(fasta_path, "fasta"):
-            parsed = header_parser(record.id)
-            if parsed == "":
-                warnings.warn(
-                    f"Header parser returned empty ID for record '{record.id}'.",
-                )
-                continue
-            contaminant_ids.add(parsed)
-        return contaminant_ids
-
-    def _load_contaminant_ids_from_table(table_path: Path, sep: str) -> set[str]:
-        series = pd.read_csv(table_path, sep=sep, usecols=[0]).iloc[:, 0]
-        series = series.dropna().astype(str)
-        return set(series.tolist())
-
-    cont_path = Path(contaminant_path)
-    if not cont_path.exists():
-        raise FileNotFoundError(f"Contaminant file not found at {cont_path}")
-
     if protein_key not in adata.var.columns:
         raise KeyError(f"`protein_key`='{protein_key}' not found in adata.var")
 
-    suffix = cont_path.suffix.lower()
-    match suffix:
-        case ".fasta" | ".fa" | ".faa":
-            contaminant_ids = _load_contaminant_ids_from_fasta(cont_path)
-        case ".csv":
-            contaminant_ids = _load_contaminant_ids_from_table(cont_path, ",")
-        case ".tsv":
-            contaminant_ids = _load_contaminant_ids_from_table(cont_path, "\t")
-        case _:
-            raise ValueError(
-                "Unsupported contaminant file type. Use FASTA (.fasta/.fa/.faa), "
-                "CSV (.csv), or TSV (.tsv).",
-            )
+    contaminant_ids = read_protein_ids(
+        contaminant_path,
+        header_parser=header_parser,
+    )
 
     proteins = adata.var[protein_key]
     keep_mask = ~proteins.isin(contaminant_ids)

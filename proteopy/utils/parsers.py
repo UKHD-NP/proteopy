@@ -1,10 +1,13 @@
+import os
 import re
 import warnings
-from typing import Dict, Optional, List
+from pathlib import Path
+from typing import Callable, Dict, Optional, List
 
 import anndata as ad
 import numpy as np
 import pandas as pd
+from Bio import SeqIO
 
 from proteopy.utils.string import sanitize_string
 
@@ -626,3 +629,232 @@ def _resolve_hclustv_profile_key(
             )
 
     return profile_key
+
+
+# ---------------------------------------------------------------------------
+# Reusable readers for proteomics-related identifier files
+# ---------------------------------------------------------------------------
+
+_FASTA_SUFFIXES = (".fasta", ".fa", ".faa")
+_TABULAR_SEPARATORS = {".csv": ",", ".tsv": "\t"}
+
+
+def _default_fasta_header_parser(header: str) -> str:
+    """
+    Return the second pipe-separated token of a FASTA header, falling
+    back to the full header when no pipe is present.
+
+    Example: ``"sp|P12345|HUMAN"`` -> ``"P12345"``.
+    """
+    parts = header.split("|")
+    return parts[1] if len(parts) > 1 else header
+
+
+def _read_fasta_protein_ids(
+    file_path: Path,
+    header_parser: Callable[[str], str],
+) -> set[str]:
+    """Parse protein IDs from a FASTA file using ``header_parser``."""
+    ids: set[str] = set()
+    for record in SeqIO.parse(file_path, "fasta"):
+        parsed = header_parser(record.id)
+        if not isinstance(parsed, str):
+            warnings.warn(
+                f"Header parser returned non-string "
+                f"({type(parsed).__name__}) for record "
+                f"'{record.id}'; skipping.",
+                UserWarning,
+            )
+            continue
+        parsed = parsed.strip()
+        if parsed == "":
+            warnings.warn(
+                f"Header parser returned empty ID for record "
+                f"'{record.id}'.",
+                UserWarning,
+            )
+            continue
+        ids.add(parsed)
+    return ids
+
+
+def _read_tabular_protein_ids(
+    file_path: Path,
+    sep: str,
+    has_header: bool,
+) -> set[str]:
+    """Parse protein IDs from the first column of a CSV / TSV file."""
+    header_arg = 0 if has_header else None
+    try:
+        df = pd.read_csv(
+            file_path,
+            sep=sep,
+            usecols=[0],
+            header=header_arg,
+        )
+    except pd.errors.EmptyDataError as exc:
+        raise ValueError(
+            f"Tabular file is empty: {file_path}"
+        ) from exc
+
+    series = df.iloc[:, 0].dropna().astype(str).str.strip()
+    series = series[series != ""]
+    return set(series.tolist())
+
+
+def _validate_read_protein_ids_input(
+    path,
+    header_parser,
+    has_header,
+) -> Path:
+    """Validate ``read_protein_ids`` inputs and return resolved path."""
+    if not isinstance(path, (str, os.PathLike)):
+        raise TypeError(
+            f"`path` must be a str or os.PathLike, "
+            f"got {type(path).__name__}."
+        )
+    if header_parser is not None and not callable(header_parser):
+        raise TypeError(
+            f"`header_parser` must be callable or None, "
+            f"got {type(header_parser).__name__}."
+        )
+    if not isinstance(has_header, bool):
+        raise TypeError(
+            f"`has_header` must be a bool, "
+            f"got {type(has_header).__name__}."
+        )
+
+    file_path = Path(path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found at {file_path}")
+    if not file_path.is_file():
+        raise IsADirectoryError(
+            f"Path is not a regular file: {file_path}"
+        )
+    return file_path
+
+
+def read_protein_ids(
+    path: str | os.PathLike,
+    header_parser: Callable[[str], str] | None = None,
+    has_header: bool = True,
+) -> set[str]:
+    """
+    Read protein identifiers from a FASTA, CSV, or TSV file.
+
+    Parameters
+    ----------
+    path : str | os.PathLike
+        Path to the source file. FASTA (``.fasta`` / ``.fa`` / ``.faa``),
+        CSV (``.csv``), or TSV (``.tsv``) are supported.
+    header_parser : callable, optional
+        Function to extract protein IDs from FASTA headers. Defaults to
+        splitting the header on ``"|"`` and returning the second
+        element, falling back to the full header. Ignored (with a
+        warning) for tabular formats.
+    has_header : bool, optional
+        For CSV / TSV files, whether the first row is a header line.
+        Set to ``False`` for plain single-column ID lists. Ignored
+        for FASTA files.
+
+    Returns
+    -------
+    set of str
+        Unique protein identifiers parsed from ``path``. For tabular
+        files the first column is used. Whitespace is stripped and
+        empty strings are excluded.
+
+    Raises
+    ------
+    TypeError
+        If ``path`` is not a str / PathLike, ``header_parser`` is
+        neither callable nor ``None``, or ``has_header`` is not a bool.
+    FileNotFoundError
+        If ``path`` does not exist.
+    IsADirectoryError
+        If ``path`` exists but is not a regular file.
+    ValueError
+        If ``path`` has an unsupported suffix, or the tabular file is
+        empty.
+
+    Warns
+    -----
+    UserWarning
+        Emitted (and the record skipped) when ``header_parser`` returns
+        a non-string or an empty / whitespace-only string for a FASTA
+        record. Emitted when ``header_parser`` is supplied alongside a
+        tabular file (the parser is ignored). Emitted when zero IDs
+        are parsed from the file.
+
+    Examples
+    --------
+    Default FASTA parser (accession is the second pipe-separated field):
+
+    >>> import tempfile
+    >>> from pathlib import Path
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     p = Path(d) / "contaminants.fasta"
+    ...     _ = p.write_text(
+    ...         ">sp|P12345|HUMAN_A\\nACDEF\\n"
+    ...         ">sp|P67890|HUMAN_B\\nGHIKL\\n"
+    ...     )
+    ...     print(sorted(read_protein_ids(p)))
+    ['P12345', 'P67890']
+
+    Custom header parser:
+
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     p = Path(d) / "headers.fasta"
+    ...     _ = p.write_text(
+    ...         ">x__protein_0\\nACDEF\\n"
+    ...         ">x__protein_1\\nGHIKL\\n"
+    ...     )
+    ...     print(sorted(read_protein_ids(
+    ...         p, header_parser=lambda h: h.split("__")[1],
+    ...     )))
+    ['protein_0', 'protein_1']
+
+    Single-column TSV without a header row:
+
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     p = Path(d) / "ids.tsv"
+    ...     _ = p.write_text("P00001\\nP00002\\nP00003\\n")
+    ...     print(sorted(read_protein_ids(p, has_header=False)))
+    ['P00001', 'P00002', 'P00003']
+    """
+    file_path = _validate_read_protein_ids_input(
+        path, header_parser, has_header,
+    )
+
+    user_provided_parser = header_parser is not None
+    if header_parser is None:
+        header_parser = _default_fasta_header_parser
+
+    # -- Dispatch on file suffix
+    suffix = file_path.suffix.lower()
+    if suffix in _FASTA_SUFFIXES:
+        ids = _read_fasta_protein_ids(file_path, header_parser)
+    elif suffix in _TABULAR_SEPARATORS:
+        if user_provided_parser:
+            warnings.warn(
+                f"`header_parser` is ignored for tabular files "
+                f"(got suffix '{suffix}').",
+                UserWarning,
+            )
+        ids = _read_tabular_protein_ids(
+            file_path,
+            sep=_TABULAR_SEPARATORS[suffix],
+            has_header=has_header,
+        )
+    else:
+        raise ValueError(
+            "Unsupported file type. Use FASTA "
+            "(.fasta/.fa/.faa), CSV (.csv), or TSV (.tsv)."
+        )
+
+    if not ids:
+        warnings.warn(
+            f"No protein IDs parsed from {file_path}.",
+            UserWarning,
+        )
+    return ids

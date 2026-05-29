@@ -1,5 +1,5 @@
 import warnings
-from typing import Callable
+from collections.abc import Callable
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
@@ -84,7 +84,7 @@ def filter_axis(
 
     axis_i = 1 - axis
     axis_labels = adata.obs_names if axis == 0 else adata.var_names
-    completeness = None # assigned below when min_fraction is set
+    completeness = None  # assigned below when min_fraction is set
 
     if group_by is not None:
         metadata = adata.obs if axis == 1 else adata.var
@@ -126,7 +126,9 @@ def filter_axis(
             if not completeness_by_group:
                 completeness = pd.Series(0, index=axis_labels, dtype=float)
             else:
-                completeness = pd.concat(completeness_by_group, axis=1).max(axis=1)
+                completeness = pd.concat(completeness_by_group, axis=1).max(
+                    axis=1
+                )
     else:
         if sp.issparse(X):
             counts = pd.Series(X.getnnz(axis=axis_i), index=axis_labels)
@@ -157,7 +159,9 @@ def filter_axis(
         check_proteodata(adata)
         return None
     else:
-        adata_filtered = adata[mask_filt, :] if axis == 0 else adata[:, mask_filt]
+        adata_filtered = (
+            adata[mask_filt, :] if axis == 0 else adata[:, mask_filt]
+        )
         check_proteodata(adata_filtered)
         return adata_filtered
 
@@ -173,7 +177,7 @@ filter_samples = partial_with_docsig(
     filter_axis,
     axis=0,
     docstr_header=docstr_header,
-    )
+)
 
 docstr_header = """
 Filter observations based on data completeness.
@@ -187,7 +191,7 @@ filter_samples_completeness = partial_with_docsig(
     axis=0,
     min_count=None,
     docstr_header=docstr_header,
-    )
+)
 
 docstr_header = """
 Filter variables based on non-missing value content.
@@ -200,7 +204,7 @@ filter_var = partial_with_docsig(
     filter_axis,
     axis=1,
     docstr_header=docstr_header,
-    )
+)
 
 docstr_header = """
 Filter variables based on data completeness.
@@ -214,7 +218,7 @@ filter_var_completeness = partial_with_docsig(
     axis=1,
     min_count=None,
     docstr_header=docstr_header,
-    )
+)
 
 
 def filter_proteins_by_peptide_count(
@@ -223,7 +227,7 @@ def filter_proteins_by_peptide_count(
     max_count=None,
     protein_col="protein_id",
     inplace=True,
-    ):
+):
     """
     Filter proteins by their peptide count.
 
@@ -247,9 +251,9 @@ def filter_proteins_by_peptide_count(
     """
     check_proteodata(adata)
     if is_proteodata(adata)[1] != "peptide":
-        raise ValueError((
+        raise ValueError(
             "`AnnData` object must be in ProteoData peptide format."
-            ))
+        )
 
     if min_count is None and max_count is None:
         warnings.warn("Pass at least one argument: min_count | max_count")
@@ -264,7 +268,9 @@ def filter_proteins_by_peptide_count(
     if max_count is not None:
         if max_count < 0:
             raise ValueError("`max_count` must be non-negative.")
-    if (min_count is not None and max_count is not None) and (min_count > max_count):
+    if (min_count is not None and max_count is not None) and (
+        min_count > max_count
+    ):
         raise ValueError("`min_count` cannot be greater than `max_count`.")
 
     if protein_col not in adata.var.columns:
@@ -311,7 +317,7 @@ def filter_samples_by_category_count(
     min_count=None,
     max_count=None,
     inplace=True,
-    ):
+):
     """
     Filter observations by the frequency of their category value in a ``.vars``
     metadata column.
@@ -353,7 +359,9 @@ def filter_samples_by_category_count(
         raise ValueError("`min_count` cannot be greater than `max_count`.")
 
     if category_col not in adata.obs.columns:
-        raise KeyError(f"`category_col`='{category_col}' not found in adata.obs")
+        raise KeyError(
+            f"`category_col`='{category_col}' not found in adata.obs"
+        )
 
     obs_series = adata.obs[category_col]
     counts = obs_series.value_counts(dropna=False)
@@ -398,26 +406,22 @@ def _validate_remove_zero_variance_vars_input(
         )
     if not isinstance(atol, (int, float)):
         raise TypeError(
-            f"`atol` must be a numeric value, "
-            f"got {type(atol).__name__}."
+            f"`atol` must be a numeric value, " f"got {type(atol).__name__}."
         )
     if atol < 0:
         raise ValueError("`atol` must be non-negative.")
     if not isinstance(inplace, bool):
         raise TypeError(
-            f"`inplace` must be a bool, "
-            f"got {type(inplace).__name__}."
+            f"`inplace` must be a bool, " f"got {type(inplace).__name__}."
         )
     if not isinstance(verbose, bool):
         raise TypeError(
-            f"`verbose` must be a bool, "
-            f"got {type(verbose).__name__}."
+            f"`verbose` must be a bool, " f"got {type(verbose).__name__}."
         )
     if group_by is not None:
         if group_by not in adata.obs.columns:
             raise KeyError(
-                f"`group_by`='{group_by}' not found "
-                f"in adata.obs"
+                f"`group_by`='{group_by}' not found " f"in adata.obs"
             )
         if adata.obs[group_by].isna().any():
             raise ValueError(
@@ -531,7 +535,11 @@ def remove_zero_variance_vars(
     ['p1']
     """
     _validate_remove_zero_variance_vars_input(
-        adata, group_by, atol, inplace, verbose,
+        adata,
+        group_by,
+        atol,
+        inplace,
+        verbose,
     )
     check_proteodata(adata)
     X = adata.X
@@ -559,10 +567,7 @@ def remove_zero_variance_vars(
             if idx.size == 0:
                 continue
             Xg = X[idx, :]
-            Xg_arr = (
-                Xg.toarray() if sp.issparse(Xg)
-                else np.asarray(Xg)
-            )
+            Xg_arr = Xg.toarray() if sp.issparse(Xg) else np.asarray(Xg)
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", RuntimeWarning)
                 vg = np.nanvar(Xg_arr, axis=0, ddof=0)
@@ -607,7 +612,7 @@ def remove_contaminants(
     protein_key="protein_id",
     header_parser: Callable[[str], str] | None = None,
     inplace=True,
-    ):
+):
     """
     Remove variables whose protein identifier matches a contaminant FASTA entry.
 

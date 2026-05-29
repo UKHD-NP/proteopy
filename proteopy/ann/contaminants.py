@@ -1,9 +1,10 @@
 """
 Annotation helpers for marking contaminant variables in an AnnData.
 """
+
 import os
 import warnings
-from typing import Callable
+from collections.abc import Callable
 
 from anndata import AnnData
 
@@ -24,9 +25,7 @@ def _print_contaminant_summary(
         if n_pep == 0:
             n_prot = 0
         else:
-            n_prot = int(
-                adata.var.loc[mask_values, protein_key].nunique()
-            )
+            n_prot = int(adata.var.loc[mask_values, protein_key].nunique())
         print(
             f"Annotated {n_pep} peptides from {n_prot} "
             f"contaminating proteins at adata.var['{key_added}']."
@@ -130,9 +129,7 @@ def contaminants(
     check_proteodata(adata)
 
     if protein_key not in adata.var.columns:
-        raise KeyError(
-            f"`protein_key`='{protein_key}' not found in adata.var"
-        )
+        raise KeyError(f"`protein_key`='{protein_key}' not found in adata.var")
     if key_added in adata.var.columns:
         warnings.warn(
             f"`key_added`='{key_added}' already exists in adata.var; "
@@ -154,7 +151,10 @@ def contaminants(
 
     if verbose:
         _print_contaminant_summary(
-            adata_target, mask_values, protein_key, key_added,
+            adata_target,
+            mask_values,
+            protein_key,
+            key_added,
         )
 
     check_proteodata(adata_target)

@@ -99,11 +99,11 @@ class TestIsUniprotAccession:
     @pytest.mark.parametrize(
         "accession",
         [
-            "P12345",       # Swiss-Prot, [OPQ] branch
-            "O00001",       # Swiss-Prot, [OPQ] branch with zeros
-            "Q9Y6K9",       # Swiss-Prot, mixed alphanumeric
-            "A0A0A0A0A1",   # TrEMBL 10-char, [A-NR-Z] branch
-            "P12345-2",     # isoform suffix
+            "P12345",  # Swiss-Prot, [OPQ] branch
+            "O00001",  # Swiss-Prot, [OPQ] branch with zeros
+            "Q9Y6K9",  # Swiss-Prot, mixed alphanumeric
+            "A0A0A0A0A1",  # TrEMBL 10-char, [A-NR-Z] branch
+            "P12345-2",  # isoform suffix
             "A0A0A0A0A1-12",  # TrEMBL with two-digit isoform
         ],
     )
@@ -113,15 +113,15 @@ class TestIsUniprotAccession:
     @pytest.mark.parametrize(
         "accession",
         [
-            "",             # empty
-            "p12345",       # lowercase
-            "P1234",        # too short
-            "P123456",      # too long for [OPQ] branch
-            "X12345",       # second char not a letter-then-3 pattern
-            "12345P",       # leading digit
-            "1ABCDE",       # leading digit
-            "P12345-",      # dangling isoform separator
-            "P12345-123",   # isoform suffix too long
+            "",  # empty
+            "p12345",  # lowercase
+            "P1234",  # too short
+            "P123456",  # too long for [OPQ] branch
+            "X12345",  # second char not a letter-then-3 pattern
+            "12345P",  # leading digit
+            "1ABCDE",  # leading digit
+            "P12345-",  # dangling isoform separator
+            "P12345-123",  # isoform suffix too long
         ],
     )
     def test_invalid_accessions(self, accession):
@@ -165,7 +165,9 @@ class TestContaminants:
     def test_gpm_crap_hash_matches_raw_payload(self, tmp_path):
         dst = tmp_path / "gpm.fasta"
         with patch.object(
-            contam_mod, "_download", _make_download_mock(GPM_RAW),
+            contam_mod,
+            "_download",
+            _make_download_mock(GPM_RAW),
         ):
             result = contaminants(source="gpm_crap", path=dst)
 
@@ -195,11 +197,17 @@ class TestContaminants:
         ],
     )
     def test_returns_path_to_destination(
-        self, tmp_path, source, payload, expected,
+        self,
+        tmp_path,
+        source,
+        payload,
+        expected,
     ):
         dst = tmp_path / f"{source}.fasta"
         with patch.object(
-            contam_mod, "_download", _make_download_mock(payload),
+            contam_mod,
+            "_download",
+            _make_download_mock(payload),
         ):
             result = contaminants(source=source, path=dst)
 
@@ -213,17 +221,27 @@ class TestContaminants:
         "source, payload, expected, default_stem",
         [
             (
-                "gpm_crap", GPM_RAW, GPM_RAW,
+                "gpm_crap",
+                GPM_RAW,
+                GPM_RAW,
                 "contaminants_gpm-crap",
             ),
             (
-                "frankenfield2022", FRANKENFIELD_RAW, FRANKENFIELD_FORMATTED,
+                "frankenfield2022",
+                FRANKENFIELD_RAW,
+                FRANKENFIELD_FORMATTED,
                 "contaminants_frankenfield2022",
             ),
         ],
     )
     def test_default_path_appends_md5_digest(
-        self, tmp_path, monkeypatch, source, payload, expected, default_stem,
+        self,
+        tmp_path,
+        monkeypatch,
+        source,
+        payload,
+        expected,
+        default_stem,
     ):
         """
         With ``path=None`` the function writes to a default file in the
@@ -246,7 +264,9 @@ class TestContaminants:
         monkeypatch.setattr(tempfile, "TemporaryDirectory", spy_td)
 
         with patch.object(
-            contam_mod, "_download", _make_download_mock(payload),
+            contam_mod,
+            "_download",
+            _make_download_mock(payload),
         ):
             result = contaminants(source=source, path=None)
 
@@ -267,7 +287,9 @@ class TestContaminants:
         assert not dst.parent.exists()
 
         with patch.object(
-            contam_mod, "_download", _make_download_mock(GPM_RAW),
+            contam_mod,
+            "_download",
+            _make_download_mock(GPM_RAW),
         ):
             result = contaminants(source="gpm_crap", path=dst)
 
@@ -300,13 +322,19 @@ class TestContaminants:
         ],
     )
     def test_existing_file_force_true_overwrites(
-        self, tmp_path, source, payload, expected,
+        self,
+        tmp_path,
+        source,
+        payload,
+        expected,
     ):
         dst = tmp_path / f"{source}.fasta"
         dst.write_bytes(b"pre-existing bytes that must not be overwritten\n")
 
         with patch.object(
-            contam_mod, "_download", _make_download_mock(payload),
+            contam_mod,
+            "_download",
+            _make_download_mock(payload),
         ):
             result = contaminants(source=source, path=dst, force=True)
 
@@ -333,7 +361,11 @@ class TestContaminants:
         ],
     )
     def test_formatter_failure_propagates_and_cleans_up_temp(
-        self, tmp_path, monkeypatch, bad_payload, error_match,
+        self,
+        tmp_path,
+        monkeypatch,
+        bad_payload,
+        error_match,
     ):
         """
         All Frankenfield-header validation errors raised by the internal
@@ -343,6 +375,7 @@ class TestContaminants:
         call to the ``_format_frankenfield_header`` / ``_format_fasta``
         helpers.
         """
+
         def fake_download(url, dest):
             Path(dest).write_bytes(bad_payload)
 

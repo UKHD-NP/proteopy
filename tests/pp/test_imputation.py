@@ -77,11 +77,13 @@ def _make_grouped_log_adata(
     rng = np.random.default_rng(seed)
     sigma_ln = 1.5 * np.log(2)  # log2-sd ≈ 1.5
     raw_t = rng.lognormal(
-        mean=18.0 * np.log(2), sigma=sigma_ln,
+        mean=18.0 * np.log(2),
+        sigma=sigma_ln,
         size=(n_per_group, n_vars),
     )
     raw_b = rng.lognormal(
-        mean=24.0 * np.log(2), sigma=sigma_ln,
+        mean=24.0 * np.log(2),
+        sigma=sigma_ln,
         size=(n_per_group, n_vars),
     )
     X = np.vstack([np.log2(raw_t), np.log2(raw_b)])
@@ -109,7 +111,8 @@ def _make_non_log_adata() -> AnnData:
     """
     rng = np.random.default_rng(2)
     X = rng.lognormal(
-        mean=23.0 * np.log(2), sigma=2.5 * np.log(2),
+        mean=23.0 * np.log(2),
+        sigma=2.5 * np.log(2),
         size=(20, 30),
     )
     miss = rng.random(size=X.shape) < 0.2
@@ -146,18 +149,24 @@ def _theoretical_downshift_params(observed, downshift, width):
 def _draw_reference(mu, sigma, n, seed=100):
     """Draw a fixed-seed reference sample from N(mu, sigma)."""
     return np.random.default_rng(seed).normal(
-        loc=mu, scale=sigma, size=n,
+        loc=mu,
+        scale=sigma,
+        size=n,
     )
 
 
 def compare_relative_means(observed, imputed, downshift, width):
     """Assert imputed mean sits below observed mean and matches theory."""
     mu_th, sigma_th = _theoretical_downshift_params(
-        observed, downshift, width,
+        observed,
+        downshift,
+        width,
     )
     assert imputed.mean() < observed.mean()
     np.testing.assert_allclose(
-        imputed.mean(), mu_th, atol=0.1 * sigma_th,
+        imputed.mean(),
+        mu_th,
+        atol=0.1 * sigma_th,
     )
 
 
@@ -166,18 +175,23 @@ def compare_quantiles(observed, imputed, qs=(0.25, 0.5, 0.75)):
     for q in qs:
         q_obs = float(np.quantile(observed, q))
         q_imp = float(np.quantile(imputed, q))
-        assert q_imp < q_obs, (
-            f"q={q}: imputed {q_imp:.3f} ≥ observed {q_obs:.3f}"
-        )
+        assert (
+            q_imp < q_obs
+        ), f"q={q}: imputed {q_imp:.3f} ≥ observed {q_obs:.3f}"
 
 
 def compare_percentiles(
-    observed, imputed, downshift, width,
+    observed,
+    imputed,
+    downshift,
+    width,
     ps=(5, 25, 50, 75, 95),
 ):
     """Assert imputed percentiles match the theoretical downshifted normal."""
     mu_th, sigma_th = _theoretical_downshift_params(
-        observed, downshift, width,
+        observed,
+        downshift,
+        width,
     )
     # 0.3 * sigma_th ≈ 2 standard errors of the sample 5th-percentile
     # for the smaller per-group samples (n ≈ 250); much looser than
@@ -185,12 +199,12 @@ def compare_percentiles(
     # callers — generous enough to absorb RNG drift, tight enough
     # that a sign flip or width misuse still breaks the test.
     for p in ps:
-        expected = float(
-            norm.ppf(p / 100.0, loc=mu_th, scale=sigma_th)
-        )
+        expected = float(norm.ppf(p / 100.0, loc=mu_th, scale=sigma_th))
         actual = float(np.percentile(imputed, p))
         np.testing.assert_allclose(
-            actual, expected, atol=0.3 * sigma_th,
+            actual,
+            expected,
+            atol=0.3 * sigma_th,
             err_msg=f"p={p}: expected {expected:.3f}, got {actual:.3f}",
         )
 
@@ -332,7 +346,8 @@ class TestImputeDownshift:
         """No NaN in input → output equals input and the mask is all False."""
         rng = np.random.default_rng(0)
         raw = rng.lognormal(
-            mean=23.0 * np.log(2), sigma=2.5 * np.log(2),
+            mean=23.0 * np.log(2),
+            sigma=2.5 * np.log(2),
             size=(20, 30),
         )
         X = np.log2(raw)
@@ -375,7 +390,9 @@ class TestImputeDownshift:
         adata.X[3, 0] = 0.0
 
         result = impute_downshift(
-            adata, zero_to_na=True, inplace=False,
+            adata,
+            zero_to_na=True,
+            inplace=False,
         )
 
         mask = np.asarray(result.layers["imputation_mask_X"])
@@ -387,15 +404,17 @@ class TestImputeDownshift:
 
     # ── B. Statistical shape of imputed values ──────────────────────
     #
-    # The primary fixture has ~4000 imputed positions. 
+    # The primary fixture has ~4000 imputed positions.
     # Defaults: downshift=1.8, width=0.3, random_state=42.
 
     def test_imputed_mean_is_shifted_and_matches_theoretical(self):
         adata_in = _make_log_adata_with_missing()
         result = impute_downshift(
             adata_in.copy(),
-            downshift=1.8, width=0.3,
-            random_state=42, inplace=False,
+            downshift=1.8,
+            width=0.3,
+            random_state=42,
+            inplace=False,
         )
         observed, imputed = _split_observed_imputed(adata_in, result)
         compare_relative_means(observed, imputed, 1.8, 0.3)
@@ -404,8 +423,10 @@ class TestImputeDownshift:
         adata_in = _make_log_adata_with_missing()
         result = impute_downshift(
             adata_in.copy(),
-            downshift=1.8, width=0.3,
-            random_state=42, inplace=False,
+            downshift=1.8,
+            width=0.3,
+            random_state=42,
+            inplace=False,
         )
         observed, imputed = _split_observed_imputed(adata_in, result)
         compare_quantiles(observed, imputed)
@@ -414,8 +435,10 @@ class TestImputeDownshift:
         adata_in = _make_log_adata_with_missing()
         result = impute_downshift(
             adata_in.copy(),
-            downshift=1.8, width=0.3,
-            random_state=42, inplace=False,
+            downshift=1.8,
+            width=0.3,
+            random_state=42,
+            inplace=False,
         )
         observed, imputed = _split_observed_imputed(adata_in, result)
         compare_percentiles(observed, imputed, 1.8, 0.3)
@@ -425,12 +448,16 @@ class TestImputeDownshift:
         adata_in = _make_log_adata_with_missing()
         result = impute_downshift(
             adata_in.copy(),
-            downshift=1.8, width=0.3,
-            random_state=42, inplace=False,
+            downshift=1.8,
+            width=0.3,
+            random_state=42,
+            inplace=False,
         )
         observed, imputed = _split_observed_imputed(adata_in, result)
         mu_th, sigma_th = _theoretical_downshift_params(
-            observed, 1.8, 0.3,
+            observed,
+            1.8,
+            0.3,
         )
         reference = _draw_reference(mu_th, sigma_th, imputed.size)
         _, p_h1 = bayes_factor_same_norm_distr(imputed, reference)
@@ -450,7 +477,8 @@ class TestImputeDownshift:
         assert "imputation_mask_X" in adata.layers
         finite_mask = np.isfinite(X_in)
         np.testing.assert_array_equal(
-            X_out[finite_mask], X_in[finite_mask],
+            X_out[finite_mask],
+            X_in[finite_mask],
         )
 
     def test_inplace_false_returns_copy_and_preserves_original(self):
@@ -461,7 +489,9 @@ class TestImputeDownshift:
 
         assert result is not adata
         assert np.array_equal(
-            adata.X, X_in_snapshot, equal_nan=True,
+            adata.X,
+            X_in_snapshot,
+            equal_nan=True,
         )
         assert "imputation_mask_X" not in adata.layers
         assert "imputation_mask_X" in result.layers
@@ -500,7 +530,8 @@ class TestImputeDownshift:
         r2 = impute_downshift(adata2, random_state=42, inplace=False)
 
         np.testing.assert_array_equal(
-            np.asarray(r1.X), np.asarray(r2.X),
+            np.asarray(r1.X),
+            np.asarray(r2.X),
         )
 
     def test_random_state_none_is_nondeterministic(self):
@@ -512,7 +543,8 @@ class TestImputeDownshift:
 
         mask = np.asarray(r1.layers["imputation_mask_X"])
         assert not np.array_equal(
-            np.asarray(r1.X)[mask], np.asarray(r2.X)[mask],
+            np.asarray(r1.X)[mask],
+            np.asarray(r2.X)[mask],
         )
 
     # ── D. group_by behavior ────────────────────────────────────────
@@ -527,9 +559,12 @@ class TestImputeDownshift:
         X_in = adata.X.copy()
 
         result = impute_downshift(
-            adata, group_by="cell_type",
-            downshift=1.8, width=0.3,
-            random_state=42, inplace=False,
+            adata,
+            group_by="cell_type",
+            downshift=1.8,
+            width=0.3,
+            random_state=42,
+            inplace=False,
         )
         mask = np.asarray(result.layers["imputation_mask_X"])
         X_out = np.asarray(result.X)
@@ -547,17 +582,22 @@ class TestImputeDownshift:
             compare_percentiles(grp_observed, grp_imputed, 1.8, 0.3)
 
             mu_th, sigma_th = _theoretical_downshift_params(
-                grp_observed, 1.8, 0.3,
+                grp_observed,
+                1.8,
+                0.3,
             )
             reference = _draw_reference(
-                mu_th, sigma_th, grp_imputed.size,
+                mu_th,
+                sigma_th,
+                grp_imputed.size,
             )
             _, p_h1 = bayes_factor_same_norm_distr(
-                grp_imputed, reference,
+                grp_imputed,
+                reference,
             )
-            assert p_h1 > BF_PH1_THRESHOLD, (
-                f"{label}: BF p_h1={p_h1:.3f} below threshold"
-            )
+            assert (
+                p_h1 > BF_PH1_THRESHOLD
+            ), f"{label}: BF p_h1={p_h1:.3f} below threshold"
 
             per_group_means[label] = grp_imputed.mean()
 
@@ -569,22 +609,26 @@ class TestImputeDownshift:
 
     def test_group_by_fallback_to_global_when_group_too_small(self):
         adata = _make_grouped_log_adata(
-            n_per_group=20, n_vars=50, miss_frac=0.25, seed=1,
+            n_per_group=20,
+            n_vars=50,
+            miss_frac=0.25,
+            seed=1,
         )
         # Add a third cell type "monocyte" with only 1 observation
         # AND fewer than 3 finite values, which is what triggers the
         # global-stats fallback (`grp_vals.size >= 3` is False).
-        cell_types = list(
-            adata.obs["cell_type"].astype(object).to_numpy()
-        )
+        cell_types = list(adata.obs["cell_type"].astype(object).to_numpy())
         cell_types[0] = "monocyte"
         adata.obs["cell_type"] = cell_types
         adata.X[0, 2:] = np.nan  # leave 2 finite values in that row
 
         result = impute_downshift(
-            adata, group_by="cell_type",
-            downshift=1.8, width=0.3,
-            random_state=42, inplace=False,
+            adata,
+            group_by="cell_type",
+            downshift=1.8,
+            width=0.3,
+            random_state=42,
+            inplace=False,
         )
         mask = np.asarray(result.layers["imputation_mask_X"])
         X_out = np.asarray(result.X)
@@ -620,10 +664,13 @@ class TestImputeDownshift:
         rng = np.random.default_rng(0)
         n_vars = 60
         # T_cell: 5 obs with normal variation (good per-group stats).
-        X_t = np.log2(rng.lognormal(
-            mean=20.0 * np.log(2), sigma=1.5 * np.log(2),
-            size=(5, n_vars),
-        ))
+        X_t = np.log2(
+            rng.lognormal(
+                mean=20.0 * np.log(2),
+                sigma=1.5 * np.log(2),
+                size=(5, n_vars),
+            )
+        )
         # B_cell: 4 obs with a constant finite value (sd=0). Inject a
         # column of NaN so there are positions to impute.
         X_b = np.full((4, n_vars), 23.0)
@@ -638,14 +685,18 @@ class TestImputeDownshift:
         )
         var_names = [f"p{i}" for i in range(n_vars)]
         var = pd.DataFrame(
-            {"protein_id": var_names}, index=var_names,
+            {"protein_id": var_names},
+            index=var_names,
         )
         adata = AnnData(X=X, obs=obs, var=var)
 
         result = impute_downshift(
-            adata, group_by="cell_type",
-            downshift=1.8, width=0.3,
-            random_state=42, inplace=False,
+            adata,
+            group_by="cell_type",
+            downshift=1.8,
+            width=0.3,
+            random_state=42,
+            inplace=False,
         )
         mask = np.asarray(result.layers["imputation_mask_X"])
         X_out = np.asarray(result.X)
@@ -664,13 +715,17 @@ class TestImputeDownshift:
         adata = _make_small_log_adata()
         with pytest.raises(KeyError, match=r"not found"):
             impute_downshift(
-                adata, group_by="not_a_col", inplace=False,
+                adata,
+                group_by="not_a_col",
+                inplace=False,
             )
 
     def test_group_by_records_in_uns(self):
         adata = _make_grouped_log_adata()
         result = impute_downshift(
-            adata, group_by="cell_type", inplace=False,
+            adata,
+            group_by="cell_type",
+            inplace=False,
         )
         assert result.uns["imputation"]["group_by"] == "cell_type"
 
@@ -753,14 +808,17 @@ class TestImputeDownshift:
         obs_names = ["s0", "s1", "s2"]
         var_names = ["p0", "p1", "p2"]
         obs = pd.DataFrame(
-            {"sample_id": obs_names}, index=obs_names,
+            {"sample_id": obs_names},
+            index=obs_names,
         )
         var = pd.DataFrame(
-            {"protein_id": var_names}, index=var_names,
+            {"protein_id": var_names},
+            index=var_names,
         )
         adata = AnnData(X=X, obs=obs, var=var)
         with pytest.raises(
-            ValueError, match=r"Not enough finite values",
+            ValueError,
+            match=r"Not enough finite values",
         ):
             impute_downshift(adata, force=True, inplace=False)
 
@@ -769,15 +827,18 @@ class TestImputeDownshift:
         obs_names = [f"s{i}" for i in range(4)]
         var_names = [f"p{i}" for i in range(3)]
         obs = pd.DataFrame(
-            {"sample_id": obs_names}, index=obs_names,
+            {"sample_id": obs_names},
+            index=obs_names,
         )
         var = pd.DataFrame(
-            {"protein_id": var_names}, index=var_names,
+            {"protein_id": var_names},
+            index=var_names,
         )
         adata = AnnData(X=X, obs=obs, var=var)
         adata.X[0, 0] = np.nan
         with pytest.raises(
-            ValueError, match=r"standard deviation",
+            ValueError,
+            match=r"standard deviation",
         ):
             impute_downshift(adata, force=True, inplace=False)
 

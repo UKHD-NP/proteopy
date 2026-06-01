@@ -23,7 +23,11 @@ from .stats import (
     hclustv_profiles_heatmap,
 )
 
-from .copf import proteoform_scores
+from .copf import (
+    proteoform_scores,
+    pairwise_correlation_heatmap,
+    peptide_intensity_heatmap,
+)
 from .stat_tests import (
     volcano,
     differential_abundance_box,

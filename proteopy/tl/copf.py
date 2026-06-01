@@ -13,6 +13,11 @@ from proteopy.utils.copf import reconstruct_corrs_df_symmetric_from_long_df
 from proteopy.utils.data_structures import BinaryClusterTree
 from proteopy.utils.hash import md5_hash_list
 from proteopy.utils.pandas import long_pairs_to_symmetric_matrix
+from proteopy.utils.slot_parsers import (
+    parse_pairwise_peptide_correlations_result_legacy,
+    parse_pairwise_var_correlations_result,
+    resolve_pairwise_var_correlations_key,
+)
 
 NOISE = 1e6
 
@@ -1184,175 +1189,6 @@ def pairwise_peptide_correlations(
     )
 
 
-def _parse_pairwise_var_correlations_result(
-    adata: ad.AnnData,
-    *,
-    corrs_key: str,
-    group_id: str | None = None,
-) -> tuple[str | None, pd.DataFrame]:
-    """Parse a stored pairwise correlation frame into a matrix.
-
-    Reads ``adata.uns[corrs_key]`` -- as produced by
-    :func:`pairwise_var_correlations` -- and pivots the long-form
-    ``(varA, varB, corr, ...)`` rows into a symmetric correlation
-    matrix. If the stored frame contains a ``group_id`` column
-    (grouped output), ``group_id`` must be provided to select the
-    subset.
-
-    Parameters
-    ----------
-    adata : AnnData
-        AnnData carrying the stored correlations under
-        ``adata.uns[corrs_key]``.
-    corrs_key : str
-        Key in ``adata.uns`` holding the long-form correlation frame.
-    group_id : str | None
-        Identifier selecting a single group when the stored frame is
-        grouped (i.e. has a ``group_id`` column). Must be left as
-        ``None`` for ungrouped frames.
-
-    Returns
-    -------
-    tuple[str | None, pandas.DataFrame]
-        ``(resolved_group_id, symmetric_matrix)``.
-        ``resolved_group_id`` is ``None`` for ungrouped frames.
-
-    Raises
-    ------
-    KeyError
-        If ``corrs_key`` is not found in ``adata.uns``.
-    ValueError
-        If the frame is grouped but no ``group_id`` is supplied, if
-        the requested ``group_id`` is absent, or if the frame is
-        ungrouped but a ``group_id`` is provided.
-    """
-    if corrs_key not in adata.uns:
-        raise KeyError(
-            f"corrs_key '{corrs_key}' not found in adata.uns. "
-            "Run pairwise_var_correlations() first."
-        )
-    df = adata.uns[corrs_key]
-    if not isinstance(df, pd.DataFrame):
-        raise ValueError(
-            f"adata.uns['{corrs_key}'] must be a pandas DataFrame; "
-            f"got {type(df).__name__}."
-        )
-
-    has_group = "group_id" in df.columns
-    if has_group and group_id is None:
-        available = sorted(df["group_id"].unique().tolist())
-        raise ValueError(
-            f"adata.uns['{corrs_key}'] is grouped; provide a group_id. "
-            f"Available group_ids: {available}"
-        )
-    if not has_group and group_id is not None:
-        raise ValueError(
-            f"adata.uns['{corrs_key}'] is ungrouped but group_id="
-            f"{group_id!r} was provided."
-        )
-
-    if has_group:
-        sub = df.loc[df["group_id"] == group_id]
-        if sub.empty:
-            available = sorted(df["group_id"].unique().tolist())
-            raise ValueError(
-                f"group_id={group_id!r} not found in "
-                f"adata.uns['{corrs_key}']. Available: {available}"
-            )
-        resolved_group_id = group_id
-    else:
-        sub = df
-        resolved_group_id = None
-
-    sym = long_pairs_to_symmetric_matrix(
-        sub,
-        var_a_col="varA",
-        var_b_col="varB",
-        value_col="corr",
-        diagonal_value=1.0,
-    )
-    return resolved_group_id, sym
-
-
-def _parse_pairwise_peptide_correlations_result_legacy(
-    adata: ad.AnnData,
-    *,
-    corrs_key: str,
-    group_id: str | None = None,
-) -> tuple[str | None, pd.DataFrame]:
-    """Parse a legacy pairwise peptide correlation frame into a matrix.
-
-    Reads ``adata.uns[corrs_key]`` as produced by
-    :func:`pairwise_peptide_correlations_legacy` and pivots the
-    long-form ``(pepA, pepB, PCC, ...)`` rows into a symmetric
-    correlation matrix. The legacy frame stores ``protein_id`` as the
-    index rather than as a column, so ``group_id`` is required and
-    selects rows by index.
-
-    Parameters
-    ----------
-    adata : AnnData
-        AnnData carrying the stored correlations under
-        ``adata.uns[corrs_key]``.
-    corrs_key : str
-        Key in ``adata.uns`` holding the legacy long-form correlation
-        frame.
-    group_id : str | None
-        ``protein_id`` selecting a single protein's peptide pairs.
-        Required because the legacy frame is always grouped by
-        ``protein_id`` (stored in the index).
-
-    Returns
-    -------
-    tuple[str | None, pandas.DataFrame]
-        ``(resolved_group_id, symmetric_matrix)``.
-
-    Raises
-    ------
-    KeyError
-        If ``corrs_key`` is not found in ``adata.uns``.
-    ValueError
-        If the stored object is not a DataFrame, if ``group_id`` is
-        not provided, or if ``group_id`` is absent from the frame's
-        index.
-    """
-    if corrs_key not in adata.uns:
-        raise KeyError(
-            f"corrs_key '{corrs_key}' not found in adata.uns. "
-            "Run pairwise_peptide_correlations_legacy() first."
-        )
-    df = adata.uns[corrs_key]
-    if not isinstance(df, pd.DataFrame):
-        raise ValueError(
-            f"adata.uns['{corrs_key}'] must be a pandas DataFrame; "
-            f"got {type(df).__name__}."
-        )
-
-    if group_id is None:
-        available = sorted(pd.Index(df.index).unique().tolist())
-        raise ValueError(
-            f"adata.uns['{corrs_key}'] is grouped by protein_id; "
-            f"provide a group_id. Available group_ids: {available}"
-        )
-
-    sub = df.loc[df.index == group_id]
-    if sub.empty:
-        available = sorted(pd.Index(df.index).unique().tolist())
-        raise ValueError(
-            f"group_id={group_id!r} not found in "
-            f"adata.uns['{corrs_key}']. Available: {available}"
-        )
-
-    sym = long_pairs_to_symmetric_matrix(
-        sub,
-        var_a_col="pepA",
-        var_b_col="pepB",
-        value_col="PCC",
-        diagonal_value=1.0,
-    )
-    return group_id, sym
-
-
 # -- Legacy
 def pairwise_peptide_correlations_(
     df,
@@ -1646,15 +1482,18 @@ def peptide_dendograms_by_correlation(
         If ``False`` (default), parse output produced by
         :func:`pairwise_peptide_correlations` (columns
         ``group_id, varA, varB, corr, ...``) via
-        :func:`_parse_pairwise_var_correlations_result`.
+        :func:`parse_pairwise_var_correlations_result`.
         If ``True``, parse output produced by
         :func:`pairwise_peptide_correlations_legacy` (index is
         ``protein_id``; columns ``pepA, pepB, PCC``) via
-        :func:`_parse_pairwise_peptide_correlations_result_legacy`.
+        :func:`parse_pairwise_peptide_correlations_result_legacy`.
     corrs_key : str | None
         Key in ``adata.uns`` holding the long-form correlation
-        frame. Required when ``legacy=False``. When ``legacy=True``
-        and ``corrs_key is None``, defaults to
+        frame. In non-legacy mode, ``None`` triggers auto-inference
+        via :func:`resolve_pairwise_var_correlations_key`: the call
+        succeeds when exactly one matching slot is present in
+        ``adata.uns`` and raises otherwise. When ``legacy=True`` and
+        ``corrs_key is None``, defaults to
         ``'pairwise_peptide_correlations'``.
 
     Returns
@@ -1667,8 +1506,7 @@ def peptide_dendograms_by_correlation(
     Raises
     ------
     ValueError
-        If ``inplace`` and ``copy`` are both True, if ``legacy=False``
-        and ``corrs_key`` is not provided, or if the stored
+        If ``inplace`` and ``copy`` are both True, or if the stored
         correlation frame cannot be parsed.
     KeyError
         If ``corrs_key`` is not present in ``adata.uns``.
@@ -1684,16 +1522,12 @@ def peptide_dendograms_by_correlation(
             if corrs_key is not None
             else "pairwise_peptide_correlations"
         )
-        parser = _parse_pairwise_peptide_correlations_result_legacy
+        parser = parse_pairwise_peptide_correlations_result_legacy
     else:
-        if corrs_key is None:
-            raise ValueError(
-                "corrs_key must be provided when legacy=False. "
-                "Pass the .uns key under which "
-                "pairwise_peptide_correlations() stored its result."
-            )
-        resolved_key = corrs_key
-        parser = _parse_pairwise_var_correlations_result
+        resolved_key = resolve_pairwise_var_correlations_key(
+            adata, corrs_key
+        )
+        parser = parse_pairwise_var_correlations_result
 
     if resolved_key not in adata.uns:
         raise KeyError(f"corrs_key '{resolved_key}' not found in adata.uns.")
@@ -1983,22 +1817,42 @@ def proteoform_scores_(
 
 def proteoform_scores(
     adata,
+    *,
     min_pval_adj=None,
     min_score=None,
     summary_func=np.mean,
     noise=NOISE,
     inplace=True,
     copy=False,
+    legacy: bool = False,
+    corrs_key: str | None = None,
 ):
 
-    if inplace and copy:
-        raise ValueError("Arguments raise and copy are mutually exclusive")
+    check_proteodata(adata)
 
-    if "pairwise_peptide_correlations" not in adata.uns:
-        raise ValueError(f"pairwise_peptide_correlations not in .uns")
+    if inplace and copy:
+        raise ValueError("Arguments inplace and copy are mutually exclusive")
+
+    if legacy:
+        resolved_key = (
+            corrs_key
+            if corrs_key is not None
+            else "pairwise_peptide_correlations"
+        )
+        parser = parse_pairwise_peptide_correlations_result_legacy
+    else:
+        resolved_key = resolve_pairwise_var_correlations_key(
+            adata, corrs_key
+        )
+        parser = parse_pairwise_var_correlations_result
+
+    if resolved_key not in adata.uns:
+        raise KeyError(
+            f"corrs_key '{resolved_key}' not found in adata.uns."
+        )
 
     if "dendograms" not in adata.uns:
-        raise ValueError(f"dendograms not in .uns")
+        raise ValueError("dendograms not in .uns")
 
     columns = [
         "protein_id",
@@ -2008,7 +1862,17 @@ def proteoform_scores(
         "proteoform_score_pval",
     ]
 
-    corrs = adata.uns["pairwise_peptide_correlations"].copy().reset_index()
+    df = adata.uns[resolved_key]
+    if legacy:
+        group_ids = pd.Index(df.index).unique().tolist()
+    else:
+        if "group_id" not in df.columns:
+            raise ValueError(
+                f"adata.uns['{resolved_key}'] has no 'group_id' "
+                "column; cannot iterate per-protein scores."
+            )
+        group_ids = df["group_id"].unique().tolist()
+
     # pylint: disable=access-member-before-definition
     var = adata.var
     # pylint: enable=access-member-before-definition
@@ -2016,22 +1880,24 @@ def proteoform_scores(
 
     proteoform_scores_list = []
 
-    for prot, corrs_prot in corrs.groupby("protein_id", observed=True):
+    for group_id in group_ids:
 
-        corrs_mat = reconstruct_corrs_df_symmetric_from_long_df(
-            corrs_prot, var_a_col="pepA", var_b_col="pepB", corr_col="PCC"
+        _, corrs_mat = parser(
+            adata,
+            corrs_key=resolved_key,
+            group_id=group_id,
         )
 
-        clusters = var.loc[var["protein_id"] == prot, "cluster_id"]
+        clusters = var.loc[var["protein_id"] == group_id, "cluster_id"]
 
         scores = proteoform_scores_(
-            corrs_mat, clusters, n_fractions, summary_func=np.mean
+            corrs_mat, clusters, n_fractions, summary_func=summary_func
         )
 
         scores_entry = {
             column: value for column, value in zip(columns[1:5], scores)
         }
-        scores_entry["protein_id"] = prot
+        scores_entry["protein_id"] = group_id
         scores_entry = pd.DataFrame([scores_entry])
         proteoform_scores_list.append(scores_entry)
 
@@ -2094,11 +1960,13 @@ def proteoform_scores(
 
     if inplace:
         adata.var = var_upd
+        check_proteodata(adata)
+        return None
 
-    elif copy:
+    if copy:
         adata_new = adata.copy()
         adata_new.var = var_upd
+        check_proteodata(adata_new)
         return adata_new
 
-    else:
-        return proteoform_scores
+    return proteoform_scores

@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Sequence as SequenceABC
 from pathlib import Path
 from typing import Union
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -786,6 +789,295 @@ def peptides_on_prot_sequence(
         ref_sequence=ref_sequence,
         alt_pep_sequence_key=alt_pep_sequence_key,
         add_sequences=add_sequences,
+        allow_overlaps=allow_overlaps,
+        allow_multi_match=allow_multi_match,
+        color_scheme=color_scheme,
+        title=title,
+        order=order,
+        figsize=figsize,
+        show=show,
+        save=save,
+        ax=ax,
+    )
+
+
+_UNIPROT_REST_URL = "https://rest.uniprot.org/uniprotkb/{accession}.json"
+
+
+def _fetch_uniprot_json(
+    accession: str,
+    *,
+    timeout: float = 30,
+) -> dict:
+    """Fetch a UniProtKB entry as JSON via the UniProt REST API.
+
+    Parameters
+    ----------
+    accession : str
+        UniProtKB accession (e.g. ``"Q9JKS4"``).
+    timeout : float
+        Network timeout in seconds.
+
+    Returns
+    -------
+    dict
+        Parsed UniProtKB entry.
+
+    Raises
+    ------
+    ValueError
+        If the accession cannot be retrieved (e.g. unknown
+        accession or network failure).
+    """
+    url = _UNIPROT_REST_URL.format(accession=accession)
+    request = Request(
+        url,
+        headers={"User-Agent": "proteopy (https://github.com/)"},
+    )
+    try:
+        with urlopen(request, timeout=timeout) as response:
+            payload = response.read()
+    except (HTTPError, URLError, TimeoutError) as exc:
+        raise ValueError(
+            f"Failed to fetch UniProt entry for "
+            f"'{accession}' from {url}: {exc}."
+        ) from exc
+    return json.loads(payload)
+
+
+def _uniprot_var_seq_coords(
+    entry: dict,
+) -> dict[str, tuple[int, int]]:
+    """Map ``Alternative sequence`` feature ids to 0-based coordinates.
+
+    UniProt locations are 1-based inclusive; the returned tuples are
+    0-based half-open ``[start, end)`` on the canonical sequence.
+    """
+    feature_coords = {}
+    for feature in entry.get("features", []):
+        if feature.get("type") != "Alternative sequence":
+            continue
+        location = feature["location"]
+        start = location["start"]["value"]
+        end = location["end"]["value"]
+        feature_coords[feature["featureId"]] = (start - 1, end)
+    return feature_coords
+
+
+def _uniprot_isoform_bars(
+    entry: dict,
+    feature_coords: dict[str, tuple[int, int]],
+) -> dict[str, dict]:
+    """Build ``add_sequences`` bars from the ALTERNATIVE PRODUCTS comment."""
+    add_sequences = {}
+    for comment in entry.get("comments", []):
+        if comment.get("commentType") != "ALTERNATIVE PRODUCTS":
+            continue
+        for isoform in comment.get("isoforms", []):
+            if isoform.get("isoformSequenceStatus") == "Displayed":
+                continue
+            isoform_id = isoform["isoformIds"][0]
+            for feature_id in isoform.get("sequenceIds") or []:
+                if feature_id not in feature_coords:
+                    continue
+                add_sequences[f"{isoform_id}:{feature_id}"] = {
+                    "seq_coord": feature_coords[feature_id],
+                    "group": isoform_id,
+                }
+    return add_sequences
+
+
+def _uniprot_isoform_add_sequences(
+    entry: dict,
+) -> tuple[str, dict[str, dict]]:
+    """Extract the canonical sequence and isoform regions from a UniProt entry.
+
+    Reads the canonical amino-acid sequence and, for every described
+    isoform, maps its ``Alternative sequence`` (VAR_SEQ) features to
+    ``seq_coord`` bars in 0-based half-open ``[start, end)``
+    coordinates on the canonical sequence. Each isoform becomes its
+    own group; a feature shared by several isoforms yields one bar in
+    each isoform's group.
+
+    Parameters
+    ----------
+    entry : dict
+        Parsed UniProtKB entry (see :func:`_fetch_uniprot_json`).
+
+    Returns
+    -------
+    tuple[str, dict[str, dict]]
+        The canonical sequence and an ``add_sequences`` mapping of
+        ``"{isoform_id}:{feature_id}"`` to a dict with ``"seq_coord"``
+        and ``"group"`` keys.
+
+    Raises
+    ------
+    ValueError
+        If the entry lacks a canonical sequence or exposes no
+        described isoforms with alternative-sequence features.
+    """
+    canonical = entry.get("sequence", {}).get("value")
+    if not canonical:
+        raise ValueError(
+            "UniProt entry has no canonical sequence."
+        )
+
+    feature_coords = _uniprot_var_seq_coords(entry)
+    add_sequences = _uniprot_isoform_bars(entry, feature_coords)
+
+    if not add_sequences:
+        raise ValueError(
+            "No described isoforms with alternative-sequence "
+            "features were found in the UniProt entry."
+        )
+
+    return canonical, add_sequences
+
+
+def peptides_on_prot_sequence_auto(
+    adata: ad.AnnData,
+    protein_id: str,
+    group_by: str | None = None,
+    alt_pep_sequence_key: str | None = None,
+    add_sequences: dict[str, dict] | None = None,
+    ref_sequence: str | None = None,
+    allow_overlaps: bool = False,
+    allow_multi_match: bool = False,
+    color_scheme: ColorScheme = None,
+    title: str | None = None,
+    order: list[str] | None = None,
+    figsize: tuple[float, float] | None = None,
+    show: bool = True,
+    save: str | Path | None = None,
+    ax: Axes | None = None,
+    timeout: float = 30,
+    verbose: bool = False,
+) -> Axes:
+    """Plot peptide coverage with UniProt-sourced reference and isoforms.
+
+    Convenience wrapper around
+    :func:`peptides_on_prot_sequence` that automatically sources the
+    ``ref_sequence`` and isoform ``add_sequences`` from the UniProt
+    REST API. The ``protein_id`` is used both to filter peptides in
+    ``adata.var["protein_id"]`` and as the UniProt accession to query.
+
+    The canonical sequence becomes the reference. Each described
+    isoform (e.g. ``Q9JKS4-2``) is added as a colored row whose bars
+    mark the ``Alternative sequence`` (VAR_SEQ) regions that differ
+    from the canonical sequence, in 0-based coordinates.
+
+    Parameters
+    ----------
+    adata : AnnData
+        Peptide-level :class:`~anndata.AnnData`.
+    protein_id : str
+        UniProt accession (e.g. ``"Q9JKS4"``). Used to select
+        peptides in ``adata.var["protein_id"]`` and to query the
+        UniProt REST API.
+    group_by : str | None
+        Column in ``adata.var`` used to assign peptides to colored
+        rows. When ``None``, all peptides are placed in a single row
+        labeled ``protein_id``.
+    alt_pep_sequence_key : str | None
+        Column in ``adata.var`` whose values are used as peptide
+        amino-acid strings. When ``None``, ``adata.var_names``
+        (i.e., ``peptide_id``) are used.
+    add_sequences : dict[str, dict] | None
+        Additional named sequences to overlay, merged on top of the
+        auto-fetched isoform regions. Each value must be a dict with
+        a ``"group"`` key and either a ``"seq"`` or ``"seq_coord"``
+        key. User-provided entries override auto-fetched entries on
+        key conflict.
+    ref_sequence : str | None
+        Explicit reference sequence override. When ``None``, the
+        canonical sequence fetched from UniProt is used.
+    allow_overlaps : bool
+        When ``False``, raise ``ValueError`` if two sequences in the
+        same group overlap positionally.
+    allow_multi_match : bool
+        When ``True``, a peptide sequence matching the reference at
+        multiple positions is shown as one bar per match. When
+        ``False``, a ``ValueError`` is raised for ambiguous matches.
+    color_scheme : str | dict | list | Colormap | callable | None
+        Color specification for groups.
+    title : str | None
+        Axes title.
+    order : list[str] | None
+        Explicit ordering of group rows.
+    figsize : tuple[float, float] | None
+        Figure dimensions ``(width, height)`` in inches.
+    show : bool
+        Call ``plt.show()`` at the end.
+    save : str | Path | None
+        Path at which to save the figure (300 dpi,
+        ``bbox_inches="tight"``). When ``None``, the figure is not
+        saved.
+    ax : matplotlib.axes.Axes | None
+        Matplotlib Axes object to plot onto. If ``None``, a new
+        figure and axes are created. The function always returns the
+        Axes object used for plotting.
+    timeout : float
+        Network timeout in seconds for the UniProt request.
+    verbose : bool
+        If ``True``, print the accession queried, the canonical
+        sequence length, and the discovered isoforms.
+
+    Returns
+    -------
+    matplotlib.axes.Axes
+        The Axes object used for plotting.
+
+    Raises
+    ------
+    ValueError
+        If the UniProt entry cannot be fetched, has no canonical
+        sequence, or exposes no described isoforms.
+    ValueError
+        Propagated from :func:`peptides_on_prot_sequence` (e.g. no
+        peptides match, overlap or multi-match violations).
+    KeyError
+        If ``alt_pep_sequence_key`` or ``group_by`` is not found in
+        ``adata.var``.
+
+    Examples
+    --------
+    >>> import proteopy as pr
+    >>> adata = pr.datasets.example_peptide_data()
+    >>> pr.pl.peptides_on_prot_sequence_auto(
+    ...     adata,
+    ...     protein_id="Q9JKS4",
+    ...     group_by="proteoform",
+    ... )
+    """
+    entry = _fetch_uniprot_json(protein_id, timeout=timeout)
+    canonical, auto_add = _uniprot_isoform_add_sequences(entry)
+
+    ref = ref_sequence if ref_sequence is not None else canonical
+
+    # -- Merge auto-fetched isoforms with user additions (user wins)
+    merged = dict(auto_add)
+    if add_sequences is not None:
+        merged.update(add_sequences)
+
+    if verbose:
+        isoform_ids = sorted(
+            {bar["group"] for bar in auto_add.values()}
+        )
+        print(
+            f"Fetched UniProt entry '{protein_id}' "
+            f"(canonical length {len(canonical)} aa); "
+            f"isoforms: {isoform_ids} "
+            f"({len(auto_add)} region bars)."
+        )
+
+    return peptides_on_prot_sequence(
+        adata,
+        protein_id=protein_id,
+        group_by=group_by,
+        ref_sequence=ref,
+        alt_pep_sequence_key=alt_pep_sequence_key,
+        add_sequences=merged,
         allow_overlaps=allow_overlaps,
         allow_multi_match=allow_multi_match,
         color_scheme=color_scheme,

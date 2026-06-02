@@ -42,4 +42,5 @@ from .clustering import (
 from .sequence import (
     peptides_on_sequence,
     peptides_on_prot_sequence,
+    peptides_on_prot_sequence_auto,
 )

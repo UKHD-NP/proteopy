@@ -1,6 +1,7 @@
 import warnings
 from functools import partial
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Sequence
 from collections.abc import Sequence as SequenceABC
 from numbers import Real
 
@@ -124,7 +125,9 @@ def peptide_intensities(
         raise ValueError("`color` and `group_by` are mutually exclusive.")
 
     if groups is not None and order_by is None:
-        raise ValueError("`groups` can only be used when `order_by` is provided.")
+        raise ValueError(
+            "`groups` can only be used when `order_by` is provided."
+        )
 
     if groups is None:
         group_levels = None
@@ -157,7 +160,7 @@ def peptide_intensities(
     else:
         log_base = None
 
-    var_cols = ['protein_id']
+    var_cols = ["protein_id"]
 
     if color:
         if color not in adata.var.columns:
@@ -176,46 +179,48 @@ def peptide_intensities(
             var_cols.append(group_by)
 
     var = adata.var[var_cols].copy()
-    var = var.reset_index(names='var_index')
-    var = var[var['protein_id'].isin(protein_ids)]
+    var = var.reset_index(names="var_index")
+    var = var[var["protein_id"].isin(protein_ids)]
     if color and color in var and is_categorical_dtype(var[color]):
         var[color] = var[color].cat.remove_unused_categories()
     if group_by and group_by in var and is_categorical_dtype(var[group_by]):
         var[group_by] = var[group_by].cat.remove_unused_categories()
 
-    selected_vars = var['var_index'].tolist()
+    selected_vars = var["var_index"].tolist()
     palette_map = None
 
     if group_by:
-        hue_labels = (
-            pd.Series(pd.unique(var[group_by]))
-            .dropna()
-            .tolist()
-        )
+        hue_labels = pd.Series(pd.unique(var[group_by])).dropna().tolist()
     elif color:
         hue_labels = pd.Series(pd.unique(var[color])).dropna().tolist()
     else:
-        hue_labels = pd.Series(pd.unique(var['var_index'])).dropna().tolist()
+        hue_labels = pd.Series(pd.unique(var["var_index"])).dropna().tolist()
+
+    # Sort lexicographically so each label maps to a deterministic color,
+    # matching other plots of the same groups (e.g. proteoform sequence plots).
+    hue_labels = sorted(hue_labels, key=str)
 
     if hue_labels:
         palette_values = _resolve_color_scheme(color_scheme, hue_labels)
         if palette_values:
             palette_map = dict(zip(hue_labels, palette_values))
 
-    obs = adata.obs.reset_index(names='obs_index')
+    obs = adata.obs.reset_index(names="obs_index")
 
     if order_by:
         if order_by not in obs.columns:
             raise KeyError(f"'{order_by}' is not present in adata.obs")
 
         if not is_categorical_dtype(obs[order_by]):
-            obs[order_by] = obs[order_by].astype('category')
+            obs[order_by] = obs[order_by].astype("category")
 
-        obs = obs[['obs_index', order_by]]
+        obs = obs[["obs_index", order_by]]
 
         if group_levels is not None:
             available_groups = set(obs[order_by].dropna().unique())
-            missing_groups = [grp for grp in group_levels if grp not in available_groups]
+            missing_groups = [
+                grp for grp in group_levels if grp not in available_groups
+            ]
             if missing_groups:
                 raise ValueError(
                     "Items in 'groups' are not present in the selected "
@@ -229,7 +234,7 @@ def peptide_intensities(
             if is_categorical_dtype(obs[order_by]):
                 obs[order_by] = obs[order_by].cat.remove_unused_categories()
     else:
-        obs = obs[['obs_index']]
+        obs = obs[["obs_index"]]
 
     if selected_vars:
         adata_subset = adata[:, selected_vars]
@@ -255,11 +260,11 @@ def peptide_intensities(
     X_processed = data_matrix.copy()
 
     if log_base is not None:
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             X_processed = np.log1p(X_processed) / np.log(log_base)
 
     if z_transform and selected_vars:
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             arr_mean = np.nanmean(X_processed, axis=0, keepdims=True)
             arr_std = np.nanstd(X_processed, axis=0, keepdims=True)
         arr_std[arr_std == 0] = 1.0
@@ -274,15 +279,15 @@ def peptide_intensities(
         index=adata.obs_names,
     )
 
-    expr_df = expr_df.reset_index(names='obs_index')
+    expr_df = expr_df.reset_index(names="obs_index")
 
     df = expr_df.melt(
-        id_vars='obs_index',
-        var_name='var_index',
-        value_name='intensity',
+        id_vars="obs_index",
+        var_name="var_index",
+        value_name="intensity",
     )
-    df = pd.merge(df, var, on='var_index', how='left')
-    df = pd.merge(df, obs, on='obs_index', how='left')
+    df = pd.merge(df, var, on="var_index", how="left")
+    df = pd.merge(df, obs, on="obs_index", how="left")
 
     # Explicitly order the x axis observations
     cat_index_map = {}
@@ -296,14 +301,13 @@ def peptide_intensities(
 
         if group_levels is not None:
             categories = [
-                cat for cat in group_levels
-                if cat in base_categories_set
+                cat for cat in group_levels if cat in base_categories_set
             ]
         else:
             categories = base_categories
 
         cat_index_map = {
-            cat: obs.loc[obs[order_by] == cat, 'obs_index'].to_list()
+            cat: obs.loc[obs[order_by] == cat, "obs_index"].to_list()
             for cat in categories
         }
 
@@ -323,51 +327,50 @@ def peptide_intensities(
             cats_ordered = categories
 
         obs_index_ordered = [
-            idx
-            for cat in cats_ordered
-            for idx in cat_index_map[cat]
+            idx for cat in cats_ordered for idx in cat_index_map[cat]
         ]
     else:
         if order:
-            missing = set(order) - set(obs['obs_index'])
+            missing = set(order) - set(obs["obs_index"])
             if missing:
                 raise ValueError(
                     "Items in 'order' are not present in adata.obs_names: "
                     f"{sorted(missing)}"
                 )
-            obs_index_base = obs['obs_index'].tolist()
+            obs_index_base = obs["obs_index"].tolist()
             seen_order = set(order)
             obs_index_ordered = list(order) + [
                 idx for idx in obs_index_base if idx not in seen_order
             ]
         else:
-            obs_index_ordered = obs['obs_index'].tolist()
+            obs_index_ordered = obs["obs_index"].tolist()
 
-    df['obs_index'] = pd.Categorical(
-        df['obs_index'],
-        categories=obs_index_ordered,
-        ordered=True)
+    df["obs_index"] = pd.Categorical(
+        df["obs_index"], categories=obs_index_ordered, ordered=True
+    )
 
     axes = []
 
     if save and len(protein_ids) > 1:
-        save_path = save if save.endswith('.pdf') else f'{save}.pdf'
+        save_path = save if save.endswith(".pdf") else f"{save}.pdf"
         pdf_pages = PdfPages(save_path)
 
     for prot_id in protein_ids:
-        sub_df = df[df['protein_id'] == prot_id]
+        sub_df = df[df["protein_id"] == prot_id]
         fig, _ax = plt.subplots(figsize=figsize)
 
         if sub_df.empty:
-            warnings.warn(f'No data found for protein: {prot_id}')
+            warnings.warn(f"No data found for protein: {prot_id}")
             _ax.text(
                 0.5,
                 0.5,
-                f'No data found for protein: {prot_id}',
-                ha='center', va='center', transform=_ax.transAxes,
+                f"No data found for protein: {prot_id}",
+                ha="center",
+                va="center",
+                transform=_ax.transAxes,
                 fontsize=14,
-                color='gray'
-                )
+                color="gray",
+            )
             _ax.set_xlim(0, 1)
             _ax.set_ylim(0, 1)
             _ax.set_xticks([])
@@ -375,23 +378,23 @@ def peptide_intensities(
 
         else:
 
-            #sub_df = sub_df.sort_values(by=order_by)
+            # sub_df = sub_df.sort_values(by=order_by)
 
             lineplot_kwargs = dict(
                 data=sub_df,
-                x='obs_index',
-                y='intensity',
-                marker='o',
+                x="obs_index",
+                y="intensity",
+                marker="o",
                 dashes=False,
-                legend='brief',
+                legend="brief",
                 ax=_ax,
             )
 
             if palette_map:
-                lineplot_kwargs['palette'] = palette_map
+                lineplot_kwargs["palette"] = palette_map
 
             if order_by:
-                lineplot_kwargs['style'] = order_by
+                lineplot_kwargs["style"] = order_by
 
             if group_by:
                 lineplot_kwargs.update(
@@ -400,12 +403,12 @@ def peptide_intensities(
             elif color:
                 lineplot_kwargs.update(
                     hue=color,
-                    units='var_index',
+                    units="var_index",
                     estimator=None,
                     errorbar=None,
                 )
             else:
-                lineplot_kwargs.update(hue='var_index')
+                lineplot_kwargs.update(hue="var_index")
 
             sns.lineplot(**lineplot_kwargs)
 
@@ -418,30 +421,32 @@ def peptide_intensities(
             elif color:
                 hue_values = sub_df[color].unique().astype(str)
             else:
-                hue_values = sub_df['var_index'].unique().astype(str)
+                hue_values = sub_df["var_index"].unique().astype(str)
 
             # Keep only legend entries whose label matches a hue value
-            new_handles_labels = [(h, l) for h, l in zip(handles, labels) if l in hue_values]
+            new_handles_labels = [
+                (h, l) for h, l in zip(handles, labels) if l in hue_values
+            ]
 
             if new_handles_labels:
-                handles, labels = zip(*new_handles_labels)  # unzip back into separate lists
+                handles, labels = zip(
+                    *new_handles_labels
+                )  # unzip back into separate lists
                 legend_title = (
-                    group_by
-                    if group_by
-                    else color
-                    if color
-                    else 'Peptide'
+                    group_by if group_by else color if color else "Peptide"
                 )
                 _ax.legend(
                     handles,
                     labels,
                     bbox_to_anchor=(1.01, 1),
-                    loc='upper left',
+                    loc="upper left",
                     title=legend_title,
                 )
 
             # Add group separator lines
-            obs_idxpos_map = {obs: i for i, obs in enumerate(obs_index_ordered)}
+            obs_idxpos_map = {
+                obs: i for i, obs in enumerate(obs_index_ordered)
+            }
 
             if order_by:
                 for cat in cats_ordered[:-1]:
@@ -451,8 +456,8 @@ def peptide_intensities(
                         x=obs_idxpos_map[last_obs_in_cat] + 0.5,
                         ymin=0.02,
                         ymax=0.95,
-                        color='#D8D8D8',
-                        linestyle='--'
+                        color="#D8D8D8",
+                        linestyle="--",
                     )
 
                 # Add group labels above each group section
@@ -467,12 +472,16 @@ def peptide_intensities(
                     end = obs_idxpos_map[group_obs[-1]]
                     mid = (start + end) / 2
 
-                    rot = order_by_label_rotation if order_by_label_rotation else 0
-                    ha_for_rot = 'center' if (rot % 360 == 0) else 'left'
+                    rot = (
+                        order_by_label_rotation
+                        if order_by_label_rotation
+                        else 0
+                    )
+                    ha_for_rot = "center" if (rot % 360 == 0) else "left"
 
                     # Determine padded y-axis limits
-                    ymax = sub_df['intensity'].max()
-                    ymin = sub_df['intensity'].min()
+                    ymax = sub_df["intensity"].max()
+                    ymin = sub_df["intensity"].min()
                     ypad_top = (ymax - ymin) * 0.15
                     ypad_bottom = (ymax - ymin) * 0.10
                     _ax.set_ylim(ymin - ypad_bottom, ymax + ypad_top)
@@ -482,17 +491,17 @@ def peptide_intensities(
                         y=ymax + ypad_top * 0.4,
                         s=cat,
                         ha=ha_for_rot,
-                        va='bottom',
+                        va="bottom",
                         fontsize=12,
-                        fontweight='bold',
+                        fontweight="bold",
                         rotation=rot,
-                        rotation_mode='anchor',
+                        rotation_mode="anchor",
                     )
- 
-        plt.xticks(rotation=xlab_rotation, ha='right')
+
+        plt.xticks(rotation=xlab_rotation, ha="right")
         _ax.set_title(prot_id)
-        _ax.set_xlabel('Sample')
-        _ax.set_ylabel('Intensity')
+        _ax.set_xlabel("Sample")
+        _ax.set_ylabel("Intensity")
 
         plt.tight_layout()
 
@@ -502,14 +511,13 @@ def peptide_intensities(
             if show:
                 plt.show()
 
-
         elif save:
 
             if len(protein_ids) == 1:
-                fig.savefig(save, bbox_inches='tight', dpi=300)
+                fig.savefig(save, bbox_inches="tight", dpi=300)
 
             else:
-                pdf_pages.savefig(fig, bbox_inches='tight')
+                pdf_pages.savefig(fig, bbox_inches="tight")
 
             if show:
                 plt.show()
@@ -521,7 +529,9 @@ def peptide_intensities(
             plt.close(fig)
 
         else:
-            print("Warning: Plot created but not displayed, saved, or returned")
+            print(
+                "Warning: Plot created but not displayed, saved, or returned"
+            )
             plt.close(fig)
 
     if save and len(protein_ids) > 1:
@@ -530,14 +540,15 @@ def peptide_intensities(
     if ax:
         return axes[0] if len(axes) == 1 else axes
 
+
 docstr_header = (
     "Plot peptide intensities colored by proteoforms across samples for the "
     "requested proteins."
-    )
+)
 proteoform_intensities = partial_with_docsig(
     peptide_intensities,
-    color = 'proteoform_id',
-    )
+    color="proteoform_id",
+)
 
 
 def intensity_box_per_sample(
@@ -626,7 +637,11 @@ def intensity_box_per_sample(
         if layer not in adata.layers:
             raise KeyError(f"Layer '{layer}' not found in adata.layers.")
         Xsrc = adata.layers[layer]
-        X = Xsrc.toarray() if sparse.issparse(Xsrc) else np.asarray(Xsrc, dtype=float)
+        X = (
+            Xsrc.toarray()
+            if sparse.issparse(Xsrc)
+            else np.asarray(Xsrc, dtype=float)
+        )
         df = pd.DataFrame(X, index=adata.obs_names, columns=adata.var_names)
     else:
         df = adata.to_df()
@@ -650,7 +665,9 @@ def intensity_box_per_sample(
     # Apply log and z-scaling sequentially if requested
     if log_transform is not None:
         if isinstance(log_transform, bool):
-            raise TypeError("log_transform expects a numeric base, not boolean.")
+            raise TypeError(
+                "log_transform expects a numeric base, not boolean."
+            )
         if log_transform <= 0:
             raise ValueError("log_transform must be positive.")
         if log_transform == 1:
@@ -670,9 +687,15 @@ def intensity_box_per_sample(
         .dropna(subset=["intensity"])
     )
     if df_long.empty:
-        raise ValueError("No intensities remain after preprocessing; nothing to plot.")
+        raise ValueError(
+            "No intensities remain after preprocessing; nothing to plot."
+        )
 
-    if group_by is not None and group_by != "obs" and group_by not in adata.obs.columns:
+    if (
+        group_by is not None
+        and group_by != "obs"
+        and group_by not in adata.obs.columns
+    ):
         raise KeyError(
             f"Column '{group_by}' not found in adata.obs; "
             "pass a valid metadata column or use group_by='obs'."
@@ -701,7 +724,9 @@ def intensity_box_per_sample(
             if is_categorical_dtype(group_series):
                 default_order = list(group_series.cat.categories)
             else:
-                default_order = group_series.dropna().drop_duplicates().tolist()
+                default_order = (
+                    group_series.dropna().drop_duplicates().tolist()
+                )
             for cat in default_order:
                 if cat not in ordered_groups:
                     ordered_groups.append(cat)
@@ -709,13 +734,17 @@ def intensity_box_per_sample(
             if is_categorical_dtype(group_series):
                 ordered_groups = list(group_series.cat.categories)
             else:
-                ordered_groups = group_series.dropna().drop_duplicates().tolist()
+                ordered_groups = (
+                    group_series.dropna().drop_duplicates().tolist()
+                )
 
         ordered_groups = [
             cat for cat in ordered_groups if cat in df_long[group_by].unique()
         ]
         if not ordered_groups:
-            raise ValueError("No group_by categories remain after preprocessing.")
+            raise ValueError(
+                "No group_by categories remain after preprocessing."
+            )
 
         df_long[group_by] = pd.Categorical(
             df_long[group_by],
@@ -725,10 +754,14 @@ def intensity_box_per_sample(
 
         palette_values = None
         if color_scheme is not None:
-            palette_values = _resolve_color_scheme(color_scheme, ordered_groups)
+            palette_values = _resolve_color_scheme(
+                color_scheme, ordered_groups
+            )
         if not palette_values:
             cmap = mpl.colormaps["Set2"]
-            palette_values = cmap(np.linspace(0, 1, len(ordered_groups))).tolist()
+            palette_values = cmap(
+                np.linspace(0, 1, len(ordered_groups))
+            ).tolist()
         palette = dict(zip(ordered_groups, palette_values))
 
         created_fig = False
@@ -748,7 +781,7 @@ def intensity_box_per_sample(
             hue_order=ordered_groups,
             palette=palette,
             legend=False,
-            flierprops=dict(marker='.', markersize=1),
+            flierprops=dict(marker=".", markersize=1),
             ax=_ax,
         )
 
@@ -824,10 +857,16 @@ def intensity_box_per_sample(
     cat_index_map = filtered_map
 
     if not cat_index_map:
-        raise ValueError("No observations remain after preprocessing; nothing to plot.")
+        raise ValueError(
+            "No observations remain after preprocessing; nothing to plot."
+        )
 
-    x_ordered = [obs for obs_list in cat_index_map.values() for obs in obs_list]
-    df_long["obs"] = pd.Categorical(df_long["obs"], categories=x_ordered, ordered=True)
+    x_ordered = [
+        obs for obs_list in cat_index_map.values() for obs in obs_list
+    ]
+    df_long["obs"] = pd.Categorical(
+        df_long["obs"], categories=x_ordered, ordered=True
+    )
 
     unique_groups = list(cat_index_map.keys())
     if order_col != "all":
@@ -835,7 +874,9 @@ def intensity_box_per_sample(
         if color_scheme is not None:
             colors = _resolve_color_scheme(color_scheme, unique_groups)
         if not colors:
-            colors = mpl.colormaps["Set2"](np.linspace(0, 1, len(unique_groups))).tolist()
+            colors = mpl.colormaps["Set2"](
+                np.linspace(0, 1, len(unique_groups))
+            ).tolist()
         color_map = {grp: colors[i] for i, grp in enumerate(unique_groups)}
     else:
         color_map = {"all": "C0"}
@@ -864,7 +905,7 @@ def intensity_box_per_sample(
         order=x_ordered,
         hue_order=x_ordered,
         palette=sample_palette,
-        flierprops=dict(marker='.', markersize=1),
+        flierprops=dict(marker=".", markersize=1),
         ax=_ax,
     )
 
@@ -947,7 +988,7 @@ def intensity_hist(
         ``layer="X"`` for the main matrix).
     log_transform : float | int | None, optional
         Logarithm base (>0 and !=1). When ``None`` skip log-transforming;
-        otherwise apply ``log(value + 1, base)`` after validating the input 
+        otherwise apply ``log(value + 1, base)`` after validating the input
         (Defaut = None).
     ignore_warning : bool, optional
         When ``True``, force the log transform even if the data already appear
@@ -1031,18 +1072,23 @@ def intensity_hist(
         raise TypeError("`title` must be a string or None.")
     if not isinstance(legend_loc, str):
         raise TypeError("`legend_loc` must be a string.")
-    if figsize is None or not isinstance(figsize, SequenceABC) or len(figsize) != 2:
+    if (
+        figsize is None
+        or not isinstance(figsize, SequenceABC)
+        or len(figsize) != 2
+    ):
         raise TypeError("`figsize` must be a length-2 sequence of numbers.")
     try:
         figsize = (float(figsize[0]), float(figsize[1]))
     except (TypeError, ValueError):
         raise TypeError("`figsize` entries must be numeric.")
     if samples is not None:
-        if (
-            not isinstance(samples, SequenceABC)
-            or isinstance(samples, (str, bytes))
+        if not isinstance(samples, SequenceABC) or isinstance(
+            samples, (str, bytes)
         ):
-            raise TypeError("`samples` must be a sequence of indices or names.")
+            raise TypeError(
+                "`samples` must be a sequence of indices or names."
+            )
     if save is not None and not isinstance(save, (str, os.PathLike)):
         raise TypeError("`save` must be a path-like object or None.")
     if xlim is not None:
@@ -1067,7 +1113,11 @@ def intensity_hist(
 
     # --- pull data ---
     Xsrc = adata.layers[layer] if layer is not None else adata.X
-    X = Xsrc.toarray() if sparse.issparse(Xsrc) else np.asarray(Xsrc, dtype=float)
+    X = (
+        Xsrc.toarray()
+        if sparse.issparse(Xsrc)
+        else np.asarray(Xsrc, dtype=float)
+    )
 
     # Resolve the imputation mask layer if coloring measured vs imputed
     mask_layer_key: str | None = None
@@ -1084,7 +1134,9 @@ def intensity_hist(
         Bsrc = adata.layers[mask_layer_key]
         B = Bsrc.toarray() if sparse.issparse(Bsrc) else np.asarray(Bsrc)
         if B.shape != X.shape:
-            raise ValueError(f"Shape mismatch: data {X.shape} vs {mask_layer_key} {B.shape}")
+            raise ValueError(
+                f"Shape mismatch: data {X.shape} vs {mask_layer_key} {B.shape}"
+            )
     else:
         B = None
 
@@ -1185,7 +1237,12 @@ def intensity_hist(
             if kde:
                 for k, g in df.groupby("status"):
                     if len(g) > 1:
-                        sns.kdeplot(g[value_col], ax=_ax, color=palette_map.get(k), lw=1.5)
+                        sns.kdeplot(
+                            g[value_col],
+                            ax=_ax,
+                            color=palette_map.get(k),
+                            lw=1.5,
+                        )
 
             handles = [
                 Patch(
@@ -1196,7 +1253,9 @@ def intensity_hist(
                 )
                 for h in present
             ]
-            _ax.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
+            _ax.legend(
+                handles=handles, title="Status", loc=legend_loc, frameon=False
+            )
         else:
             df = pd.DataFrame({value_col: vals})
             sns.histplot(
@@ -1210,7 +1269,9 @@ def intensity_hist(
                 ax=_ax,
             )
             if kde and len(df) > 1:
-                sns.kdeplot(df[value_col], ax=_ax, color=measured_color, lw=1.5)
+                sns.kdeplot(
+                    df[value_col], ax=_ax, color=measured_color, lw=1.5
+                )
 
         _ax.set_xlabel(xlabel)
         _ax.set_ylabel("Density" if density else "Count")
@@ -1221,7 +1282,7 @@ def intensity_hist(
 
         # save/show
         if save is not None:
-            fig.savefig(save, dpi=300, bbox_inches='tight')
+            fig.savefig(save, dpi=300, bbox_inches="tight")
         if show and not ax:
             plt.show()
         if ax:
@@ -1237,12 +1298,14 @@ def intensity_hist(
         idx, labels = [], []
         for s in samples:
             if isinstance(s, (int, np.integer)):
-                idx.append(int(s)); labels.append(adata.obs_names[int(s)])
+                idx.append(int(s))
+                labels.append(adata.obs_names[int(s)])
             else:
                 where = np.where(adata.obs_names == str(s))[0]
                 if where.size == 0:
                     raise KeyError(f"Sample '{s}' not in adata.obs_names")
-                idx.append(int(where[0])); labels.append(str(s))
+                idx.append(int(where[0]))
+                labels.append(str(s))
         idx = np.asarray(idx, dtype=int)
         labels = np.asarray(labels, dtype=object)
 
@@ -1254,7 +1317,9 @@ def intensity_hist(
         if m.any():
             all_vals.append(vi[m])
     if len(all_vals) == 0:
-        raise ValueError("No finite values to plot after preprocessing across selected observations.")
+        raise ValueError(
+            "No finite values to plot after preprocessing across selected observations."
+        )
     bin_edges = np.histogram_bin_edges(np.concatenate(all_vals), bins=bins)
 
     n = len(idx)
@@ -1312,7 +1377,12 @@ def intensity_hist(
                 for lab in present:
                     g = df_i[df_i["status"] == lab]
                     if len(g) > 1:
-                        sns.kdeplot(g[value_col], ax=_ax, color=palette_map.get(lab), lw=1.2)
+                        sns.kdeplot(
+                            g[value_col],
+                            ax=_ax,
+                            color=palette_map.get(lab),
+                            lw=1.2,
+                        )
         else:
             df_i = pd.DataFrame({value_col: vi})
             sns.histplot(
@@ -1327,7 +1397,9 @@ def intensity_hist(
                 legend=False,
             )
             if kde and len(df_i) > 1:
-                sns.kdeplot(df_i[value_col], ax=_ax, color=measured_color, lw=1.2)
+                sns.kdeplot(
+                    df_i[value_col], ax=_ax, color=measured_color, lw=1.2
+                )
 
         _ax.set_title(str(labels[k]))
         if r == nrows - 1:
@@ -1350,13 +1422,22 @@ def intensity_hist(
     if present_any is not None and present_any:
         present_any = [h for h in hue_order if h in present_any]
         handles = [
-            Patch(facecolor=palette_map[h], edgecolor="none", alpha=alpha, label=h)
+            Patch(
+                facecolor=palette_map[h],
+                edgecolor="none",
+                alpha=alpha,
+                label=h,
+            )
             for h in present_any
         ]
         if legend_loc == "best":
-            axes[0, 0].legend(handles=handles, title="Status", loc="best", frameon=False)
+            axes[0, 0].legend(
+                handles=handles, title="Status", loc="best", frameon=False
+            )
         else:
-            fig.legend(handles=handles, title="Status", loc=legend_loc, frameon=False)
+            fig.legend(
+                handles=handles, title="Status", loc=legend_loc, frameon=False
+            )
 
     per_obs_title = f"Intensity histograms per observation ({descriptor})"
     plt.suptitle(title or per_obs_title, y=0.995, fontsize=12)
@@ -1364,20 +1445,21 @@ def intensity_hist(
 
     # save/show
     if save is not None:
-        fig.savefig(save, dpi=300, bbox_inches='tight')
+        fig.savefig(save, dpi=300, bbox_inches="tight")
     if show:
         plt.show()
     return None
 
+
 docstr_header = (
     "Plot a histogram of var intensities per observation, optionally colored "
     "by imputation status."
-    )
+)
 intensity_hist_per_obs = partial_with_docsig(
     intensity_hist,
     per_obs=True,
     docstr_header=docstr_header,
-    )
+)
 
 
 def abundance_rank(
@@ -1539,9 +1621,7 @@ def abundance_rank(
 
     # --- Parameter validation ---
     if input_space not in ("auto", "log", "linear"):
-        raise ValueError(
-            "input_space must be 'auto', 'log', or 'linear'."
-        )
+        raise ValueError("input_space must be 'auto', 'log', or 'linear'.")
 
     if zero_to_na and fill_na is not None:
         raise ValueError("`zero_to_na` and `fill_na` are mutually exclusive.")
@@ -1621,7 +1701,7 @@ def abundance_rank(
             actual_input_is_log = False
     else:
         # Explicit input_space
-        actual_input_is_log = (input_space == "log")
+        actual_input_is_log = input_space == "log"
 
         # Check for mismatch between declared and inferred
         if actual_input_is_log != inferred_is_log and not force:
@@ -1657,7 +1737,7 @@ def abundance_rank(
     elif not actual_input_is_log and target_is_log:
         # Linear to log: apply transformation
         log_base = float(log_transform)
-        with np.errstate(divide='ignore', invalid='ignore'):
+        with np.errstate(divide="ignore", invalid="ignore"):
             X = np.log1p(X) / np.log(log_base)
         transform_applied = f"log{log_base:g}p1"
         ylabel_default = f"Intensity ({transform_applied})"
@@ -1726,7 +1806,9 @@ def abundance_rank(
 
         valid_mask = np.isfinite(summary_vals)
         if not valid_mask.any():
-            raise ValueError("No valid intensities remain after preprocessing.")
+            raise ValueError(
+                "No valid intensities remain after preprocessing."
+            )
 
         rank_position = np.full(n_vars, np.nan)
         valid_indices = np.where(valid_mask)[0]
@@ -1755,12 +1837,14 @@ def abundance_rank(
                 if not np.isfinite(summary_val) or not np.isfinite(rank_val):
                     continue
 
-                records.append({
-                    'var': var_name,
-                    'intensity': summary_val,
-                    'rank': rank_val,
-                    'color_group': group,
-                })
+                records.append(
+                    {
+                        "var": var_name,
+                        "intensity": summary_val,
+                        "rank": rank_val,
+                        "color_group": group,
+                    }
+                )
     else:
         summary_vals = group_summary_values[None]
         rank_pos = group_rank_positions[None]
@@ -1772,14 +1856,18 @@ def abundance_rank(
             if not np.isfinite(summary_val) or not np.isfinite(rank_val):
                 continue
 
-            records.append({
-                'var': var_name,
-                'intensity': summary_val,
-                'rank': rank_val,
-            })
+            records.append(
+                {
+                    "var": var_name,
+                    "intensity": summary_val,
+                    "rank": rank_val,
+                }
+            )
 
     if not records:
-        raise ValueError("No valid data points remain after computing summaries.")
+        raise ValueError(
+            "No valid data points remain after computing summaries."
+        )
 
     plot_df = pd.DataFrame(records)
 
@@ -1794,10 +1882,10 @@ def abundance_rank(
         palette = dict(zip(groups, palette_values))
 
         for group in groups:
-            group_df = plot_df[plot_df['color_group'] == group]
+            group_df = plot_df[plot_df["color_group"] == group]
             _ax.scatter(
-                group_df['rank'],
-                group_df['intensity'],
+                group_df["rank"],
+                group_df["intensity"],
                 c=[palette[group]],
                 alpha=alpha,
                 s=s,
@@ -1806,15 +1894,15 @@ def abundance_rank(
         _ax.legend(
             title=color,
             bbox_to_anchor=(1.02, 1),
-            loc='upper left',
+            loc="upper left",
         )
     else:
         _ax.scatter(
-            plot_df['rank'],
-            plot_df['intensity'],
+            plot_df["rank"],
+            plot_df["intensity"],
             alpha=alpha,
             s=s,
-            color='steelblue',
+            color="steelblue",
         )
 
     # --- Add highlighted variable labels ---
@@ -1836,7 +1924,7 @@ def abundance_rank(
                     continue
                 summary_vals = group_summary_values[group]
                 rank_pos = group_rank_positions[group]
-                grp_color = palette.get(group, 'red')
+                grp_color = palette.get(group, "red")
 
                 for var in highlight_vars:
                     var_idx = np.where(var_names == var)[0]
@@ -1846,7 +1934,9 @@ def abundance_rank(
                     var_rank = rank_pos[var_idx]
                     var_summary = summary_vals[var_idx]
 
-                    if not np.isfinite(var_summary) or not np.isfinite(var_rank):
+                    if not np.isfinite(var_summary) or not np.isfinite(
+                        var_rank
+                    ):
                         continue
 
                     label = str(var_to_label.get(var, var))
@@ -1866,8 +1956,8 @@ def abundance_rank(
                         color=grp_color,
                         s=s * 2,
                         zorder=10,
-                        marker='o',
-                        edgecolors='black',
+                        marker="o",
+                        edgecolors="black",
                         linewidths=0.5,
                     )
         else:
@@ -1900,11 +1990,11 @@ def abundance_rank(
                 _ax.scatter(
                     [var_rank],
                     [var_summary],
-                    color='red',
+                    color="red",
                     s=s * 2,
                     zorder=10,
-                    marker='o',
-                    edgecolors='black',
+                    marker="o",
+                    edgecolors="black",
                     linewidths=0.5,
                 )
 
@@ -1915,11 +2005,11 @@ def abundance_rank(
                 y=highlight_y,
                 ax=_ax,
                 arrowprops=dict(arrowstyle="-", color="0.4", lw=0.7),
-                expand=(1.5,1.5),
+                expand=(1.5, 1.5),
                 force_text=0.5,
                 force_explode=(4.4, 4.4),
                 avoid_self=True,
-                only_move={'text': 'x+y'},
+                only_move={"text": "x+y"},
             )
 
     # --- Set labels and title ---
@@ -2069,26 +2159,18 @@ def box(
     # Validate keys exist in var_names
     missing_keys = [k for k in keys if k not in adata.var_names]
     if missing_keys:
-        raise KeyError(
-            f"Keys not found in adata.var_names: {missing_keys}"
-        )
+        raise KeyError(f"Keys not found in adata.var_names: {missing_keys}")
 
     # Validate group_by
     if group_by is not None and group_by not in adata.obs.columns:
-        raise KeyError(
-            f"Column '{group_by}' not found in adata.obs."
-        )
+        raise KeyError(f"Column '{group_by}' not found in adata.obs.")
 
     if order is not None and group_by is None:
-        raise ValueError(
-            "order can only be used when group_by is provided."
-        )
+        raise ValueError("order can only be used when group_by is provided.")
 
     # Validate layer
     if layer is not None and layer not in adata.layers:
-        raise KeyError(
-            f"Layer '{layer}' not found in adata.layers."
-        )
+        raise KeyError(f"Layer '{layer}' not found in adata.layers.")
 
     # Validate zero_to_na and fill_na
     if zero_to_na and fill_na is not None:
@@ -2126,7 +2208,7 @@ def box(
                 RuntimeWarning,
             )
         log_base = float(log_transform)
-        with np.errstate(invalid='ignore'):
+        with np.errstate(invalid="ignore"):
             X = np.log1p(X) / np.log(log_base)
 
     # Build long-format DataFrame
@@ -2165,7 +2247,8 @@ def box(
     else:
         if is_categorical_dtype(df_long[hue_col]):
             group_order = [
-                cat for cat in df_long[hue_col].cat.categories
+                cat
+                for cat in df_long[hue_col].cat.categories
                 if cat in df_long[hue_col].values
             ]
         else:
@@ -2193,10 +2276,7 @@ def box(
     pdf_pages = None
 
     if save and multi:
-        save_path = (
-            str(save) if str(save).endswith('.pdf')
-            else f'{save}.pdf'
-        )
+        save_path = str(save) if str(save).endswith(".pdf") else f"{save}.pdf"
         pdf_pages = PdfPages(save_path)
 
     for key in keys:
@@ -2213,7 +2293,7 @@ def box(
                 hue_order=group_order,
                 palette=palette,
                 legend=False,
-                flierprops={'marker': '.', 'markersize': 1},
+                flierprops={"marker": ".", "markersize": 1},
                 ax=_ax,
             )
             if show_points:
@@ -2234,7 +2314,7 @@ def box(
             sns.boxplot(
                 data=sub,
                 y="intensity",
-                flierprops={'marker': '.', 'markersize': 1},
+                flierprops={"marker": ".", "markersize": 1},
                 ax=_ax,
             )
             if show_points:
@@ -2267,9 +2347,9 @@ def box(
                 plt.show()
         elif save:
             if multi:
-                pdf_pages.savefig(fig, bbox_inches='tight')
+                pdf_pages.savefig(fig, bbox_inches="tight")
             else:
-                fig.savefig(save, dpi=300, bbox_inches='tight')
+                fig.savefig(save, dpi=300, bbox_inches="tight")
             if show:
                 plt.show()
             plt.close(fig)
@@ -2460,9 +2540,7 @@ def binary_heatmap(
     if not isinstance(row_cluster, bool):
         raise TypeError("`row_cluster` must be a boolean.")
     if not isinstance(hide_fully_detected, bool):
-        raise TypeError(
-            "`hide_fully_detected` must be a boolean."
-        )
+        raise TypeError("`hide_fully_detected` must be a boolean.")
     if not isinstance(ylabels, bool):
         raise TypeError("`ylabels` must be a boolean.")
     if order_by is not None and not isinstance(order_by, str):
@@ -2639,7 +2717,7 @@ def binary_heatmap(
             vmax=1,
             figsize=figsize,
             cbar_kws=cbar_kws,
-            tree_kws={'linewidths': 1},
+            tree_kws={"linewidths": 1},
         )
 
         grid.fig.subplots_adjust(right=0.70, bottom=0.12)

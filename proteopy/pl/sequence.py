@@ -13,9 +13,7 @@ import anndata as ad
 from proteopy.utils.anndata import check_proteodata
 from proteopy.utils.matplotlib import _resolve_color_scheme
 
-ColorScheme = Union[
-    str, dict, SequenceABC, Colormap, Callable, None
-]
+ColorScheme = Union[str, dict, SequenceABC, Colormap, Callable, None]
 
 
 def _find_sequence_positions(
@@ -73,12 +71,10 @@ def _resolve_seq_string(
     seq = entry["seq"]
     group = entry["group"]
     if not seq:
-        raise ValueError(
-            f"Entry '{name}' has an empty "
-            f"'seq' string."
-        )
+        raise ValueError(f"Entry '{name}' has an empty " f"'seq' string.")
     positions = _find_sequence_positions(
-        seq, ref_sequence,
+        seq,
+        ref_sequence,
     )
 
     if not positions:
@@ -167,7 +163,10 @@ def _resolve_sequences(
             result = _resolve_seq_coord(name, entry, ref_len)
         elif "seq" in entry:
             result = _resolve_seq_string(
-                name, entry, ref_sequence, allow_multi_match,
+                name,
+                entry,
+                ref_sequence,
+                allow_multi_match,
             )
         else:
             raise ValueError(
@@ -211,9 +210,7 @@ def _group_sequences(
         if g not in group_entries:
             group_order.append(g)
             group_entries[g] = []
-        group_entries[g].append(
-            (entry["start"], entry["end"], name)
-        )
+        group_entries[g].append((entry["start"], entry["end"], name))
 
     if order is not None:
         unknown = set(order) - set(group_order)
@@ -223,6 +220,10 @@ def _group_sequences(
                 f"sequences: {sorted(unknown)}."
             )
         group_order = list(order)
+    else:
+        # Sort lexicographically so row order and color assignment
+        # are deterministic and match other plots of the same groups.
+        group_order = sorted(group_order, key=str)
 
     return group_order, group_entries
 
@@ -289,7 +290,9 @@ def _plot_sequences_on_reference(
         The Axes object used for plotting.
     """
     resolved = _resolve_sequences(
-        ref_sequence, sequences, allow_multi_match,
+        ref_sequence,
+        sequences,
+        allow_multi_match,
     )
 
     group_order, group_entries = _group_sequences(resolved, order)
@@ -368,8 +371,7 @@ def _extract_peptide_sequences(
     if alt_pep_sequence_key is not None:
         if alt_pep_sequence_key not in var_sub.columns:
             raise KeyError(
-                f"Column '{alt_pep_sequence_key}' not "
-                f"found in adata.var."
+                f"Column '{alt_pep_sequence_key}' not " f"found in adata.var."
             )
         return var_sub[alt_pep_sequence_key]
     return var_sub.index
@@ -383,13 +385,11 @@ def _extract_groups(
     """Return group labels for each peptide in var subset."""
     if group_by is not None:
         if group_by not in var_sub.columns:
-            raise KeyError(
-                f"Column '{group_by}' not found in "
-                f"adata.var."
-            )
+            raise KeyError(f"Column '{group_by}' not found in " f"adata.var.")
         return var_sub[group_by]
     return pd.Series(
-        filter_value, index=var_sub.index,
+        filter_value,
+        index=var_sub.index,
     )
 
 
@@ -402,7 +402,9 @@ def _build_sequences_dict(
     """Build sequences dict from peptides and merge additions."""
     sequences = {}
     for pep_id, seq_val, grp_val in zip(
-        var_sub.index, pep_seqs, groups,
+        var_sub.index,
+        pep_seqs,
+        groups,
     ):
         if pd.isna(grp_val):
             continue
@@ -576,17 +578,12 @@ def peptides_on_sequence(
         )
 
     if ref_sequence is None:
-        raise ValueError(
-            "'ref_sequence' must be provided."
-        )
+        raise ValueError("'ref_sequence' must be provided.")
 
     # Filter .var
     var = adata.var
     if filter_key not in var.columns:
-        raise KeyError(
-            f"Column '{filter_key}' not found in "
-            f"adata.var."
-        )
+        raise KeyError(f"Column '{filter_key}' not found in " f"adata.var.")
     mask = var[filter_key] == filter_value
     if not mask.any():
         raise ValueError(
@@ -597,13 +594,19 @@ def peptides_on_sequence(
     var_sub = var.loc[mask]
 
     pep_seqs = _extract_peptide_sequences(
-        var_sub, alt_pep_sequence_key,
+        var_sub,
+        alt_pep_sequence_key,
     )
     groups = _extract_groups(
-        var_sub, group_by, filter_value,
+        var_sub,
+        group_by,
+        filter_value,
     )
     sequences = _build_sequences_dict(
-        var_sub, pep_seqs, groups, add_sequences,
+        var_sub,
+        pep_seqs,
+        groups,
+        add_sequences,
     )
 
     # Resolve title: default to filter_value

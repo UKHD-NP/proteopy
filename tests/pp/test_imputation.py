@@ -17,13 +17,15 @@ def _make_log_adata_with_missing(
     miss_frac: float = 0.25,
     seed: int = 0,
 ) -> AnnData:
-    """Log2 intensities mimicking real proteomics data.
+    """Log2 intensities for controlled statistical sampler tests.
 
     Raw intensities are drawn from a lognormal (the empirical shape of
     MS1 quantitative intensities) then log2-transformed, yielding a
     Gaussian log-intensity distribution with mean ≈ 23 and sd ≈ 2.5.
-    NaN missingness is injected MCAR.
-    Sized for statistical-test power.
+    Missingness is injected uniformly so tests can verify mask handling
+    and draws from the documented downshifted normal. This fixture
+    tests the imputation algorithm, not a biological missingness
+    mechanism.
     """
     rng = np.random.default_rng(seed)
     # ln-space params chosen so log2(raw) ~ N(23, 2.5)
@@ -497,7 +499,7 @@ class TestImputeDownshift:
         assert "imputation_mask_X" in result.layers
 
     @pytest.mark.skip(
-        reason="sparse handling not tested per project policy",
+        reason="sparse handling not tested in this version",
     )
     def test_sparse_input_yields_sparse_output(self):
         adata = _make_small_log_adata()
@@ -515,7 +517,7 @@ class TestImputeDownshift:
         assert isinstance(result.X, sparse.csr_matrix)
 
     @pytest.mark.skip(
-        reason="sparse handling not tested per project policy",
+        reason="sparse handling not tested in this version",
     )
     def test_dense_input_yields_dense_output(self):
         adata = _make_small_log_adata()

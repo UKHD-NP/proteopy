@@ -117,14 +117,36 @@ def contaminants(
 
     Examples
     --------
+    Flag two of three proteins as contaminants using an inline FASTA list.
+    The default header parser extracts the accession from the second
+    pipe-separated field (Swiss-Prot style):
+
+    >>> import tempfile
+    >>> from pathlib import Path
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from anndata import AnnData
     >>> import proteopy as pr
-    >>> adata = pr.datasets.example_protein_data()  # doctest: +SKIP
-    >>> pr.ann.contaminants(
-    ...     adata,
-    ...     "contaminants.fasta",
-    ...     verbose=True,
-    ... )  # doctest: +SKIP
-    >>> adata.var["is_contaminant"].sum()  # doctest: +SKIP
+    >>> with tempfile.TemporaryDirectory() as d:
+    ...     fasta = Path(d) / "contaminants.fasta"
+    ...     _ = fasta.write_text(
+    ...         ">sp|P00001|HUMAN_A\\nACDEF\\n"
+    ...         ">sp|P00002|HUMAN_B\\nGHIKL\\n"
+    ...     )
+    ...     adata = AnnData(
+    ...         X=np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]),
+    ...         obs=pd.DataFrame(
+    ...             {"sample_id": ["s1", "s2"]}, index=["s1", "s2"],
+    ...         ),
+    ...         var=pd.DataFrame(
+    ...             {"protein_id": ["P00001", "P00002", "P00003"]},
+    ...             index=["P00001", "P00002", "P00003"],
+    ...         ),
+    ...     )
+    ...     pr.ann.contaminants(adata, fasta, verbose=True)
+    ...     print(int(adata.var["is_contaminant"].sum()))
+    Annotated 2 contaminating proteins at adata.var['is_contaminant'].
+    2
     """
     check_proteodata(adata)
 

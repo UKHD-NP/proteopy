@@ -125,8 +125,7 @@ def karayel_2020(
        2020. :doi:`10.15252/msb.20209813`.
     """
     if fill_na is not None and (
-        isinstance(fill_na, bool)
-        or not isinstance(fill_na, (int, float))
+        isinstance(fill_na, bool) or not isinstance(fill_na, (int, float))
     ):
         raise TypeError(
             f"fill_na must be float, int, or None, "
@@ -154,34 +153,31 @@ def karayel_2020(
     df[quant_cols] = df[quant_cols].replace("Filtered", np.nan).astype(float)
 
     # Wide to long format
-    long = (
-        df[["PG.ProteinGroups"] + quant_cols]
-        .melt(
-            id_vars="PG.ProteinGroups",
-            var_name="raw_col",
-            value_name="intensity",
-        )
+    long = df[["PG.ProteinGroups"] + quant_cols].melt(
+        id_vars="PG.ProteinGroups",
+        var_name="raw_col",
+        value_name="intensity",
     )
 
     # Clean sample IDs and map to cell type names
     long["sample_id"] = long["raw_col"].map(_parse_sample_id)
     long = long.drop(columns=["raw_col"])
     long = long.rename(columns={"PG.ProteinGroups": "protein_id"})
-    long['sample_id'] = (
-        long['sample_id']
-        .str.replace('Negativefrac', 'Progenitor', regex=False)
-        .str.replace('P1andP2', 'ProE&EBaso', regex=False)
-        .str.replace('P3', 'LBaso', regex=False)
-        .str.replace('P4', 'Poly', regex=False)
-        .str.replace('P5', 'Ortho', regex=False)
+    long["sample_id"] = (
+        long["sample_id"]
+        .str.replace("Negativefrac", "Progenitor", regex=False)
+        .str.replace("P1andP2", "ProE&EBaso", regex=False)
+        .str.replace("P3", "LBaso", regex=False)
+        .str.replace("P4", "Poly", regex=False)
+        .str.replace("P5", "Ortho", regex=False)
     )
 
     # Exclude day 7 samples
-    karayel_2020_quant = long[~long["sample_id"].str.contains('_D7')]
+    karayel_2020_quant = long[~long["sample_id"].str.contains("_D7")]
 
     # Build sample annotation
     karayel_2020_meta_obs = (
-        karayel_2020_quant[['sample_id']]
+        karayel_2020_quant[["sample_id"]]
         .drop_duplicates()
         .reset_index(drop=True)
     )
@@ -194,19 +190,18 @@ def karayel_2020(
 
     # Build protein annotation
     karayel_2020_meta_var = (
-        df[['PG.ProteinGroups', 'PG.Genes']]
+        df[["PG.ProteinGroups", "PG.Genes"]]
         .drop_duplicates()
         .reset_index(drop=True)
     )
-    karayel_2020_meta_var = karayel_2020_meta_var.rename(columns={
-        'PG.ProteinGroups': 'protein_id',
-        'PG.Genes': 'gene_id'
-    })
+    karayel_2020_meta_var = karayel_2020_meta_var.rename(
+        columns={"PG.ProteinGroups": "protein_id", "PG.Genes": "gene_id"}
+    )
 
     # Assemble AnnData
     adata = pp.read.long(
         intensities=karayel_2020_quant,
-        level='protein',
+        level="protein",
         sample_annotation=karayel_2020_meta_obs,
         var_annotation=karayel_2020_meta_var,
     )

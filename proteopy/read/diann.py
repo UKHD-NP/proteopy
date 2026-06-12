@@ -33,18 +33,15 @@ _ALL_AGGR_PATTERNS = {
 def _resolve_aggr_level(aggr_level):
     """Resolve an aggr_level string to its canonical column name.
 
-    Returns the canonical column name and a boolean indicating
-    whether the level corresponds to protein-level aggregation.
+    Returns the canonical column name and a boolean indicating whether
+    the level corresponds to protein-level aggregation.
     """
     for pattern, canonical in _ALL_AGGR_PATTERNS.items():
         if re.fullmatch(pattern, aggr_level):
             return canonical, pattern in _PROTEIN_AGGR_PATTERNS
-    valid = ", ".join(
-        f"'{p}'" for p in _ALL_AGGR_PATTERNS
-    )
+    valid = ", ".join(f"'{p}'" for p in _ALL_AGGR_PATTERNS)
     raise ValueError(
-        f"Invalid aggr_level '{aggr_level}'. "
-        f"Valid regex patterns: {valid}"
+        f"Invalid aggr_level '{aggr_level}'. " f"Valid regex patterns: {valid}"
     )
 
 
@@ -93,222 +90,192 @@ def _read_diann_v1(
     """
     # -- Check args
     aggr_level_options = [
-        'Stripped.Sequence',
-        'Modified.Sequence',
-        'Precursor.Id',
+        "Stripped.Sequence",
+        "Modified.Sequence",
+        "Precursor.Id",
     ]
 
     if aggr_level not in aggr_level_options:
         raise ValueError(
-            f'Wrong option passsed to aggr_level argument: '
-            f'{aggr_level}.'
+            f"Wrong option passsed to aggr_level argument: " f"{aggr_level}."
         )
 
     if run_parser is not None and not callable(run_parser):
-        raise ValueError(
-            'run_parser arg must either be a function or None.'
-        )
+        raise ValueError("run_parser arg must either be a function or None.")
 
     base_required_cols = {
-        'Run',
-        'Proteotypic',
-        'Protein.Ids',
-        'Precursor.Quantity',
-        'Protein.Q.Value',
-        'Global.Q.Value',
-        'Q.Value',
-        'Protein.Group',
-        'Genes',
-        'Protein.Names',
-        'Stripped.Sequence',
+        "Run",
+        "Proteotypic",
+        "Protein.Ids",
+        "Precursor.Quantity",
+        "Protein.Q.Value",
+        "Global.Q.Value",
+        "Q.Value",
+        "Protein.Group",
+        "Genes",
+        "Protein.Names",
+        "Stripped.Sequence",
     }
 
     required_cols = set(base_required_cols)
     required_cols.add(aggr_level)
 
-    if aggr_level == 'Precursor.Id':
-        required_cols.update(
-            {'Modified.Sequence', 'Precursor.Charge'}
-        )
-    if aggr_level == 'Modified.Sequence':
-        required_cols.add('Modified.Sequence')
+    if aggr_level == "Precursor.Id":
+        required_cols.update({"Modified.Sequence", "Precursor.Charge"})
+    if aggr_level == "Modified.Sequence":
+        required_cols.add("Modified.Sequence")
 
-    header = pd.read_csv(diann_output_path, sep='\t', nrows=0)
+    header = pd.read_csv(diann_output_path, sep="\t", nrows=0)
     missing_cols = sorted(required_cols - set(header.columns))
 
     if missing_cols:
-        missing_str = ', '.join(missing_cols)
+        missing_str = ", ".join(missing_cols)
         raise ValueError(
-            'Missing required columns in DIA-NN output: '
-            f'{missing_str}.'
+            "Missing required columns in DIA-NN output: " f"{missing_str}."
         )
 
     data = pd.read_csv(
         diann_output_path,
-        sep='\t',
+        sep="\t",
         header=0,
         usecols=sorted(required_cols),
     )
 
     if run_parser:
-        data['Run'] = data['Run'].apply(run_parser)
+        data["Run"] = data["Run"].apply(run_parser)
 
     if show_input_stats:
-        print(
-            'Before Q-value and proteotypicity filtering\n'
-            '------'
-        )
-        proteotypic_fraction = (
-            (data['Proteotypic'] == 1).sum() / len(data)
-        )
-        print(
-            f'Proteotypic peptide fraction: '
-            f'{proteotypic_fraction:.2f}'
-        )
+        print("Before Q-value and proteotypicity filtering\n" "------")
+        proteotypic_fraction = (data["Proteotypic"] == 1).sum() / len(data)
+        print(f"Proteotypic peptide fraction: " f"{proteotypic_fraction:.2f}")
 
         multimapper_fraction = (
-            (data['Protein.Ids'].str.split(';').apply(len) == 1)
-            .sum() / len(data)
-        )
-        print(
-            f'Multimapper peptide fraction: '
-            f'{multimapper_fraction:.2f}'
-        )
+            data["Protein.Ids"].str.split(";").apply(len) == 1
+        ).sum() / len(data)
+        print(f"Multimapper peptide fraction: " f"{multimapper_fraction:.2f}")
 
         # Q value distr. plots
-        fig, axes = plt.subplots(
-            nrows=1, ncols=3, figsize=(16, 4)
-        )
+        fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(16, 4))
         plt.subplots_adjust(wspace=0.3)
 
-        sns.histplot(data['Q.Value'], bins=100, ax=axes[0])
-        axes[0].set_title('Q.Value distr.')
+        sns.histplot(data["Q.Value"], bins=100, ax=axes[0])
+        axes[0].set_title("Q.Value distr.")
 
         if precursor_pval_max:
             axes[0].axvline(
                 x=precursor_pval_max,
-                color='red',
-                linestyle='--',
+                color="red",
+                linestyle="--",
                 linewidth=2,
             )
 
-        sns.histplot(
-            data['Global.Q.Value'], bins=100, ax=axes[1]
-        )
-        axes[1].set_title('Gobal.Q.Value distr.')
+        sns.histplot(data["Global.Q.Value"], bins=100, ax=axes[1])
+        axes[1].set_title("Gobal.Q.Value distr.")
 
         if global_precursor_pval_max:
             axes[1].axvline(
                 x=global_precursor_pval_max,
-                color='red',
-                linestyle='--',
+                color="red",
+                linestyle="--",
                 linewidth=2,
             )
 
-        sns.histplot(
-            data['Protein.Q.Value'], bins=100, ax=axes[2]
-        )
-        axes[2].set_title('Protein.Q.Value distr.')
+        sns.histplot(data["Protein.Q.Value"], bins=100, ax=axes[2])
+        axes[2].set_title("Protein.Q.Value distr.")
 
         if gene_pval_max:
             axes[2].axvline(
                 x=gene_pval_max,
-                color='red',
-                linestyle='--',
+                color="red",
+                linestyle="--",
                 linewidth=2,
             )
         plt.show()
 
         # Q values stats
-        q_stats = data[[
-            'Q.Value', 'Protein.Q.Value', 'Global.Q.Value'
-        ]].describe()
+        q_stats = data[
+            ["Q.Value", "Protein.Q.Value", "Global.Q.Value"]
+        ].describe()
         print(q_stats)
 
     # -- Filter ds
     data_sub = data[
-        (data['Proteotypic'] == 1)
-        & (data['Protein.Ids'].str.split(';')
-           .apply(len).eq(1))
+        (data["Proteotypic"] == 1)
+        & (data["Protein.Ids"].str.split(";").apply(len).eq(1))
     ].copy()
     del data
     gc.collect()
 
     # ToDo: change to < instead of <=
     if precursor_pval_max:
-        data_sub = data_sub[
-            data_sub['Q.Value'] <= precursor_pval_max
-        ]
+        data_sub = data_sub[data_sub["Q.Value"] <= precursor_pval_max]
     if global_precursor_pval_max:
         data_sub = data_sub[
-            data_sub['Global.Q.Value']
-            <= global_precursor_pval_max
+            data_sub["Global.Q.Value"] <= global_precursor_pval_max
         ]
     if gene_pval_max:
-        data_sub = data_sub[
-            data_sub['Protein.Q.Value'] <= gene_pval_max
-        ]
+        data_sub = data_sub[data_sub["Protein.Q.Value"] <= gene_pval_max]
 
     if len(data_sub) == 0:
-        raise ValueError('Dataframe after filtering empty')
+        raise ValueError("Dataframe after filtering empty")
 
     if show_input_stats:
         # Q values stats
-        q_stats = data_sub[[
-            'Q.Value', 'Protein.Q.Value', 'Global.Q.Value'
-        ]].describe()
-        print(
-            '\nAfter Q-value and proteotypicity filtering\n'
-            '------'
-        )
+        q_stats = data_sub[
+            ["Q.Value", "Protein.Q.Value", "Global.Q.Value"]
+        ].describe()
+        print("\nAfter Q-value and proteotypicity filtering\n" "------")
         print(q_stats)
 
     # -- Check: how peptides map to proteins
     is_pep_multiprots = (
-        data_sub.groupby(
-            [aggr_level, 'Run'], observed=True
-        )['Protein.Ids'].nunique() > 1
+        data_sub.groupby([aggr_level, "Run"], observed=True)[
+            "Protein.Ids"
+        ].nunique()
+        > 1
     )
 
     if is_pep_multiprots.any():
         raise ValueError(
-            f'Peptides at aggregation level {aggr_level} '
-            'map to multiple proteins. '
-            'Not implemented yet.'
+            f"Peptides at aggregation level {aggr_level} "
+            "map to multiple proteins. "
+            "Not implemented yet."
         )
 
     # -- Aggregate precursors
     data_cols = [
-        'Run',
+        "Run",
         aggr_level,
-        'Protein.Ids',
-        'Precursor.Quantity',
+        "Protein.Ids",
+        "Precursor.Quantity",
     ]
 
     precursor_data = data_sub[data_cols].copy()
 
     precursor_data_summed = (
         precursor_data.groupby(
-            [aggr_level, 'Protein.Ids', 'Run'],
+            [aggr_level, "Protein.Ids", "Run"],
             observed=True,
-        )['Precursor.Quantity']
+        )["Precursor.Quantity"]
         .sum()
         .reset_index()
     )
 
     # -- Check: proteotypicity
-    assert ((
-        precursor_data_summed
-        .groupby('Stripped.Sequence', observed=True)
-        ['Protein.Ids']
-        .nunique().le(1).all()
-    )), "Error: Some peptides map to multiple proteins!"
+    assert (
+        precursor_data_summed.groupby("Stripped.Sequence", observed=True)[
+            "Protein.Ids"
+        ]
+        .nunique()
+        .le(1)
+        .all()
+    ), "Error: Some peptides map to multiple proteins!"
 
     X = pd.pivot(
         precursor_data_summed,
-        index='Run',
+        index="Run",
         columns=aggr_level,
-        values='Precursor.Quantity',
+        values="Precursor.Quantity",
     )
 
     X = X.sort_index(axis=0).sort_index(axis=1)
@@ -323,28 +290,28 @@ def _read_diann_v1(
     gc.collect()
 
     # -- obs
-    obs = pd.DataFrame(
-        {'run_id': X.index}, index=X.index
-    )
+    obs = pd.DataFrame({"run_id": X.index}, index=X.index)
     obs.index.name = None
 
     meta_cols = [
         aggr_level,
-        'Protein.Ids',
-        'Protein.Group',
-        'Genes',
-        'Protein.Names',
+        "Protein.Ids",
+        "Protein.Group",
+        "Genes",
+        "Protein.Names",
     ]
 
-    if aggr_level == 'Modified.Sequence':
-        meta_cols.append('Stripped.Sequence')
+    if aggr_level == "Modified.Sequence":
+        meta_cols.append("Stripped.Sequence")
 
-    if aggr_level == 'Precursor.Id':
-        meta_cols.extend([
-            'Stripped.Sequence',
-            'Modified.Sequence',
-            'Precursor.Charge',
-        ])
+    if aggr_level == "Precursor.Id":
+        meta_cols.extend(
+            [
+                "Stripped.Sequence",
+                "Modified.Sequence",
+                "Precursor.Charge",
+            ]
+        )
 
     precursor_meta = data_sub[meta_cols].copy()
 
@@ -358,12 +325,10 @@ def _read_diann_v1(
         .all()
     )
 
-    var = precursor_meta.groupby(
-        aggr_level, observed=True
-    ).first()
+    var = precursor_meta.groupby(aggr_level, observed=True).first()
     var = var.loc[X.columns]
     var[aggr_level] = var.index
-    var['peptide_id'] = var.index
+    var["peptide_id"] = var.index
     var.index.name = None
 
     del precursor_meta
@@ -381,15 +346,15 @@ def _read_diann_v1(
     if len(adata.obs_names.unique()) < adata.n_obs:
         adata.obs_names_make_unique()
         warnings.warn(
-            'Repeated obs names were present in the data. '
-            'They were made unique by numbered suffixes.'
+            "Repeated obs names were present in the data. "
+            "They were made unique by numbered suffixes."
         )
 
     if len(adata.var_names.unique()) < adata.n_vars:
         adata.var_names_make_unique()
         warnings.warn(
-            'Repeated var names were present in the data. '
-            'They were made unique by numbered suffixes.'
+            "Repeated var names were present in the data. "
+            "They were made unique by numbered suffixes."
         )
 
     return adata
@@ -407,7 +372,8 @@ def _read_diann_v1_9_1(
     zero_to_na=False,
     verbose=False,
 ):
-    """Read a DIA-NN v1.9.1+ parquet report into an :class:`~anndata.AnnData`.
+    """Read a DIA-NN v1.9.1+ parquet report into an
+    :class:`~anndata.AnnData`.
 
     Filters decoys and multi-mapping precursors, applies Q-value
     thresholds, aggregates intensities by ``aggr_level``, and returns
@@ -415,9 +381,7 @@ def _read_diann_v1_9_1(
     """
     # -- Validate arguments
     if run_parser is not None and not callable(run_parser):
-        raise ValueError(
-            "run_parser must be a callable or None."
-        )
+        raise ValueError("run_parser must be a callable or None.")
 
     aggr_col, is_protein = _resolve_aggr_level(aggr_level)
 
@@ -428,15 +392,11 @@ def _read_diann_v1_9_1(
         )
 
     if fill_na is not None and zero_to_na:
-        raise ValueError(
-            "fill_na and zero_to_na are mutually exclusive."
-        )
+        raise ValueError("fill_na and zero_to_na are mutually exclusive.")
 
     # -- Determine columns to read
     intensity_col = (
-        "Precursor.Normalised"
-        if normalized
-        else "Precursor.Quantity"
+        "Precursor.Normalised" if normalized else "Precursor.Quantity"
     )
 
     base_cols = [
@@ -457,11 +417,13 @@ def _read_diann_v1_9_1(
     if max_global_precursor_q is not None:
         base_cols.append("Global.Q.Value")
     if aggr_col == "Precursor.Id":
-        base_cols.extend([
-            "Modified.Sequence",
-            "Stripped.Sequence",
-            "Precursor.Charge",
-        ])
+        base_cols.extend(
+            [
+                "Modified.Sequence",
+                "Stripped.Sequence",
+                "Precursor.Charge",
+            ]
+        )
     elif aggr_col == "Modified.Sequence":
         base_cols.append("Stripped.Sequence")
 
@@ -469,7 +431,8 @@ def _read_diann_v1_9_1(
 
     # -- Read parquet
     data = pd.read_parquet(
-        diann_output_path, columns=usecols,
+        diann_output_path,
+        columns=usecols,
     )
 
     if verbose:
@@ -483,39 +446,27 @@ def _read_diann_v1_9_1(
     data.drop(columns=["Decoy"], inplace=True)
 
     # -- Filter proteotypicity (single protein mapping)
-    proteotypic_mask = (
-        data["Protein.Ids"].str.split(";").str.len() == 1
-    )
+    proteotypic_mask = data["Protein.Ids"].str.split(";").str.len() == 1
     data = data[proteotypic_mask].copy()
 
     if verbose:
         print(
-            f"Rows after decoy and proteotypicity "
-            f"filtering: {len(data):,}"
+            f"Rows after decoy and proteotypicity " f"filtering: {len(data):,}"
         )
 
     # -- Apply Q-value filters
     if max_precursor_q is not None:
         data = data[data["Q.Value"] <= max_precursor_q]
     if max_protein_q is not None:
-        data = data[
-            data["Protein.Q.Value"] <= max_protein_q
-        ]
+        data = data[data["Protein.Q.Value"] <= max_protein_q]
     if max_global_precursor_q is not None:
-        data = data[
-            data["Global.Q.Value"]
-            <= max_global_precursor_q
-        ]
+        data = data[data["Global.Q.Value"] <= max_global_precursor_q]
 
     if len(data) == 0:
-        raise ValueError(
-            "No rows remain after Q-value filtering."
-        )
+        raise ValueError("No rows remain after Q-value filtering.")
 
     if verbose:
-        print(
-            f"Rows after Q-value filtering: {len(data):,}"
-        )
+        print(f"Rows after Q-value filtering: {len(data):,}")
 
     # -- Parse Run column
     if run_parser is not None:
@@ -566,14 +517,17 @@ def _read_diann_v1_9_1(
     if aggr_col == "Modified.Sequence":
         meta_cols.append("Stripped.Sequence")
     elif aggr_col == "Precursor.Id":
-        meta_cols.extend([
-            "Stripped.Sequence",
-            "Modified.Sequence",
-            "Precursor.Charge",
-        ])
+        meta_cols.extend(
+            [
+                "Stripped.Sequence",
+                "Modified.Sequence",
+                "Precursor.Charge",
+            ]
+        )
 
     meta = data[meta_cols].drop_duplicates(
-        subset=[aggr_col], keep="first",
+        subset=[aggr_col],
+        keep="first",
     )
 
     var = meta.set_index(aggr_col)
@@ -719,9 +673,7 @@ def diann(
     ...     verbose=True,
     ... )
     """
-    handler = _resolve_version_handler(
-        version, _DIANN_VERSION_DISPATCH
-    )
+    handler = _resolve_version_handler(version, _DIANN_VERSION_DISPATCH)
     return handler(
         diann_output_path=diann_output_path,
         aggr_level=aggr_level,

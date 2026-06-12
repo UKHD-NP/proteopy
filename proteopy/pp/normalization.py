@@ -17,8 +17,7 @@ def normalize_median(
     inplace: bool = True,
     force: bool = False,
 ):
-    """
-    Median normalization of intensities.
+    """Median normalization of intensities.
 
     NAs are ignored when computing sample medians.
 
@@ -87,7 +86,7 @@ def normalize_median(
         raise ValueError(f"target must be one of {allowed_targets!r}")
 
     if fill_na is not None and zeros_to_na:
-        raise ValueError('Cannot set both zeros_to_na and fill_na to True.')
+        raise ValueError("Cannot set both zeros_to_na and fill_na to True.")
 
     Xsrc = adata.X
     was_sparse = sparse.issparse(Xsrc)
@@ -95,7 +94,7 @@ def normalize_median(
     X = X.astype(float, copy=True)
 
     is_log, _ = is_log_transformed(adata)
-    mismatch = (log_space != is_log)
+    mismatch = log_space != is_log
     if mismatch and not force:
         if log_space:
             raise ValueError(
@@ -114,7 +113,7 @@ def normalize_median(
 
     # Track original missingness/zeros to restore later
     na_mask = ~np.isfinite(X)
-    zero_mask = (X == 0)
+    zero_mask = X == 0
 
     if zeros_to_na:
         X_new[zero_mask] = np.nan
@@ -122,19 +121,19 @@ def normalize_median(
         if fill_na is not None:
             X_new = np.where(~np.isfinite(X_new), fill_na, X_new)
 
-
     def _normalize_samples(
         X_work,
         target,
         log_space,
-        ):
-        """Normalize a subset of samples and return normalized values and factors."""
-        with np.errstate(invalid='ignore'):
+    ):
+        """Normalize a subset of samples and return normalized values
+        and factors."""
+        with np.errstate(invalid="ignore"):
             sample_medians = np.nanmedian(X_work, axis=1)
 
-        if target == 'median':
+        if target == "median":
             target_val = float(np.nanmedian(sample_medians))
-        elif target == 'max':
+        elif target == "max":
             target_val = float(np.nanmax(sample_medians))
         else:
             raise ValueError("target must be one of {'median', 'max'}")
@@ -143,7 +142,7 @@ def normalize_median(
             factors = (target_val - sample_medians)[:, None]
             sub_norm = X_work + factors
         else:
-            with np.errstate(divide='ignore', invalid='ignore'):
+            with np.errstate(divide="ignore", invalid="ignore"):
                 factors = (target_val / sample_medians)[:, None]
             sub_norm = X_work * factors
 
@@ -160,8 +159,10 @@ def normalize_median(
         all_factors[idx] = sub_fac if log_space else np.squeeze(sub_fac)
     else:
         if per_batch not in adata.obs.columns:
-            raise KeyError(f"per_batch='{per_batch}' not found in adata.obs columns.")
-        batches = adata.obs[per_batch].astype('category')
+            raise KeyError(
+                f"per_batch='{per_batch}' not found in adata.obs columns."
+            )
+        batches = adata.obs[per_batch].astype("category")
         for b in batches.cat.categories:
             idx = np.where(batches.values == b)[0]
             if idx.size == 0:
@@ -181,10 +182,12 @@ def normalize_median(
     else:
         factor_name = "scale_linear"
 
-    factors_df = pd.DataFrame({
-        "sample_index": np.arange(n_samples),
-        factor_name: all_factors,
-    })
+    factors_df = pd.DataFrame(
+        {
+            "sample_index": np.arange(n_samples),
+            factor_name: all_factors,
+        }
+    )
 
     if per_batch is not None:
         factors_df[per_batch] = adata.obs[per_batch].values
@@ -192,10 +195,18 @@ def normalize_median(
     # Surface problematic medians via warnings
     if np.isnan(all_factors).any():
         bad = np.where(np.isnan(all_factors))[0]
-        print(f"Warning: {bad.size} sample(s) had undefined median; factors are NaN for indices {bad.tolist()}.")
+        print(
+            f"Warning: {
+                bad.size} sample(s) had undefined median; factors are NaN for indices {
+                bad.tolist()}."
+        )
     if np.isinf(all_factors).any():
         bad = np.where(np.isinf(all_factors))[0]
-        print(f"Warning: {bad.size} sample(s) had zero median; factors are inf for indices {bad.tolist()}.")
+        print(
+            f"Warning: {
+                bad.size} sample(s) had zero median; factors are inf for indices {
+                bad.tolist()}."
+        )
 
     out = sparse.csr_matrix(all_norm) if was_sparse else all_norm
 

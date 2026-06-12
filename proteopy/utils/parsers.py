@@ -1,6 +1,5 @@
 import re
 import warnings
-from typing import Dict, Optional, List
 
 import anndata as ad
 import numpy as np
@@ -16,7 +15,9 @@ STAT_TEST_METHOD_LABELS = {
 }
 
 
-def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataFrame:
+def parse_tumor_subclass(
+    df: pd.DataFrame, col: str = "tumor_class"
+) -> pd.DataFrame:
     """
     Parse a less-structured tumor_class column into:
       - main_tumor_type
@@ -53,7 +54,6 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
     df = df.copy()
     df.index.name = None
 
-
     # Compile patterns once
     # Genetic markers to capture (exact phrases)
     genetic_marker_patterns = [
@@ -64,26 +64,35 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
     ]
 
     # subclass and subtype helpers
-    subclass_bracket_pat = re.compile(r"\[([^\]]*subclass[^\]]*)\]", re.IGNORECASE)
+    subclass_bracket_pat = re.compile(
+        r"\[([^\]]*subclass[^\]]*)\]", re.IGNORECASE
+    )
     subclass_pat = re.compile(r"\bsubclass\b[^\),;\]]*", re.IGNORECASE)
 
-    subtype_bracket_pat = re.compile(r"\[([^\]]*subtype[^\]]*)\]", re.IGNORECASE)
+    subtype_bracket_pat = re.compile(
+        r"\[([^\]]*subtype[^\]]*)\]", re.IGNORECASE
+    )
     # 'subtype ...'
     subtype_after_pat = re.compile(r"\bsubtype\b[^\),;\]]*", re.IGNORECASE)
     # '... subtype' (capture up to 3 words before subtype)
-    subtype_before_pat = re.compile(r"(?:\b[\w/-]+\s+){1,3}\bsubtype\b", re.IGNORECASE)
+    subtype_before_pat = re.compile(
+        r"(?:\b[\w/-]+\s+){1,3}\bsubtype\b", re.IGNORECASE
+    )
 
     # Splitter on comma or the word 'and'
     splitter = re.compile(r"\s*,\s*|\s+\band\b\s+", re.IGNORECASE)
 
     def strip_wrappers(s: str) -> str:
         s = s.strip()
-        # remove enclosing brackets or parentheses only if they enclose the whole chunk
-        if len(s) >= 2 and ((s[0] == "[" and s[-1] == "]") or (s[0] == "(" and s[-1] == ")")):
+        # remove enclosing brackets or parentheses only if they enclose the
+        # whole chunk
+        if len(s) >= 2 and (
+            (s[0] == "[" and s[-1] == "]") or (s[0] == "(" and s[-1] == ")")
+        ):
             s = s[1:-1].strip()
         return s.strip(" ,;")
 
-    def dedupe_keep_order(items: List[str]) -> List[str]:
+    def dedupe_keep_order(items: list[str]) -> list[str]:
         seen = set()
         out = []
         for x in items:
@@ -98,7 +107,7 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
         # Keep original chunk case for readability
         return val.strip()
 
-    def parse_one(value: Optional[str]) -> Dict[str, Optional[str]]:
+    def parse_one(value: str | None) -> dict[str, str | None]:
         if value is None or (isinstance(value, float) and np.isnan(value)):
             return {
                 "main_tumor_type": None,
@@ -109,11 +118,11 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
             }
 
         remaining = str(value).strip()
-        markers: List[str] = []
-        subclass_val: Optional[str] = None
-        subtype_val: Optional[str] = None
-        rest_parts: List[str] = []
-        main_tumor_type: Optional[str] = None
+        markers: list[str] = []
+        subclass_val: str | None = None
+        subtype_val: str | None = None
+        rest_parts: list[str] = []
+        main_tumor_type: str | None = None
 
         while True:
             # Split into tokens
@@ -130,7 +139,7 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
                 remaining_next = ", ".join(tokens[:-1])
 
             chunk_work = chunk
-            consumed_spans: List[tuple] = []
+            consumed_spans: list[tuple] = []
 
             def record_span(m):
                 if m:
@@ -148,7 +157,8 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
                     subclass_val = normalize_case(m.group(0))
                     record_span(m)
 
-            # 2) subtype (first bracketed, then 'subtype ...', then '... subtype')
+            # 2) subtype (first bracketed, then 'subtype ...', then '...
+            # subtype')
             if subtype_val is None:
                 m = subtype_bracket_pat.search(chunk_work)
                 if m:
@@ -173,15 +183,20 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
                     record_span(m)
 
             # Compute residual of this chunk after removing matches
-            residual = strip_wrappers(_remove_spans(chunk_work, consumed_spans))
+            residual = strip_wrappers(
+                _remove_spans(chunk_work, consumed_spans)
+            )
 
             if residual:
                 rest_parts.append(residual)
 
             if remaining_next is None:
                 # Final chunk: this defines main_tumor_type (after removing matched parts)
-                # If residual is empty (i.e., the entire chunk was a match), fall back to cleaned chunk
-                main_tumor_type = residual if residual else strip_wrappers(chunk_work)
+                # If residual is empty (i.e., the entire chunk was a match),
+                # fall back to cleaned chunk
+                main_tumor_type = (
+                    residual if residual else strip_wrappers(chunk_work)
+                )
                 break
             else:
                 remaining = remaining_next
@@ -205,7 +220,7 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
             "rest": rest,
         }
 
-    def _remove_spans(text: str, spans: List[tuple]) -> str:
+    def _remove_spans(text: str, spans: list[tuple]) -> str:
         if not spans:
             return text
         spans_sorted = sorted(spans)
@@ -223,12 +238,12 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
     parsed = df[col].apply(parse_one)
     parsed_df = pd.DataFrame(list(parsed))
     df_list = [
-        df.reset_index()[['index', col]],
-        parsed_df.reset_index(drop=True)
+        df.reset_index()[["index", col]],
+        parsed_df.reset_index(drop=True),
     ]
 
-    new_df  = pd.concat(df_list, axis=1)
-    new_df = new_df.set_index('index')
+    new_df = pd.concat(df_list, axis=1)
+    new_df = new_df.set_index("index")
 
     # Add original index
     new_df = new_df.loc[df.index,]
@@ -237,19 +252,22 @@ def parse_tumor_subclass(df: pd.DataFrame, col: str = "tumor_class") -> pd.DataF
 
 
 def diann_run(s, warn=False):
-    match = re.search(r'_(\d+)_T', s)
+    match = re.search(r"_(\d+)_T", s)
     if match:
-        return 'Run_' + match.group(1)
+        return "Run_" + match.group(1)
 
-    match = re.search(r'(?<=_)(?:N?\d{2,5}(?:_[A-Za-z0-9]+)*_[A-Za-z]+|N?\d{5}|N?\d{2}_\d{4}[A-Za-z]?_[A-Za-z]+)(?=_T1_DIA)', s)
+    match = re.search(
+        r"(?<=_)(?:N?\d{2,5}(?:_[A-Za-z0-9]+)*_[A-Za-z]+|N?\d{5}|N?\d{2}_\d{4}[A-Za-z]?_[A-Za-z]+)(?=_T1_DIA)",
+        s,
+    )
     if match:
-        return 'Run_' + match.group(0)
+        return "Run_" + match.group(0)
 
     if warn:
-        warnings.warn(f'No match for string:\n{s}')
-        return 'no_parse_match'
+        warnings.warn(f"No match for string:\n{s}")
+        return "no_parse_match"
 
-    raise ValueError(f'No match for string:\n{s}')
+    raise ValueError(f"No match for string:\n{s}")
 
 
 def _pretty_design_label(label: str) -> str:
@@ -260,8 +278,7 @@ def parse_stat_test_varm_slot(
     varm_slot: str,
     adata: ad.AnnData | None = None,
 ) -> dict[str, str | None]:
-    """
-    Parse a stat-test varm slot name into its components.
+    """Parse a stat-test varm slot name into its components.
 
     The expected format is ``<test_type>;<group_by>;<design>`` when no
     layer is used, or ``<test_type>;<group_by>;<design>;<layer>`` when
@@ -328,8 +345,7 @@ def parse_stat_test_varm_slot(
     if layer_part:
         if adata is not None and adata.layers:
             layer_map = {
-                sanitize_string(name): name
-                for name in adata.layers.keys()
+                sanitize_string(name): name for name in adata.layers.keys()
             }
             if layer_part in layer_map:
                 layer = layer_map[layer_part]
@@ -339,7 +355,7 @@ def parse_stat_test_varm_slot(
                     f"must contain the sanitized layer part for back-"
                     f"mapping. '{layer_part}' not found in adata varm layers"
                     f"(unsanitized): {adata.layers}."
-                    )
+                )
         else:
             layer = layer_part
 
@@ -366,8 +382,7 @@ def parse_stat_test_varm_slot(
         )
     else:
         raise ValueError(
-            "Design must use '<group1>_vs_<group2>' or "
-            "'<group>_vs_rest'."
+            "Design must use '<group1>_vs_<group2>' or " "'<group>_vs_rest'."
         )
 
     test_info = {
@@ -383,8 +398,7 @@ def parse_stat_test_varm_slot(
 
 
 def _is_standard_hclustv_key(key: str, key_type: str = "linkage") -> bool:
-    """
-    Check if a key follows the standard hclust key format.
+    """Check if a key follows the standard hclust key format.
 
     Parameters
     ----------
@@ -404,8 +418,8 @@ def _is_standard_hclustv_key(key: str, key_type: str = "linkage") -> bool:
 
 
 def _parse_hclustv_key_components(key: str) -> tuple[str, str, str] | None:
-    """
-    Extract (group_by, hash, layer) components from a standard hclust key.
+    """Extract (group_by, hash, layer) components from a standard hclust
+    key.
 
     Returns None if the key does not follow the standard format.
     """
@@ -419,27 +433,24 @@ def _parse_hclustv_key_components(key: str) -> tuple[str, str, str] | None:
 
 def _resolve_hclustv_keys(
     adata: ad.AnnData,
-    linkage_key: str = 'auto',
-    values_key: str = 'auto',
+    linkage_key: str = "auto",
+    values_key: str = "auto",
     verbose: bool = True,
 ) -> tuple[str, str]:
-    """
-    Resolve linkage and values keys from adata.uns.
+    """Resolve linkage and values keys from adata.uns.
 
     Auto-detects keys if not provided, validates existence, and returns
     the resolved key names.
     """
     linkage_candidates = [
-        key for key in adata.uns.keys()
-        if key.startswith("hclustv_linkage;")
+        key for key in adata.uns.keys() if key.startswith("hclustv_linkage;")
     ]
     values_candidates = [
-        key for key in adata.uns.keys()
-        if key.startswith("hclustv_values;")
+        key for key in adata.uns.keys() if key.startswith("hclustv_values;")
     ]
 
-    linkage_auto = linkage_key == 'auto'
-    values_auto = values_key == 'auto'
+    linkage_auto = linkage_key == "auto"
+    values_auto = values_key == "auto"
 
     if linkage_auto:
         if len(linkage_candidates) == 0:
@@ -502,11 +513,10 @@ def _resolve_hclustv_keys(
 
 def _resolve_hclustv_cluster_key(
     adata: ad.AnnData,
-    cluster_key: str = 'auto',
+    cluster_key: str = "auto",
     verbose: bool = True,
 ) -> str:
-    """
-    Resolve cluster annotation key from adata.var columns.
+    """Resolve cluster annotation key from adata.var columns.
 
     Auto-detects key if not provided, validates existence, and returns
     the resolved key name.
@@ -536,11 +546,10 @@ def _resolve_hclustv_cluster_key(
         If the specified ``cluster_key`` is not found in ``adata.var``.
     """
     cluster_candidates = [
-        col for col in adata.var.columns
-        if col.startswith("hclustv_cluster;")
+        col for col in adata.var.columns if col.startswith("hclustv_cluster;")
     ]
 
-    if cluster_key == 'auto':
+    if cluster_key == "auto":
         if len(cluster_candidates) == 0:
             raise ValueError(
                 "No cluster annotations found in adata.var. "
@@ -566,11 +575,10 @@ def _resolve_hclustv_cluster_key(
 
 def _resolve_hclustv_profile_key(
     adata: ad.AnnData,
-    profile_key: str = 'auto',
+    profile_key: str = "auto",
     verbose: bool = True,
 ) -> str:
-    """
-    Resolve cluster profile key from adata.uns.
+    """Resolve cluster profile key from adata.uns.
 
     Auto-detects key if not provided, validates existence, and returns
     the resolved key name.
@@ -600,11 +608,10 @@ def _resolve_hclustv_profile_key(
         If the specified ``profile_key`` is not found in ``adata.uns``.
     """
     profile_candidates = [
-        key for key in adata.uns.keys()
-        if key.startswith("hclustv_profiles;")
+        key for key in adata.uns.keys() if key.startswith("hclustv_profiles;")
     ]
 
-    if profile_key == 'auto':
+    if profile_key == "auto":
         if len(profile_candidates) == 0:
             raise ValueError(
                 "No cluster profiles found in adata.uns. "

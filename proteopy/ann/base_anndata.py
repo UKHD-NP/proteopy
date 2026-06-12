@@ -45,14 +45,15 @@ def obs(
     check_proteodata(adata)
 
     if df_on not in df.columns:
-        raise ValueError(f"Column '{df_on}' not found in annotation dataframe.")
+        raise ValueError(
+            f"Column '{df_on}' not found in annotation dataframe."
+        )
 
     adata_target = adata if inplace else adata.copy()
     obs = adata_target.obs.copy()
     obs_reset = obs.reset_index()
 
     index_col = obs_reset.columns[0]
-    index_name = obs.index.name
 
     if obs_on == "index":
         merge_col = index_col
@@ -80,7 +81,9 @@ def obs(
             RuntimeWarning,
             stacklevel=2,
         )
-        df_local = df_local.drop_duplicates(subset="_obs_merge_key", keep="first")
+        df_local = df_local.drop_duplicates(
+            subset="_obs_merge_key", keep="first"
+        )
 
     obs_keys = set(obs_reset["_obs_merge_key"].tolist())
     df_keys = set(df_local["_obs_merge_key"].tolist())
@@ -194,7 +197,9 @@ def var(
     check_proteodata(adata)
 
     if df_on not in df.columns:
-        raise ValueError(f"Column '{df_on}' not found in annotation dataframe.")
+        raise ValueError(
+            f"Column '{df_on}' not found in annotation dataframe."
+        )
 
     adata_target = adata if inplace else adata.copy()
     var_df = adata_target.var.copy()
@@ -228,7 +233,9 @@ def var(
             RuntimeWarning,
             stacklevel=2,
         )
-        df_local = df_local.drop_duplicates(subset="_var_merge_key", keep="first")
+        df_local = df_local.drop_duplicates(
+            subset="_var_merge_key", keep="first"
+        )
 
     var_keys = set(var_reset["_var_merge_key"].tolist())
     df_keys = set(df_local["_var_merge_key"].tolist())
@@ -313,8 +320,8 @@ def samples(
     sort_obs_by_ann: bool = False,
     inplace: bool = True,
 ) -> AnnData | None:
-    """Annotate ``adata.obs`` with rows from ``df`` matched on a key (alias for
-    :func:`proteopy.ann.obs`).
+    """Annotate ``adata.obs`` with rows from ``df`` matched on a key
+    (alias for :func:`proteopy.ann.obs`).
 
     In proteomics, observations (rows in ``adata.obs``) often
     represent samples, so this alias provides a more intuitive name for the

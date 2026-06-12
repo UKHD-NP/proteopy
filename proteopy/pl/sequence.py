@@ -115,7 +115,8 @@ def _resolve_sequences(
     sequences: dict[str, dict],
     allow_multi_match: bool,
 ) -> dict[str, dict]:
-    """Resolve each sequence entry to absolute ``[start, end)`` coordinates.
+    """Resolve each sequence entry to absolute ``[start, end)``
+    coordinates.
 
     For entries with a ``"seq"`` key the amino-acid string is located
     within ``ref_sequence`` via substring search.  Entries with a
@@ -181,7 +182,8 @@ def _resolve_sequences(
 def _check_overlaps(
     groups: dict[str, list[tuple[int, int, str]]],
 ) -> None:
-    """Raise ``ValueError`` if any two sequences within a group overlap."""
+    """Raise ``ValueError`` if any two sequences within a group
+    overlap."""
     for group_name, intervals in groups.items():
         sorted_intervals = sorted(intervals, key=lambda x: x[0])
         for i in range(len(sorted_intervals) - 1):
@@ -239,7 +241,8 @@ def _plot_sequences_on_reference(
     figsize: tuple[float, float] | None = None,
     ax: Axes | None = None,
 ) -> Axes:
-    """Render sequences as horizontal bars aligned to a reference sequence.
+    """Render sequences as horizontal bars aligned to a reference
+    sequence.
 
     Draws a grey reference bar at the bottom and one colored broken-barh
     row per group above it. Each entry in ``sequences`` must supply either a

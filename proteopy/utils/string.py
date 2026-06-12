@@ -5,8 +5,7 @@ from pathlib import Path
 
 
 def sanitize_string(s: str) -> str:
-    """
-    Sanitize a string for use as a column name or identifier.
+    """Sanitize a string for use as a column name or identifier.
 
     Replaces any character that is not alphanumeric or underscore with
     an underscore.
@@ -63,4 +62,4 @@ def detect_separator_from_extension(file_path: str | Path) -> str:
             f"Cannot auto-detect separator for extension '{suffix}'. "
             "Supported extensions: .csv, .tsv. "
             "Please provide the `sep` parameter explicitly."
-            )
+        )

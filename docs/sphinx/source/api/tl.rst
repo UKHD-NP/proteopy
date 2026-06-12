@@ -39,4 +39,3 @@ detection of functional proteoform groups from peptide-level quantitative data
    proteopy.tl.peptide_dendograms_by_correlation
    proteopy.tl.peptide_clusters_from_dendograms
    proteopy.tl.proteoform_scores
-

@@ -19,8 +19,8 @@ classifiers = [
 license = "Apache-2.0"
 license-files = ["LICEN[CS]E*"]
 authors = [
-	{name = "Ian Dirk Fichtner", email = "iandirk.fichtner@med.uni-heidelberg.de"},
-	{name = "Isabell Bludau", email = "Isabell.Bludau@med.uni-heidelberg.de"}
+    {name = "Ian Dirk Fichtner", email = "iandirk.fichtner@med.uni-heidelberg.de"},
+    {name = "Isabell Bludau", email = "Isabell.Bludau@med.uni-heidelberg.de"},
 ]
 keywords = [
     "proteomics",
@@ -46,18 +46,19 @@ dependencies = [
     "scipy",
     "seaborn",
     "statsmodels",
-    ]
+]
 
 [project.optional-dependencies]
 dev = [
+    "black[jupyter]==24.10.0",
     "bump2version",
-    "flake8",
+    "flake8==7.1.1",
     "ipykernel",
     "jupyterlab",
-    "pre-commit",
     "myst_parser",
     "nbsphinx",
-    "pylint",
+    "pre-commit==4.5.1",
+    "pylint==3.3.4",
     "pytest",
     "sphinx-autobuild",
     "sphinx-autodoc-typehints",
@@ -67,14 +68,14 @@ dev = [
     "sphinx-rtd-theme",
     "sphinx>=7.0",
     "twine",
-    ]
+]
 
 usage = [
     "ipykernel",
     "jupyterlab",
     "python_igraph",
     "scanpy",
-    ]
+]
 
 [tool.setuptools.packages.find]
 include = ["proteopy*"]
@@ -84,3 +85,7 @@ Homepage = "https://github.com/UKHD-NP/proteopy"
 Issues = "https://github.com/UKHD-NP/proteopy/issues"
 Documentation = "https://proteopy.readthedocs.io/en/stable"
 Repository = "https://github.com/UKHD-NP/proteopy.git"
+
+[tool.black]
+line-length = 79
+target-version = ["py310", "py311"]

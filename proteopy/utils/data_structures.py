@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 
+
 class ListDict(dict):
 
     def __getitem__(self, key):
@@ -10,7 +11,6 @@ class ListDict(dict):
 
         return super().__getitem__(key)
 
-
     def setdefault(self, key, default=None):
 
         if default is None:
@@ -19,10 +19,9 @@ class ListDict(dict):
         return super().setdefault(key, default)
 
 
+class BinaryClusterTree:
 
-class BinaryClusterTree():
-
-    class Node():
+    class Node:
 
         def __init__(self, value=None, height=None):
             self.value = value
@@ -33,7 +32,8 @@ class BinaryClusterTree():
         def __str__(self):
             left_val = self.left.value if self.left else None
             right_val = self.right.value if self.right else None
-            repr = f'Node {self.value}: children: left={left_val}, right={right_val}'
+            repr = f"Node {
+                self.value}: children: left={left_val}, right={right_val}"
             return repr
 
         def is_leaf(self):
@@ -47,14 +47,14 @@ class BinaryClusterTree():
         self.constructor = constructor
 
         if constructor:
-            self.labels = constructor['labels']
+            self.labels = constructor["labels"]
             self._init_from_constructor(constructor)
 
     def __len__(self):
         return self.size
 
     def find(self, value):
-        node =  BinaryClusterTree._find(self.root, value)
+        node = BinaryClusterTree._find(self.root, value)
 
         if node is None:
             raise KeyError(value)
@@ -71,7 +71,7 @@ class BinaryClusterTree():
         return BinaryClusterTree._count_leaves(self.root)
 
     def cut(self, k, use_labels=False):
-        
+
         if self.root is None:
             raise ValueError()
 
@@ -81,7 +81,9 @@ class BinaryClusterTree():
         for cluster_id, leaf_nodes in cluster_leaves_map.items():
             cluster_pep_map[cluster_id] = [n.value for n in leaf_nodes]
 
-        pep_cluster_map = {p: c for c, peps in cluster_pep_map.items() for p in peps}
+        pep_cluster_map = {
+            p: c for c, peps in cluster_pep_map.items() for p in peps
+        }
 
         ds = pd.Series(pep_cluster_map)
 
@@ -111,7 +113,7 @@ class BinaryClusterTree():
 
             max_height = -1
             candidate_idx_in_queue = None
-            for (idx, n) in candidates:
+            for idx, n in candidates:
                 if n.height > max_height:
                     max_height = n.height
                     candidate_idx_in_queue = idx
@@ -137,41 +139,45 @@ class BinaryClusterTree():
 
     def _init_from_constructor(self, constructor):
 
-         match constructor['type']:
+        match constructor["type"]:
 
-            case  'sklearn_agglomerative_clustering':
+            case "sklearn_agglomerative_clustering":
                 # Create binary tree from sklearn.cluster.AgglomerativeClustering object
                 # From leaves up to root
                 # leaves -> labels
                 # nodes -> cluster numbers
 
-                children = constructor['merge']
+                children = constructor["merge"]
 
                 if not children:
-                    raise ValueError(constructor['merge'])
+                    raise ValueError(constructor["merge"])
 
-                #labels = constructor['labels']
-                heights = constructor['heights']
-                n_samples = len(children) + 1 #len(labels) # == len(merge) + 1
+                # labels = constructor['labels']
+                heights = constructor["heights"]
+                n_samples = (
+                    len(children) + 1
+                )  # len(labels) # == len(merge) + 1
 
                 # The root is the last merge operation
-                self.root = self._build_sklearn_tree(children, heights, n_samples, len(children) - 1)
+                self.root = self._build_sklearn_tree(
+                    children, heights, n_samples, len(children) - 1
+                )
                 self.size += n_samples + len(children)
 
             case _:
-                raise ValueError('Constructor type not supported')
+                raise ValueError("Constructor type not supported")
 
     def print_tree(self):
 
         if self.root is None:
             print("Empty tree")
             return
-    
+
         BinaryClusterTree._print_node(self.root, labels=self.labels)
 
     @staticmethod
     def _find(node, value):
-        '''Breadth first approach'''
+        """Breadth first approach."""
         if node is None:
             return None
 
@@ -227,44 +233,51 @@ class BinaryClusterTree():
 
         count = (node.left is not None) + (node.right is not None)
 
-        if count not in (0,2):
-            raise ValueError('There are not 0 or 2 children')
+        if count not in (0, 2):
+            raise ValueError("There are not 0 or 2 children")
 
         return count
 
     def _build_sklearn_tree(self, children, heights, n_samples, merge_idx):
         if merge_idx < 0:
             raise ValueError(merge_idx)
-            
-        # Current merge creates node with value = n_samples + merge_idx (cluster ID)
-        left_child_id, right_child_id = children[merge_idx]
-        node = BinaryClusterTree.Node(value=n_samples + merge_idx,
-                                      height=heights[merge_idx]) # value= n_samples + merge_idx,
-        #value=n_samples - merge_idx - 2,
 
-        
+        # Current merge creates node with value = n_samples + merge_idx
+        # (cluster ID)
+        left_child_id, right_child_id = children[merge_idx]
+        node = BinaryClusterTree.Node(
+            value=n_samples + merge_idx, height=heights[merge_idx]
+        )  # value= n_samples + merge_idx,
+        # value=n_samples - merge_idx - 2,
+
         # Handle left child
         if left_child_id < n_samples:
             # Left child is a leaf (original sample)
-            node.left = BinaryClusterTree.Node(value=left_child_id,
-                                               height=heights[merge_idx])
-            
+            node.left = BinaryClusterTree.Node(
+                value=left_child_id, height=heights[merge_idx]
+            )
+
         else:
             # Left child is an internal node, recurse
             child_merge_idx = left_child_id - n_samples
-            node.left = self._build_sklearn_tree(children, heights, n_samples, child_merge_idx)
-            
-        # Handle right child  
+            node.left = self._build_sklearn_tree(
+                children, heights, n_samples, child_merge_idx
+            )
+
+        # Handle right child
         if right_child_id < n_samples:
             # Right child is a leaf (original sample)
-            node.right = BinaryClusterTree.Node(value=right_child_id,
-                                                height=heights[merge_idx])
+            node.right = BinaryClusterTree.Node(
+                value=right_child_id, height=heights[merge_idx]
+            )
 
         else:
             # Right child is an internal node, recurse
             child_merge_idx = right_child_id - n_samples
-            node.right = self._build_sklearn_tree(children, heights, n_samples, child_merge_idx)
-            
+            node.right = self._build_sklearn_tree(
+                children, heights, n_samples, child_merge_idx
+            )
+
         return node
 
     @staticmethod
@@ -272,23 +285,33 @@ class BinaryClusterTree():
 
         if node is None:
             return
-        
+
         # Print current node with indentation
-        height = node.height if node.height else ''
-        label = ' "' + str(labels[node.value]) + '"' if labels and node.is_leaf() else ''
-        print('(' + str(height) + ')' + '    ' * indent + str(node.value) + label)
-        
+        height = node.height if node.height else ""
+        label = (
+            ' "' + str(labels[node.value]) + '"'
+            if labels and node.is_leaf()
+            else ""
+        )
+        print(
+            "(" + str(height) + ")" + "    " * indent + str(node.value) + label
+        )
+
         # Print children with increased indentation
         if node.left is not None or node.right is not None:
 
             if node.left is not None:
-                BinaryClusterTree._print_node(node.left, indent + 1, labels=labels)
+                BinaryClusterTree._print_node(
+                    node.left, indent + 1, labels=labels
+                )
 
             else:
-                print('  ' * (indent + 1) + 'None')
-                
+                print("  " * (indent + 1) + "None")
+
             if node.right is not None:
-                BinaryClusterTree._print_node(node.right, indent + 1, labels=labels)
+                BinaryClusterTree._print_node(
+                    node.right, indent + 1, labels=labels
+                )
 
             else:
-                print('  ' * (indent + 1) + 'None')
+                print("  " * (indent + 1) + "None")

@@ -18,8 +18,8 @@ def differential_abundance_df(
     max_pval: float | None = None,
     sort_by: str | None = None,
 ) -> pd.DataFrame:
-    """
-    Retrieve differential abundance results from ``.varm`` as a long-format DataFrame.
+    """Retrieve differential abundance results from ``.varm`` as a long-
+    format DataFrame.
 
     Merges one or more test result DataFrames stored in ``adata.varm`` into a
     single tidy DataFrame with an added column identifying the source test.
@@ -102,9 +102,7 @@ def differential_abundance_df(
             "Please provide only one."
         )
     if keys is None and key_group is None:
-        raise ValueError(
-            "Must specify either `keys` or `key_group`."
-        )
+        raise ValueError("Must specify either `keys` or `key_group`.")
 
     # Resolve keys from key_group if provided
     if key_group is not None:
@@ -122,8 +120,7 @@ def differential_abundance_df(
     elif isinstance(keys, Sequence):
         if not all(isinstance(k, str) for k in keys):
             raise TypeError(
-                "`keys` must contain only strings; received "
-                f"{keys!r}."
+                "`keys` must contain only strings; received " f"{keys!r}."
             )
         keys_list = list(keys)
     else:
@@ -157,9 +154,7 @@ def differential_abundance_df(
     # Reorder columns: known leading cols first, then the rest
     leading = ["var_id", "test_type", "group_by", "design"]
     ordered = [c for c in leading if c in result.columns]
-    remaining = [
-        c for c in result.columns if c not in ordered
-    ]
+    remaining = [c for c in result.columns if c not in ordered]
     result = result[ordered + remaining]
 
     # Apply filters
@@ -191,8 +186,8 @@ def differential_abundance_df(
 
 
 def tests(adata: AnnData) -> pd.DataFrame:
-    """
-    Retrieve a summary of all differential abundance tests stored in ``.varm``.
+    """Retrieve a summary of all differential abundance tests stored in
+    ``.varm``.
 
     Scans the ``.varm`` slots of the AnnData object for statistical test results
     and returns a DataFrame summarizing the tests performed.
@@ -246,23 +241,33 @@ def tests(adata: AnnData) -> pd.DataFrame:
                 design_mode = "one_vs_rest"
             else:
                 design_mode = "one_vs_one"
-            records.append({
-                "key": key,
-                "test_type": parsed["test_type"],
-                "group_by": parsed["group_by"],
-                "design": design,
-                "design_label": parsed["design_label"],
-                "design_mode": design_mode,
-                "layer": parsed["layer"],
-            })
+            records.append(
+                {
+                    "key": key,
+                    "test_type": parsed["test_type"],
+                    "group_by": parsed["group_by"],
+                    "design": design,
+                    "design_label": parsed["design_label"],
+                    "design_mode": design_mode,
+                    "layer": parsed["layer"],
+                }
+            )
         except ValueError:
             # Not a stat-test slot, skip
             continue
 
     if not records:
         return pd.DataFrame(
-            columns=["key", "key_group", "test_type", "group_by", "design",
-                     "design_label", "design_mode", "layer"]
+            columns=[
+                "key",
+                "key_group",
+                "test_type",
+                "group_by",
+                "design",
+                "design_label",
+                "design_mode",
+                "layer",
+            ]
         )
 
     df = pd.DataFrame(records)
@@ -276,7 +281,17 @@ def tests(adata: AnnData) -> pd.DataFrame:
         return ";".join(parts)
 
     df["key_group"] = df.apply(build_key_group, axis=1)
-    df = df[["key", "key_group", "test_type", "group_by", "design",
-             "design_label", "design_mode", "layer"]]
+    df = df[
+        [
+            "key",
+            "key_group",
+            "test_type",
+            "group_by",
+            "design",
+            "design_label",
+            "design_mode",
+            "layer",
+        ]
+    ]
 
     return df

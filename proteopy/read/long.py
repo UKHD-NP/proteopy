@@ -47,14 +47,10 @@ def _validate_intensities_df(
 ) -> pd.DataFrame:
     """Copy, validate, and rename the intensities DataFrame."""
     if fill_na is not None and zero_to_na:
-        raise ValueError(
-            "fill_na and zero_to_na are mutually exclusive."
-        )
+        raise ValueError("fill_na and zero_to_na are mutually exclusive.")
     df = df.copy()
     if df.empty:
-        raise ValueError(
-            "Intensities DataFrame is empty."
-        )
+        raise ValueError("Intensities DataFrame is empty.")
     required = {column_aliases[k] for k in required_keys}
     missing = required.difference(df.columns)
     if missing:
@@ -63,8 +59,7 @@ def _validate_intensities_df(
             f"columns: {', '.join(sorted(missing))}"
         )
     rename_map = {
-        actual: canonical
-        for canonical, actual in column_aliases.items()
+        actual: canonical for canonical, actual in column_aliases.items()
     }
     df = df.rename(columns=rename_map)
     for col in id_columns:
@@ -84,13 +79,9 @@ def _validate_intensities_df(
     if dup_mask.any():
         duplicated = df.loc[dup_mask, duplicate_subset]
         n_duplicates = len(duplicated)
-        examples = duplicated.head(5).to_dict(
-            orient="records"
-        )
+        examples = duplicated.head(5).to_dict(orient="records")
         extra = (
-            f" (showing first 5 of {n_duplicates})"
-            if n_duplicates > 5
-            else ""
+            f" (showing first 5 of {n_duplicates})" if n_duplicates > 5 else ""
         )
         entity = " and ".join(duplicate_subset)
         raise ValueError(
@@ -110,8 +101,7 @@ def _resolve_protein_id(
 ) -> pd.DataFrame:
     """Resolve protein_id, merging from annotation if needed.
 
-    Also validates that each peptide maps to exactly one
-    protein.
+    Also validates that each peptide maps to exactly one protein.
     """
     protein_id_col = column_aliases["protein_id"]
 
@@ -138,15 +128,10 @@ def _resolve_protein_id(
             and column_aliases[key] != key
         }
         ann_df = ann_df.rename(columns=rename_map)
-        protein_map = (
-            ann_df[["peptide_id", "protein_id"]]
-            .drop_duplicates(
-                subset=["peptide_id"], keep="first"
-            )
+        protein_map = ann_df[["peptide_id", "protein_id"]].drop_duplicates(
+            subset=["peptide_id"], keep="first"
         )
-        df = df.merge(
-            protein_map, on="peptide_id", how="left"
-        )
+        df = df.merge(protein_map, on="peptide_id", how="left")
         n_unresolved = df["protein_id"].isna().sum()
         if n_unresolved:
             raise ValueError(
@@ -166,9 +151,7 @@ def _resolve_protein_id(
             "intensities DataFrame."
         )
 
-    protein_counts = (
-        df.groupby("peptide_id")["protein_id"].nunique()
-    )
+    protein_counts = df.groupby("peptide_id")["protein_id"].nunique()
     inconsistent = protein_counts[protein_counts > 1]
     if not inconsistent.empty:
         raise ValueError(
@@ -201,19 +184,12 @@ def _merge_sample_annotations(
 
     if "sample_id" not in annotation_df.columns:
         raise ValueError(
-            "Annotation file is missing the required "
-            "`sample_id` column."
+            "Annotation file is missing the required " "`sample_id` column."
         )
 
-    dup_mask = annotation_df.duplicated(
-        subset=["sample_id"], keep=False
-    )
+    dup_mask = annotation_df.duplicated(subset=["sample_id"], keep=False)
     if dup_mask.any():
-        dup_count = (
-            annotation_df
-            .loc[dup_mask, "sample_id"]
-            .nunique()
-        )
+        dup_count = annotation_df.loc[dup_mask, "sample_id"].nunique()
         warnings.warn(
             "Duplicate sample entries found in "
             "annotation file; keeping the first "
@@ -245,9 +221,7 @@ def _merge_sample_annotations(
         )
 
     annotation_order = [
-        name
-        for name in annotation_unique["sample_id"]
-        if name in obs_samples
+        name for name in annotation_unique["sample_id"] if name in obs_samples
     ]
 
     # preserve original index through merge
@@ -289,15 +263,9 @@ def _merge_var_annotations(
             "column."
         )
 
-    dup_mask = annotation_df.duplicated(
-        subset=[id_column], keep=False
-    )
+    dup_mask = annotation_df.duplicated(subset=[id_column], keep=False)
     if dup_mask.any():
-        dup_count = (
-            annotation_df
-            .loc[dup_mask, id_column]
-            .nunique()
-        )
+        dup_count = annotation_df.loc[dup_mask, id_column].nunique()
         warnings.warn(
             f"Duplicate {entity_name} entries found in "
             f"{entity_name} annotation file; keeping "
@@ -439,9 +407,7 @@ def _peptides_long_from_df(
     )
 
     protein_id_col = column_aliases["protein_id"]
-    protein_id_in_intensities = (
-        protein_id_col in intensities_df.columns
-    )
+    protein_id_in_intensities = protein_id_col in intensities_df.columns
 
     required_keys = ["sample_id", "intensity", "peptide_id"]
     id_columns = ["sample_id", "peptide_id"]
@@ -461,13 +427,14 @@ def _peptides_long_from_df(
 
     # -- Resolve protein_id
     df = _resolve_protein_id(
-        df, peptide_annotation_df, column_aliases,
-        protein_id_in_intensities, verbose,
+        df,
+        peptide_annotation_df,
+        column_aliases,
+        protein_id_in_intensities,
+        verbose,
     )
 
-    default_obs_order = (
-        df["sample_id"].drop_duplicates().tolist()
-    )
+    default_obs_order = df["sample_id"].drop_duplicates().tolist()
     annotation_order = None
 
     # -- Build .X
@@ -477,13 +444,9 @@ def _peptides_long_from_df(
         values="intensity",
     )
     intensity_matrix = intensity_matrix.astype(float)
-    intensity_matrix = (
-        intensity_matrix.sort_index().sort_index(axis=1)
-    )
+    intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
     if fill_na is not None:
-        intensity_matrix = intensity_matrix.fillna(
-            float(fill_na)
-        )
+        intensity_matrix = intensity_matrix.fillna(float(fill_na))
     intensity_matrix.index.name = None
     intensity_matrix.columns.name = None
 
@@ -499,21 +462,22 @@ def _peptides_long_from_df(
 
     if sample_annotation_df is not None:
         obs, annotation_order = _merge_sample_annotations(
-            obs, sample_annotation_df,
-            column_aliases, verbose,
+            obs,
+            sample_annotation_df,
+            column_aliases,
+            verbose,
         )
 
     # -- Build .var
     var = pd.DataFrame(index=intensity_matrix.columns)
     var.index.name = None
     var["peptide_id"] = var.index
-    var["protein_id"] = (
-        peptide_to_protein.loc[var.index].values
-    )
+    var["protein_id"] = peptide_to_protein.loc[var.index].values
 
     if peptide_annotation_df is not None:
         var = _merge_var_annotations(
-            var, peptide_annotation_df,
+            var,
+            peptide_annotation_df,
             id_column="peptide_id",
             column_aliases=column_aliases,
             rename_keys=["peptide_id", "protein_id"],
@@ -524,14 +488,19 @@ def _peptides_long_from_df(
     # -- Reorder observations
     if sort_obs_by_annotation:
         intensity_matrix, obs = _reorder_observations(
-            intensity_matrix, obs,
-            annotation_order, default_obs_order,
+            intensity_matrix,
+            obs,
+            annotation_order,
+            default_obs_order,
         )
 
     # -- Build AnnData
     return _finalize_adata(
-        intensity_matrix, obs, var,
-        zero_to_na, "peptide",
+        intensity_matrix,
+        obs,
+        var,
+        zero_to_na,
+        "peptide",
     )
 
 
@@ -580,9 +549,7 @@ def _proteins_long_from_df(
         zero_to_na=zero_to_na,
     )
 
-    default_obs_order = (
-        df["sample_id"].drop_duplicates().tolist()
-    )
+    default_obs_order = df["sample_id"].drop_duplicates().tolist()
     annotation_order = None
 
     # -- Build .X
@@ -592,13 +559,9 @@ def _proteins_long_from_df(
         values="intensity",
     )
     intensity_matrix = intensity_matrix.astype(float)
-    intensity_matrix = (
-        intensity_matrix.sort_index().sort_index(axis=1)
-    )
+    intensity_matrix = intensity_matrix.sort_index().sort_index(axis=1)
     if fill_na is not None:
-        intensity_matrix = intensity_matrix.fillna(
-            float(fill_na)
-        )
+        intensity_matrix = intensity_matrix.fillna(float(fill_na))
     intensity_matrix.index.name = None
     intensity_matrix.columns.name = None
 
@@ -608,8 +571,10 @@ def _proteins_long_from_df(
 
     if sample_annotation_df is not None:
         obs, annotation_order = _merge_sample_annotations(
-            obs, sample_annotation_df,
-            column_aliases, verbose,
+            obs,
+            sample_annotation_df,
+            column_aliases,
+            verbose,
         )
 
     # -- Build .var
@@ -619,7 +584,8 @@ def _proteins_long_from_df(
 
     if protein_annotation_df is not None:
         var = _merge_var_annotations(
-            var, protein_annotation_df,
+            var,
+            protein_annotation_df,
             id_column="protein_id",
             column_aliases=column_aliases,
             rename_keys=["protein_id"],
@@ -630,14 +596,19 @@ def _proteins_long_from_df(
     # -- Reorder observations
     if sort_obs_by_annotation:
         intensity_matrix, obs = _reorder_observations(
-            intensity_matrix, obs,
-            annotation_order, default_obs_order,
+            intensity_matrix,
+            obs,
+            annotation_order,
+            default_obs_order,
         )
 
     # -- Build AnnData
     return _finalize_adata(
-        intensity_matrix, obs, var,
-        zero_to_na, "protein",
+        intensity_matrix,
+        obs,
+        var,
+        zero_to_na,
+        "protein",
     )
 
 
@@ -654,8 +625,8 @@ def long(
     sort_obs_by_annotation: bool = False,
     verbose: bool = False,
 ) -> ad.AnnData:
-    """Read long-format peptide or protein tabular data into an
-    AnnData container.
+    """Read long-format peptide or protein tabular data into an AnnData
+    container.
 
     The ``intensities`` table must be in long format with one row per
     (sample, feature) measurement. Required columns differ by level:
@@ -836,8 +807,7 @@ def long(
     # -- Validate arguments
     if level is None:
         raise ValueError(
-            "level is required; expected 'peptide' or "
-            "'protein'."
+            "level is required; expected 'peptide' or " "'protein'."
         )
 
     level_normalised = level.lower()
@@ -848,19 +818,21 @@ def long(
         )
 
     if fill_na is not None and zero_to_na:
-        raise ValueError(
-            "fill_na and zero_to_na are mutually exclusive."
-        )
+        raise ValueError("fill_na and zero_to_na are mutually exclusive.")
 
     if column_map:
         if level_normalised == "peptide":
             valid_keys = {
-                "sample_id", "intensity",
-                "peptide_id", "protein_id",
+                "sample_id",
+                "intensity",
+                "peptide_id",
+                "protein_id",
             }
         else:
             valid_keys = {
-                "sample_id", "intensity", "protein_id",
+                "sample_id",
+                "intensity",
+                "protein_id",
             }
         invalid = set(column_map).difference(valid_keys)
         if invalid:

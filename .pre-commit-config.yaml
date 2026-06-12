@@ -4,7 +4,8 @@
 #   - pre-commit (fast): formatting + cheap linters, run on every commit
 #   - pre-push   (slow): full linters + tests, run before pushing
 #
-# Install both hook types once per clone:
+# Install pinned tools, then install both hook types once per clone:
+#   python -m pip install -r requirements/requirements_ci-cd.txt
 #   pre-commit install
 #   pre-commit install --hook-type pre-push
 #
@@ -12,7 +13,7 @@
 #   pre-commit run --all-files                       # everything (commit stage)
 #   pre-commit run --all-files --hook-stage pre-push # everything (push stage)
 
-minimum_pre_commit_version: "3.5.0"
+minimum_pre_commit_version: "4.5.1"
 
 # Hook env Python version is whatever runs pre-commit itself.
 # Tool versions are pinned via each hook's `rev:`, which is what
@@ -87,7 +88,7 @@ repos:
     rev: 24.10.0
     hooks:
       - id: black
-        args: ["--line-length=79"]  # matches CLAUDE.md code style
+        args: ["--line-length=79"]  # matches AGENTS.md code style
         exclude: ^(docs/|tests/data/)
         stages: [pre-commit, pre-push]
       - id: black-jupyter
@@ -110,14 +111,9 @@ repos:
     hooks:
       - id: pylint
         name: pylint (errors only)
-        entry: pylint --disable=all --enable=E,F --disable=E0401
-        language: python
-        additional_dependencies: ["pylint==3.3.4"]
+        entry: pylint --disable=all --enable=E,F
+        language: system
         types: [python]
-        # TODO: re-include proteopy/pl/intensities.py once its
-        # pre-existing E1133 false positives (hue_order inference in the
-        # isolated hook env) are resolved. Excluded to keep the
-        # proteoform-color fix commit scoped to the feature.
-        exclude: ^(docs/|proteopy/pl/intensities\.py)
+        exclude: ^docs/
         require_serial: true
         stages: [pre-commit, pre-push]

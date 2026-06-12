@@ -14,4 +14,3 @@ python:
     - method: pip
       path: .
     - requirements: docs/sphinx/requirements.txt
-

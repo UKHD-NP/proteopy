@@ -1,5 +1,4 @@
 import warnings
-from functools import partial
 from typing import Any
 from collections.abc import Sequence
 from collections.abc import Sequence as SequenceABC
@@ -47,8 +46,8 @@ def peptide_intensities(
     ax: bool = False,
     color_scheme: Any = None,
 ) -> Axes | list[Axes] | None:
-    """
-    Plot peptide intensities across samples for the requested proteins.
+    """Plot peptide intensities across samples for the requested
+    proteins.
 
     Parameters
     ----------
@@ -570,9 +569,8 @@ def intensity_box_per_sample(
     figsize: tuple[float, float] = (8, 5),
     color_scheme: Any | None = None,
 ) -> Axes:
-    """
-    Plot intensity distributions as boxplots, either per observation or pooled
-    by a categorical grouping.
+    """Plot intensity distributions as boxplots, either per observation
+    or pooled by a categorical grouping.
 
     Parameters
     ----------
@@ -632,7 +630,8 @@ def intensity_box_per_sample(
     if save is not None and not isinstance(save, (str, os.PathLike)):
         raise TypeError("`save` must be a string, PathLike, or None.")
 
-    # Select the matrix to plot (layer vs X) while preserving dense/sparse inputs
+    # Select the matrix to plot (layer vs X) while preserving dense/sparse
+    # inputs
     if layer is not None:
         if layer not in adata.layers:
             raise KeyError(f"Layer '{layer}' not found in adata.layers.")
@@ -970,8 +969,8 @@ def intensity_hist(
     ax: bool = False,
     save: str | os.PathLike[str] | None = None,
 ) -> Axes | None:
-    """
-    Plot histogram(s) of var intensities, optionally colored by imputation status.
+    """Plot histogram(s) of var intensities, optionally colored by
+    imputation status.
 
     Parameters
     ----------
@@ -1189,7 +1188,7 @@ def intensity_hist(
     if not resolved_colors:
         resolved_colors = [default_palette[label] for label in status_labels]
     palette_map = dict(zip(status_labels, resolved_colors))
-    hue_order = status_labels if color_imputed else None
+    hue_order = status_labels
     measured_color = palette_map.get("Measured", default_palette["Measured"])
 
     value_col = "intensity_value"
@@ -1486,8 +1485,7 @@ def abundance_rank(
     ax: bool = False,
     color_scheme: Any = None,
 ) -> Axes | None:
-    """
-    Plot variable intensities vs their abundance rank.
+    """Plot variable intensities vs their abundance rank.
 
     A typical MS proteomics plot to assess dynamic range and intensity
     distribution. Each point represents a variable (protein/peptide) with
@@ -2057,8 +2055,7 @@ def box(
     save: str | os.PathLike[str] | None = None,
     ax: bool = False,
 ) -> Axes | list[Axes] | None:
-    """
-    Boxplot of intensities for one or more variables.
+    """Boxplot of intensities for one or more variables.
 
     Parameters
     ----------
@@ -2389,8 +2386,8 @@ def binary_heatmap(
     save: str | os.PathLike[str] | None = None,
     ax: Axes | None = None,
 ) -> Axes:
-    """
-    Plot a binary detection heatmap of intensities across samples and features.
+    """Plot a binary detection heatmap of intensities across samples and
+    features.
 
     Values greater than ``threshold`` are encoded as 1 (present) and values
     less than or equal to ``threshold`` are encoded as 0 (absent). Missing

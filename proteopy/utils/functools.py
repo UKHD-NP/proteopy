@@ -2,7 +2,6 @@ import re
 import inspect
 from functools import partial, update_wrapper
 from textwrap import dedent
-from typing import Dict, Set, Optional
 
 # -----------------------
 # Docstring utilities
@@ -11,25 +10,36 @@ from typing import Dict, Set, Optional
 _NUMPY_START = re.compile(r"^\s*Parameters\s*\Z", re.IGNORECASE)
 _NUMPY_EXAMPLES = re.compile(r"^\s*Examples?\s*\Z", re.IGNORECASE)
 _GOOGLE_START = re.compile(r"^\s*Args:\s*\Z")
-_REST_PARAM  = lambda name: re.compile(rf"^\s*:param\s+{re.escape(name)}\s*:")
-_REST_TYPE   = lambda name: re.compile(rf"^\s*:type\s+{re.escape(name)}\s*:")
 
-def _numpy_param_re(name):   # e.g. "greeting : str" or just "greeting"
+
+def _REST_PARAM(name):
+    return re.compile(rf"^\s*:param\s+{re.escape(name)}\s*:")
+
+
+def _REST_TYPE(name):
+    return re.compile(rf"^\s*:type\s+{re.escape(name)}\s*:")
+
+
+def _numpy_param_re(name):  # e.g. "greeting : str" or just "greeting"
     return re.compile(
         rf"^(\s*){re.escape(name)}\s*(?::|\Z)",
         re.UNICODE,
     )
 
+
 def _google_param_re(name):  # e.g. "greeting (str):" or "greeting:"
     return re.compile(rf"^(\s*){re.escape(name)}\s*(\([^)]+\))?\s*:\s*\Z")
 
+
 def _strip_block_at(lines, start_idx, base_indent_str):
+    """Remove a parameter block starting at start_idx.
+
+    A block is the start line plus following lines that are more
+    indented (or blank).
     """
-    Remove a parameter block starting at start_idx.
-    A block is the start line plus following lines that are more indented (or blank).
-    """
+
     def indent_of(s: str) -> int:
-        return len(s) - len(s.lstrip(' '))
+        return len(s) - len(s.lstrip(" "))
 
     base = indent_of(lines[start_idx])
     i = start_idx + 1
@@ -45,6 +55,7 @@ def _strip_block_at(lines, start_idx, base_indent_str):
     del lines[start_idx:i]
     return start_idx
 
+
 def _remove_numpy_google_param_blocks(lines, name):
     i = 0
     n = len(lines)
@@ -57,13 +68,20 @@ def _remove_numpy_google_param_blocks(lines, name):
         # Section starts
         if _NUMPY_START.match(line):
             in_numpy, in_google = True, False
-            i += 1; continue
+            i += 1
+            continue
         if _GOOGLE_START.match(line):
             in_numpy, in_google = False, True
-            i += 1; continue
+            i += 1
+            continue
 
         # Section termination heuristics
-        if in_numpy and re.match(r"^\s*\S.*\Z", line) and line.strip().endswith(":") and line.strip().lower() not in {"parameters:"}:
+        if (
+            in_numpy
+            and re.match(r"^\s*\S.*\Z", line)
+            and line.strip().endswith(":")
+            and line.strip().lower() not in {"parameters:"}
+        ):
             in_numpy = False
         if in_google and (line.strip() and not line.startswith(" ")):
             in_google = False
@@ -84,21 +102,22 @@ def _remove_numpy_google_param_blocks(lines, name):
 
         i += 1
 
+
 def _remove_rest_param_lines(lines, name):
     i = 0
     n = len(lines)
     param_re = _REST_PARAM(name)
-    type_re  = _REST_TYPE(name)
+    type_re = _REST_TYPE(name)
 
     def remove_line_and_continuation(start_idx):
-        base_indent = len(lines[start_idx]) - len(lines[start_idx].lstrip(' '))
+        base_indent = len(lines[start_idx]) - len(lines[start_idx].lstrip(" "))
         j = start_idx + 1
         while j < len(lines):
             ln = lines[j]
             if not ln.strip():
                 j += 1
                 continue
-            indent = len(ln) - len(ln.lstrip(' '))
+            indent = len(ln) - len(ln.lstrip(" "))
             if indent <= base_indent:
                 break
             j += 1
@@ -113,13 +132,16 @@ def _remove_rest_param_lines(lines, name):
             continue
         i += 1
 
-def _format_fixed_note(fixed_map: Dict[str, object], func_name: str) -> str:
-    # short, universal note appended to the docstring, now mentioning the original function
+
+def _format_fixed_note(fixed_map: dict[str, object], func_name: str) -> str:
+    # short, universal note appended to the docstring, now mentioning the
+    # original function
     kv = ", ".join(f"{k}={v!r}" for k, v in fixed_map.items())
     return (
         "Note:\n"
         f"    This function is a partial of `{func_name}`, with the following arguments fixed: {kv}."
     )
+
 
 def _replace_doc_header(lines, new_header: str):
     header_text = dedent(new_header).strip()
@@ -145,6 +167,7 @@ def _replace_doc_header(lines, new_header: str):
         return header_lines + [""] + tail
     return tail
 
+
 def _replace_doc_examples(lines, new_examples: str):
     examples_text = dedent(new_examples).strip()
     examples_lines = examples_text.splitlines() if examples_text else []
@@ -163,13 +186,7 @@ def _replace_doc_examples(lines, new_examples: str):
             # Strip trailing blank lines
             while result and result[-1].strip() == "":
                 result.pop()
-            return (
-                result
-                + [""]
-                + ["Examples"]
-                + ["--------"]
-                + examples_lines
-            )
+            return result + [""] + ["Examples"] + ["--------"] + examples_lines
         return list(lines)
 
     # Find the end of the Examples section: skip underline then
@@ -216,14 +233,15 @@ def _replace_doc_examples(lines, new_examples: str):
     return before + after
 
 
-def _prune_docstring(doc: str,
-                     fixed_names: Set[str],
-                     add_note: bool,
-                     fixed_map: Dict[str, object],
-                     func_name: str,
-                     docstr_header: Optional[str],
-                     docstr_examples: Optional[str] = None,
-                     ) -> str:
+def _prune_docstring(
+    doc: str,
+    fixed_names: set[str],
+    add_note: bool,
+    fixed_map: dict[str, object],
+    func_name: str,
+    docstr_header: str | None,
+    docstr_examples: str | None = None,
+) -> str:
     if doc:
         lines = dedent(doc).splitlines()
     else:
@@ -264,39 +282,49 @@ def _prune_docstring(doc: str,
 
     return doc_out
 
+
 # -----------------------
 # Signature + metadata
 # -----------------------
 
-def _bound_fixed_map(func, args, kwargs) -> Dict[str, object]:
+
+def _bound_fixed_map(func, args, kwargs) -> dict[str, object]:
     sig = inspect.signature(func)
     bound = sig.bind_partial(*args, **kwargs)
     return dict(bound.arguments)
 
-def _prune_signature(sig: inspect.Signature, fixed_names: Set[str]) -> inspect.Signature:
-    new_params = [p for name, p in sig.parameters.items() if name not in fixed_names]
+
+def _prune_signature(
+    sig: inspect.Signature, fixed_names: set[str]
+) -> inspect.Signature:
+    new_params = [
+        p for name, p in sig.parameters.items() if name not in fixed_names
+    ]
     return sig.replace(parameters=new_params)
 
-def _prune_annotations(ann: Optional[dict], fixed_names: Set[str]) -> Optional[dict]:
+
+def _prune_annotations(ann: dict | None, fixed_names: set[str]) -> dict | None:
     if not ann:
         return None
     return {k: v for k, v in ann.items() if k not in fixed_names}
 
+
 # -----------------------
 # Public helper
 # -----------------------
+
 
 def partial_with_docsig(
     func,
     /,
     *args,
     add_fixed_note: bool = True,
-    docstr_header: Optional[str] = None,
-    docstr_examples: Optional[str] = None,
+    docstr_header: str | None = None,
+    docstr_examples: str | None = None,
     **kwargs,
 ):
-    """
-    Create a functools.partial that:
+    """Create a functools.partial that:
+
       - inherits metadata (__name__, __module__, __qualname__, __wrapped__, etc.)
       - removes fixed parameters from the displayed signature
       - removes fixed parameters' entries from the docstring (NumPy/Google/reST styles)
@@ -328,18 +356,21 @@ def partial_with_docsig(
     p = partial(func, *args, **kwargs)
     update_wrapper(p, func)
 
-    fixed_map   = _bound_fixed_map(func, args, kwargs)
+    fixed_map = _bound_fixed_map(func, args, kwargs)
     fixed_names = set(fixed_map)
 
     # Signature: remove fixed params
     p.__signature__ = _prune_signature(inspect.signature(func), fixed_names)
 
     # Annotations: drop fixed params (optional but tidy)
-    pruned_ann = _prune_annotations(getattr(func, "__annotations__", None), fixed_names)
+    pruned_ann = _prune_annotations(
+        getattr(func, "__annotations__", None), fixed_names
+    )
     if pruned_ann is not None:
         p.__annotations__ = pruned_ann
 
-    # Docstring: remove fixed params docs + append note with original function name
+    # Docstring: remove fixed params docs + append note with original function
+    # name
     original_doc = inspect.getdoc(func) or func.__doc__ or ""
     p.__doc__ = _prune_docstring(
         original_doc,

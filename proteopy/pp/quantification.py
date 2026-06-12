@@ -1,7 +1,7 @@
 import re
 from collections import defaultdict
 from functools import partial
-from typing import Callable, List, Dict, Union, Optional
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -36,10 +36,7 @@ def _rebuild_adata(adata, X_new, var_new, inplace):
             varm={},
             varp={},
             layers={},
-            obsp=(
-                adata.obsp
-                if hasattr(adata, "obsp") else None
-            ),
+            obsp=(adata.obsp if hasattr(adata, "obsp") else None),
         )
         adata.var_names = var_new.index
         return None
@@ -49,10 +46,7 @@ def _rebuild_adata(adata, X_new, var_new, inplace):
         var=var_new.copy(),
         uns=adata.uns.copy(),
         obsm=adata.obsm.copy(),
-        obsp=(
-            adata.obsp.copy()
-            if hasattr(adata, "obsp") else None
-        ),
+        obsp=(adata.obsp.copy() if hasattr(adata, "obsp") else None),
     )
     out.var_names = var_new.index
     return out
@@ -84,8 +78,7 @@ def _apply_grouped_func(grouped, func):
             )
         return result
     raise TypeError(
-        "`func` must be either a string "
-        "identifier or a callable."
+        "`func` must be either a string " "identifier or a callable."
     )
 
 
@@ -98,14 +91,14 @@ def _find_root(parent, x):
 
 
 def _union_find_groups(peptides):
-    """Return ``{representative: [members]}`` via union-find
-    on substring containment."""
+    """Return ``{representative: [members]}`` via union-find on
+    substring containment."""
     parent = {p: p for p in peptides}
     rank = {p: 0 for p in peptides}
 
     peps_by_len = sorted(peptides, key=len, reverse=True)
     for i, longp in enumerate(peps_by_len):
-        for shortp in peps_by_len[i + 1:]:
+        for shortp in peps_by_len[i + 1 :]:
             if shortp in longp:
                 ra = _find_root(parent, longp)
                 rb = _find_root(parent, shortp)
@@ -124,23 +117,20 @@ def _union_find_groups(peptides):
     for _, members in buckets.items():
         rep = max(members, key=len)
         groups[rep] = sorted(
-            members, key=lambda s: (-len(s), s),
+            members,
+            key=lambda s: (-len(s), s),
         )
     return groups
 
 
-def _group_peptides(peptides: List[str]) -> Dict[str, List[str]]:
-    """
-    Group peptides so that any peptide fully contained
-    in another belongs to the same group.
+def _group_peptides(peptides: list[str]) -> dict[str, list[str]]:
+    """Group peptides so that any peptide fully contained in another
+    belongs to the same group.
 
     Returns {representative_longest: [members...]} with
     members sorted by (-len, lexicographically).
     """
-    peptides = (
-        pd.Series(peptides).dropna().astype(str)
-        .unique().tolist()
-    )
+    peptides = pd.Series(peptides).dropna().astype(str).unique().tolist()
     return _union_find_groups(peptides)
 
 
@@ -150,12 +140,10 @@ def extract_peptide_groups(
     group_by: str | None = None,
     inplace: bool = True,
 ):
-    """
-    Create new columns ``adata.var['peptide_group_id']``
-    and ``adata.var['peptide_group_nr']``.
-    ``peptide_group_id`` contains all overlapping (substring)
-    peptide_ids joined by ``';'``. ``peptide_group_nr``
-    is a unique integer identifier for each group,
+    """Create new columns ``adata.var['peptide_group_id']`` and
+    ``adata.var['peptide_group_nr']``. ``peptide_group_id`` contains all
+    overlapping (substring) peptide_ids joined by ``';'``.
+    ``peptide_group_nr`` is a unique integer identifier for each group,
     numbered across all groups in order of appearance.
 
     Parameters
@@ -182,14 +170,10 @@ def extract_peptide_groups(
         modified copy.
     """
     if peptide_col not in adata.var.columns:
-        raise KeyError(
-            f"'{peptide_col}' not found in adata.var"
-        )
+        raise KeyError(f"'{peptide_col}' not found in adata.var")
     has_group_by = group_by is not None
     if has_group_by and group_by not in adata.var.columns:
-        raise KeyError(
-            f"'{group_by}' not found in adata.var"
-        )
+        raise KeyError(f"'{group_by}' not found in adata.var")
 
     pep_series = adata.var[peptide_col].astype(str)
 
@@ -203,11 +187,10 @@ def extract_peptide_groups(
     else:
         pep_to_group = {}
         for _, sub_df in adata.var.groupby(
-            group_by, observed=True,
+            group_by,
+            observed=True,
         ):
-            sub_peps = (
-                sub_df[peptide_col].astype(str).tolist()
-            )
+            sub_peps = sub_df[peptide_col].astype(str).tolist()
             groups = _group_peptides(sub_peps)
             for members in groups.values():
                 label = ";".join(members)
@@ -216,25 +199,17 @@ def extract_peptide_groups(
 
     group_col = pep_series.map(pep_to_group)
 
-    group_to_nr = {
-        g: i for i, g in enumerate(group_col.unique())
-    }
+    group_to_nr = {g: i for i, g in enumerate(group_col.unique())}
     group_nr_col = group_col.map(group_to_nr)
 
     if inplace:
         adata.var["peptide_group_id"] = group_col.values
-        adata.var["peptide_group_nr"] = (
-            group_nr_col.values
-        )
+        adata.var["peptide_group_nr"] = group_nr_col.values
         return None
     else:
         adata_copy = adata.copy()
-        adata_copy.var["peptide_group_id"] = (
-            group_col.values
-        )
-        adata_copy.var["peptide_group_nr"] = (
-            group_nr_col.values
-        )
+        adata_copy.var["peptide_group_id"] = group_col.values
+        adata_copy.var["peptide_group_nr"] = group_nr_col.values
         return adata_copy
 
 
@@ -242,14 +217,13 @@ def summarize_overlapping_peptides(
     adata: ad.AnnData,
     group_by: str | None = "protein_id",
     layer: str | None = None,
-    func: Union[str, Callable] = "sum",
+    func: str | Callable = "sum",
     zero_to_na: bool = False,
     fill_na: float | int | None = None,
     skip_na: bool = True,
     inplace: bool = True,
 ):
-    """
-    Aggregate intensities across overlapping peptides.
+    """Aggregate intensities across overlapping peptides.
 
     Calls :func:`extract_peptide_groups` internally to
     identify overlapping (substring-contained) peptides,
@@ -302,25 +276,22 @@ def summarize_overlapping_peptides(
         modifies in place.
     """
     if zero_to_na and fill_na is not None:
-        raise ValueError(
-            "Cannot set both zero_to_na and fill_na."
-        )
+        raise ValueError("Cannot set both zero_to_na and fill_na.")
 
     # --- extract peptide groups
     if not inplace:
         adata = adata.copy()
     extract_peptide_groups(
-        adata, group_by=group_by, inplace=True,
+        adata,
+        group_by=group_by,
+        inplace=True,
     )
 
     group_col = "peptide_group_nr"
     peptide_col = "peptide_id"
 
     # --- matrix as DataFrame (obs × vars)
-    X = (
-        adata.layers[layer] if layer is not None
-        else adata.X
-    )
+    X = adata.layers[layer] if layer is not None else adata.X
     if sparse.issparse(X):
         X = X.toarray()
     X = np.asarray(X, dtype=float)
@@ -341,19 +312,30 @@ def summarize_overlapping_peptides(
     # --- group columns and aggregate
     group_keys = adata.var[group_col].astype(str)
     grouped = vals.T.groupby(
-        group_keys, sort=True, observed=True,
+        group_keys,
+        sort=True,
+        observed=True,
     )
     agg_vals = _apply_grouped_func(grouped, func).T
 
     if not skip_na:
-        has_nan = vals.isna().T.groupby(
-            group_keys, sort=True, observed=True,
-        ).any().T
+        has_nan = (
+            vals.isna()
+            .T.groupby(
+                group_keys,
+                sort=True,
+                observed=True,
+            )
+            .any()
+            .T
+        )
         agg_vals[has_nan] = np.nan
 
     # --- build new var table (aggregate annotations)
     groups = adata.var.groupby(
-        group_col, sort=True, observed=True,
+        group_col,
+        sort=True,
+        observed=True,
     )
     records, group_to_peptide = [], {}
 
@@ -378,15 +360,10 @@ def summarize_overlapping_peptides(
             rec[col] = _aggregate_var_value(df_g[col])
         records.append(rec)
 
-    var_new = (
-        pd.DataFrame.from_records(records)
-        .set_index(peptide_col)
-    )
+    var_new = pd.DataFrame.from_records(records).set_index(peptide_col)
 
     # --- rename aggregated matrix columns
-    agg_vals.columns = [
-        group_to_peptide[k] for k in agg_vals.columns
-    ]
+    agg_vals.columns = [group_to_peptide[k] for k in agg_vals.columns]
     var_new = var_new.loc[agg_vals.columns]
 
     # --- ensure 'peptide_id' column always matches index
@@ -394,18 +371,21 @@ def summarize_overlapping_peptides(
 
     # --- rebuild AnnData
     return _rebuild_adata(
-        adata, agg_vals.values, var_new, inplace,
+        adata,
+        agg_vals.values,
+        var_new,
+        inplace,
     )
 
 
 def _validate_quantify_by_category_input(
-    adata, group_by, proteodata_target_level,
+    adata,
+    group_by,
+    proteodata_target_level,
 ):
     """Validate arguments for ``quantify_by_category``."""
     if group_by is None or group_by not in adata.var.columns:
-        raise KeyError(
-            f"'{group_by}' not found in adata.var"
-        )
+        raise KeyError(f"'{group_by}' not found in adata.var")
     _allowed_levels = {None, "protein", "peptide"}
     if proteodata_target_level not in _allowed_levels:
         raise ValueError(
@@ -416,11 +396,12 @@ def _validate_quantify_by_category_input(
 
 
 def _build_var_table_category(adata, group_by):
-    """Build aggregated ``.var`` for ``quantify_by_category``.
-    """
+    """Build aggregated ``.var`` for ``quantify_by_category``."""
     records = []
     for gkey, df_g in adata.var.groupby(
-        group_by, sort=True, observed=True,
+        group_by,
+        sort=True,
+        observed=True,
     ):
         rec = {group_by: str(gkey)}
         for col in adata.var.columns:
@@ -429,18 +410,14 @@ def _build_var_table_category(adata, group_by):
             rec[col] = _aggregate_var_value(df_g[col])
         records.append(rec)
 
-    var_new = (
-        pd.DataFrame.from_records(records)
-        .set_index(group_by)
-    )
+    var_new = pd.DataFrame.from_records(records).set_index(group_by)
     var_new[group_by] = var_new.index
     var_new.index.name = None
     return var_new
 
 
 def _apply_target_level(var_new, proteodata_target_level):
-    """Adjust ``.var`` columns for the requested
-    proteodata level."""
+    """Adjust ``.var`` columns for the requested proteodata level."""
     if proteodata_target_level == "protein":
         if "protein_id" in var_new.columns:
             var_new = var_new.rename(
@@ -467,62 +444,61 @@ def quantify_by_category(
     adata: ad.AnnData,
     group_by: str = None,
     layer=None,
-    func: Union[str, Callable] = "sum",
+    func: str | Callable = "sum",
     proteodata_target_level: str | None = None,
     inplace: bool = True,
-) -> Optional[ad.AnnData]:
-    """
-    Aggregate intensities in ``adata.X`` (or selected
-    layer) by ``.var[group_col]``, aggregate annotations
-    in ``adata.var`` by concatenating unique values with
-    ``';'``, and set ``group_col`` as the new index
-    (``var_names``).
+) -> ad.AnnData | None:
+    """Aggregate intensities in ``adata.X`` (or selected layer) by
+    ``.var[group_col]``, aggregate annotations in ``adata.var`` by
+    concatenating unique values with ``';'``, and set ``group_col`` as
+    the new index (``var_names``).
 
-    Parameters
-    ----------
-    adata : AnnData
-        Input AnnData with .X (obs x vars) and .var
-        annotations.
-    group_by : str
-        Column in adata.var to group by
-        (e.g. 'protein_id').
-    layer : str, optional
-        Key in ``adata.layers``; when set, quantification
-        uses that layer instead of ``adata.X``.
-    func : {'sum', 'median', 'max'} | Callable
-        Aggregation to apply across grouped variables.
-    proteodata_target_level : {'protein', 'peptide'} or \
-None, optional
-        Set the proteodata level of the output. When
-        ``None`` the data level and columns are left as
-        is. When ``'protein'``, a ``protein_id`` column
-        matching the new var index is added so the result
-        satisfies protein-level proteodata requirements;
-        any pre-existing ``protein_id`` column is renamed
-        to ``protein_id_old`` and any ``peptide_id``
-        column is removed. When ``'peptide'``, a
-        ``peptide_id`` column matching the new var index
-        is added so the result satisfies peptide-level
-        proteodata requirements; a ``protein_id`` column
-        must already exist in the inherited annotations.
-    inplace : bool
-        If True, modify `adata` in place; else return a
-        new AnnData.
+        Parameters
+        ----------
+        adata : AnnData
+            Input AnnData with .X (obs x vars) and .var
+            annotations.
+        group_by : str
+            Column in adata.var to group by
+            (e.g. 'protein_id').
+        layer : str, optional
+            Key in ``adata.layers``; when set, quantification
+            uses that layer instead of ``adata.X``.
+        func : {'sum', 'median', 'max'} | Callable
+            Aggregation to apply across grouped variables.
+        proteodata_target_level : {'protein', 'peptide'} or \
+    None, optional
+            Set the proteodata level of the output. When
+            ``None`` the data level and columns are left as
+            is. When ``'protein'``, a ``protein_id`` column
+            matching the new var index is added so the result
+            satisfies protein-level proteodata requirements;
+            any pre-existing ``protein_id`` column is renamed
+            to ``protein_id_old`` and any ``peptide_id``
+            column is removed. When ``'peptide'``, a
+            ``peptide_id`` column matching the new var index
+            is added so the result satisfies peptide-level
+            proteodata requirements; a ``protein_id`` column
+            must already exist in the inherited annotations.
+        inplace : bool
+            If True, modify `adata` in place; else return a
+            new AnnData.
 
-    Returns
-    -------
-    AnnData | None
-        Aggregated AnnData if inplace=False; otherwise
-        None.
+        Returns
+        -------
+        AnnData | None
+            Aggregated AnnData if inplace=False; otherwise
+            None.
     """
     _validate_quantify_by_category_input(
-        adata, group_by, proteodata_target_level,
+        adata,
+        group_by,
+        proteodata_target_level,
     )
 
     # --- Matrix as DataFrame (obs × vars)
     vals = pd.DataFrame(
-        adata.layers[layer] if layer is not None
-        else adata.X,
+        adata.layers[layer] if layer is not None else adata.X,
         index=adata.obs_names,
         columns=adata.var_names,
     )
@@ -530,42 +506,53 @@ None, optional
     # --- Group columns and aggregate
     group_keys = adata.var[group_by].astype(str)
     grouped = vals.T.groupby(
-        group_keys, sort=True, observed=True,
+        group_keys,
+        sort=True,
+        observed=True,
     )
     agg_vals = _apply_grouped_func(grouped, func).T
 
     # --- Build new var table
     var_new = _build_var_table_category(
-        adata, group_by,
+        adata,
+        group_by,
     )
     var_new = var_new.loc[agg_vals.columns]
 
     # --- Apply proteodata_target_level conformance
     var_new = _apply_target_level(
-        var_new, proteodata_target_level,
+        var_new,
+        proteodata_target_level,
     )
 
     # --- Rebuild AnnData
     return _rebuild_adata(
-        adata, agg_vals.values, var_new, inplace,
+        adata,
+        agg_vals.values,
+        var_new,
+        inplace,
     )
 
 
 quantify_proteins = partial(
     quantify_by_category,
-    group_by='protein_id',
-    proteodata_target_level='protein',
+    group_by="protein_id",
+    proteodata_target_level="protein",
 )
 
 quantify_proteoforms = partial(
     quantify_by_category,
-    group_by='proteoform_id',
-    proteodata_target_level='protein',
+    group_by="proteoform_id",
+    proteodata_target_level="protein",
 )
 
 
 def _validate_summarize_mods_input(
-    adata, method, zero_to_na, fill_na, keep_var_cols,
+    adata,
+    method,
+    zero_to_na,
+    fill_na,
+    keep_var_cols,
 ):
     """Validate arguments for ``summarize_modifications``."""
     _, level = is_proteodata(adata)
@@ -579,31 +566,23 @@ def _validate_summarize_mods_input(
     allowed = {"sum", "mean", "median", "max"}
     if method not in allowed:
         raise ValueError(
-            f"method must be one of {allowed!r}, "
-            f"got '{method}'."
+            f"method must be one of {allowed!r}, " f"got '{method}'."
         )
     if zero_to_na and fill_na is not None:
-        raise ValueError(
-            "Cannot set both zero_to_na and fill_na."
-        )
+        raise ValueError("Cannot set both zero_to_na and fill_na.")
     if keep_var_cols is not None:
-        missing = [
-            c for c in keep_var_cols
-            if c not in adata.var.columns
-        ]
+        missing = [c for c in keep_var_cols if c not in adata.var.columns]
         if missing:
             raise KeyError(
-                f"keep_var_cols entries not found in "
-                f"adata.var: {missing}"
+                f"keep_var_cols entries not found in " f"adata.var: {missing}"
             )
         _reserved = {
-            "peptide_id", "protein_id",
-            "n_peptidoforms", "n_modifications",
+            "peptide_id",
+            "protein_id",
+            "n_peptidoforms",
+            "n_modifications",
         }
-        overlap = [
-            c for c in keep_var_cols
-            if c in _reserved
-        ]
+        overlap = [c for c in keep_var_cols if c in _reserved]
         if overlap:
             raise ValueError(
                 f"keep_var_cols must not include "
@@ -624,13 +603,18 @@ def _count_modifications(peptide_ids, pattern):
 
 
 def _build_var_table_mods(
-    var_src, stripped, sort, pattern, keep_var_cols,
+    var_src,
+    stripped,
+    sort,
+    pattern,
+    keep_var_cols,
 ):
-    """Build the new ``.var`` table for
-    ``summarize_modifications``."""
+    """Build the new ``.var`` table for ``summarize_modifications``."""
     records = []
     for gkey, df_g in var_src.groupby(
-        stripped, sort=sort, observed=True,
+        stripped,
+        sort=sort,
+        observed=True,
     ):
         rec = {"peptide_id": gkey}
         pids = df_g["protein_id"].unique()
@@ -645,9 +629,10 @@ def _build_var_table_mods(
         rec["protein_id"] = pids[0]
         rec["n_peptidoforms"] = len(df_g)
         rec["n_modifications"] = _count_modifications(
-            df_g.index, pattern,
+            df_g.index,
+            pattern,
         )
-        for col in (keep_var_cols or []):
+        for col in keep_var_cols or []:
             rec[col] = _aggregate_var_value(df_g[col])
         records.append(rec)
 
@@ -682,8 +667,7 @@ def summarize_modifications(
     inplace: bool = True,
     verbose: bool = False,
 ) -> ad.AnnData | None:
-    """
-    Aggregate modified peptides by their stripped sequence.
+    """Aggregate modified peptides by their stripped sequence.
 
     Removes modification annotations from peptide identifiers
     using a regular expression, groups peptides sharing the
@@ -852,14 +836,15 @@ def summarize_modifications(
     # --- validate input
     check_proteodata(adata, layers=layer)
     _validate_summarize_mods_input(
-        adata, method, zero_to_na, fill_na, keep_var_cols,
+        adata,
+        method,
+        zero_to_na,
+        fill_na,
+        keep_var_cols,
     )
 
     # --- extract matrix
-    Xsrc = (
-        adata.layers[layer] if layer is not None
-        else adata.X
-    )
+    Xsrc = adata.layers[layer] if layer is not None else adata.X
     was_sparse = sparse.issparse(Xsrc)
     X = Xsrc.toarray() if was_sparse else np.asarray(Xsrc)
     X = X.astype(float, copy=True)
@@ -874,12 +859,8 @@ def summarize_modifications(
     try:
         pattern = re.compile(mod_regex)
     except re.error as exc:
-        raise ValueError(
-            f"Invalid mod_regex '{mod_regex}': {exc}"
-        ) from exc
-    stripped = np.array([
-        pattern.sub("", pid) for pid in peptide_ids
-    ])
+        raise ValueError(f"Invalid mod_regex '{mod_regex}': {exc}") from exc
+    stripped = np.array([pattern.sub("", pid) for pid in peptide_ids])
 
     if verbose:
         n_unique = len(np.unique(stripped))
@@ -900,15 +881,24 @@ def summarize_modifications(
     agg_vals = _apply_str_method(grouped, method).T
 
     if not skip_na:
-        has_nan = df.isna().T.groupby(
-            stripped, sort=sort,
-        ).any().T
+        has_nan = (
+            df.isna()
+            .T.groupby(
+                stripped,
+                sort=sort,
+            )
+            .any()
+            .T
+        )
         agg_vals[has_nan] = np.nan
 
     # --- build new .var table
     var_new = _build_var_table_mods(
-        adata.var.copy(), stripped, sort,
-        pattern, keep_var_cols,
+        adata.var.copy(),
+        stripped,
+        sort,
+        pattern,
+        keep_var_cols,
     )
 
     # --- result matrix
@@ -918,7 +908,10 @@ def summarize_modifications(
 
     # --- rebuild AnnData
     result = _rebuild_adata(
-        adata, X_new, var_new, inplace,
+        adata,
+        X_new,
+        var_new,
+        inplace,
     )
     if inplace:
         check_proteodata(adata)

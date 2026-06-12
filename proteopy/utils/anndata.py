@@ -10,8 +10,8 @@ from scipy import sparse
 
 
 def _has_infinite_values(X) -> bool:
-    """
-    Check if the matrix X contains any infinite values (np.inf or -np.inf).
+    """Check if the matrix X contains any infinite values (np.inf or
+    -np.inf).
 
     Handles both dense numpy arrays and scipy sparse matrices.
     """
@@ -23,10 +23,8 @@ def _has_infinite_values(X) -> bool:
 
 
 def _axis_len(a, axis: int = 0) -> int:
-    """
-    returns the length along `axis` using .shape if available,
-    otherwise falls back to len(a).
-    """
+    """Returns the length along `axis` using .shape if available,
+    otherwise falls back to len(a)."""
     # Prefer shape if present (numpy, pandas, scipy.sparse, torch, etc.)
     shape = getattr(a, "shape", None)
     if shape is not None:
@@ -39,18 +37,14 @@ def _axis_len(a, axis: int = 0) -> int:
         return int(len(a))
     except Exception as e:
         raise TypeError(
-            (
-                "Object of type "
-                f"{type(a)!r} does not expose a usable "
-                f"length along axis {axis}."
-            )
+            "Object of type "
+            f"{type(a)!r} does not expose a usable "
+            f"length along axis {axis}."
         ) from e
 
 
 def _check_2d_shape(adata: AnnData) -> None:
-    """
-    Ensure .X is 2-dimensional if present.
-    """
+    """Ensure .X is 2-dimensional if present."""
     if adata.X is not None:
         shp = getattr(adata.X, "shape", ())
         if len(shp) != 2:
@@ -60,18 +54,14 @@ def _check_2d_shape(adata: AnnData) -> None:
 
 
 def _check_axis_synchronization(adata: AnnData) -> None:
-    """
-    Ensure obs/var are synchronized with obs_names/var_names and that
-    obsm/varm first dimensions match n_obs/n_vars respectively.
-    """
+    """Ensure obs/var are synchronized with obs_names/var_names and that
+    obsm/varm first dimensions match n_obs/n_vars respectively."""
     # obs axis
     if len(adata.obs) != len(adata.obs_names):
         raise ValueError(
-            (
-                "Length of obs "
-                f"({len(adata.obs)}) does not match length of obs_names "
-                f"({len(adata.obs_names)})."
-            )
+            "Length of obs "
+            f"({len(adata.obs)}) does not match length of obs_names "
+            f"({len(adata.obs_names)})."
         )
     if not adata.obs.index.equals(adata.obs_names):
         raise ValueError("obs.index must exactly match obs_names.")
@@ -79,11 +69,9 @@ def _check_axis_synchronization(adata: AnnData) -> None:
     # var axis
     if len(adata.var) != len(adata.var_names):
         raise ValueError(
-            (
-                "Length of var "
-                f"({len(adata.var)}) does not match length of var_names "
-                f"({len(adata.var_names)})."
-            )
+            "Length of var "
+            f"({len(adata.var)}) does not match length of var_names "
+            f"({len(adata.var_names)})."
         )
     if not adata.var.index.equals(adata.var_names):
         raise ValueError("var.index must exactly match var_names.")
@@ -93,10 +81,8 @@ def _check_axis_synchronization(adata: AnnData) -> None:
         n0 = _axis_len(arr, 0)
         if n0 != adata.n_obs:
             raise ValueError(
-                (
-                    f"obsm['{key}'] must have first dimension equal to "
-                    f"n_obs ({adata.n_obs}), but has {n0}."
-                )
+                f"obsm['{key}'] must have first dimension equal to "
+                f"n_obs ({adata.n_obs}), but has {n0}."
             )
 
     # varm dimensions
@@ -104,25 +90,20 @@ def _check_axis_synchronization(adata: AnnData) -> None:
         n0 = _axis_len(arr, 0)
         if n0 != adata.n_vars:
             raise ValueError(
-                (
-                    f"varm['{key}'] must have first dimension equal to "
-                    f"n_vars ({adata.n_vars}), but has {n0}."
-                )
+                f"varm['{key}'] must have first dimension equal to "
+                f"n_vars ({adata.n_vars}), but has {n0}."
             )
 
 
 def _check_dimensions(adata: AnnData) -> None:
-    """
-    Composite dimension/index checks for an AnnData object.
-    """
+    """Composite dimension/index checks for an AnnData object."""
     _check_2d_shape(adata)
     _check_axis_synchronization(adata)
 
 
 def _check_uniqueness(adata: AnnData, warn_only: bool = False) -> None:
-    """
-    Check uniqueness of obs/var indices.
-    Raises a ValueError by default if duplicates are found.
+    """Check uniqueness of obs/var indices. Raises a ValueError by
+    default if duplicates are found.
 
     Parameters
     ----------
@@ -131,6 +112,7 @@ def _check_uniqueness(adata: AnnData, warn_only: bool = False) -> None:
     warn_only : bool, optional (default: False)
         If True, duplicates will only trigger warnings instead of errors.
     """
+
     def _handle_duplicates(axis_name: str, index):
         dup_mask = index.duplicated()
         if dup_mask.any():
@@ -153,16 +135,14 @@ def _check_uniqueness(adata: AnnData, warn_only: bool = False) -> None:
 
 
 def _check_structure(adata: AnnData) -> None:
-    """
-    High-level structure checks for an AnnData object.
-    """
+    """High-level structure checks for an AnnData object."""
     _check_uniqueness(adata)
     _check_dimensions(adata)
 
 
 def _var_column_matches_axis(adata: AnnData, column: str) -> bool:
-    """Return True when the chosen .var column exactly
-    matches both axis definitions."""
+    """Return True when the chosen .var column exactly matches both axis
+    definitions."""
     if column not in adata.var.columns:
         return False
 
@@ -182,8 +162,8 @@ def _var_column_matches_axis(adata: AnnData, column: str) -> bool:
 def _has_multiple_values_per_cell(
     series: pd.Series, delimiters: str = " ,;"
 ) -> bool:
-    """Return True when any entry contains more than one
-    value separated by delimiters."""
+    """Return True when any entry contains more than one value separated
+    by delimiters."""
     if series.isna().any():
         return True
 
@@ -203,7 +183,8 @@ _FAIL = (False, None)
 
 
 def _validation_fail(msg, raise_error):
-    """Raise ValueError or return ``_FAIL`` depending on *raise_error*."""
+    """Raise ValueError or return ``_FAIL`` depending on
+    *raise_error*."""
     if raise_error:
         raise ValueError(msg)
     return _FAIL
@@ -266,8 +247,7 @@ def _check_obs_requirements(adata, raise_error):
         )
 
     misplaced_in_obs = [
-        col for col in ("protein_id", "peptide_id")
-        if col in obs.columns
+        col for col in ("protein_id", "peptide_id") if col in obs.columns
     ]
     if misplaced_in_obs:
         return _validation_fail(
@@ -364,8 +344,7 @@ def is_proteodata(
     raise_error: bool = False,
     layers: str | list[str] | None = None,
 ) -> tuple[bool, str | None]:
-    """
-    Check whether the AnnData object stores peptide- or protein-level
+    """Check whether the AnnData object stores peptide- or protein-level
     proteomics data.
 
     Parameters
@@ -447,8 +426,7 @@ def check_proteodata(
     *,
     layers: str | list[str] | None = None,
 ) -> tuple[bool, str | None]:
-    """
-    Validate that *adata* satisfies ProteoPy assumptions, raising on
+    """Validate that *adata* satisfies ProteoPy assumptions, raising on
     failure.
 
     Thin wrapper around :func:`is_proteodata` with
@@ -483,6 +461,7 @@ def check_proteodata(
 # sanitize_obs_cols helpers
 # ------------------------------------------------------------------
 
+
 def _is_missing(x):
     """Return True if *x* is a pandas-recognised missing value."""
     try:
@@ -508,7 +487,9 @@ def _to_jsonish(x, jsonize_complex):
             x = sorted(list(x))
         try:
             return json.dumps(
-                x, default=str, ensure_ascii=False,
+                x,
+                default=str,
+                ensure_ascii=False,
             )
         except Exception:
             return str(x)
@@ -518,26 +499,24 @@ def _to_jsonish(x, jsonize_complex):
 def _coerce_series(s, jsonize_complex):
     """Coerce a single Series to an HDF5-writable dtype."""
     if pd.api.types.is_bool_dtype(s):
-        return s.astype('boolean')
+        return s.astype("boolean")
     if pd.api.types.is_integer_dtype(s):
-        return s.astype('int64')
+        return s.astype("int64")
     if pd.api.types.is_float_dtype(s):
-        return s.astype('float64')
+        return s.astype("float64")
     if isinstance(s.dtype, pd.CategoricalDtype):
         return s
 
     if pd.api.types.is_object_dtype(s):
         only_strings = s.map(
-            lambda x: isinstance(
-                x, (str, np.str_)
-            ) or _is_missing(x)
+            lambda x: isinstance(x, (str, np.str_)) or _is_missing(x)
         ).all()
         if only_strings:
-            return s.astype('object')
+            return s.astype("object")
 
         out = s.map(
             lambda x: _to_jsonish(x, jsonize_complex),
-        ).astype('object')
+        ).astype("object")
         return out
 
     return s
@@ -547,7 +526,7 @@ def sanitize_obs_cols(
     adata,
     jsonize_complex=True,
 ):
-    '''Sanitize anndata columns (in-place).
+    """Sanitize anndata columns (in-place).
 
     Makes all columns of adata.obs HDF5-writable by
     converting unsupported types.
@@ -563,7 +542,7 @@ def sanitize_obs_cols(
     Args:
         jsonize_complex (bool): JSON-serialize
             lists/dicts/sets in object columns.
-    '''
+    """
     if adata.obs is not None and len(adata.obs.columns):
         obs = adata.obs.copy()
         for c in obs.columns:

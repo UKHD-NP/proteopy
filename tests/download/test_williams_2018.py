@@ -1,4 +1,5 @@
 """Tests for proteopy.download.williams_2018."""
+
 import hashlib
 
 import pandas as pd
@@ -10,33 +11,41 @@ from proteopy.download import williams_2018
 # -- Expected values -------------------------------------------------
 
 _EXPECTED_INTENSITIES_HASH = (
-    "021410ece8505f9ef1181a4f1bbb5cde"
-    "c884011eba53a77e72cc6d6f51f1a531"
+    "021410ece8505f9ef1181a4f1bbb5cde" "c884011eba53a77e72cc6d6f51f1a531"
 )
 _EXPECTED_VAR_HASH = (
-    "827b32fd2962cd18a7a990d56eab0e64"
-    "daa2a244b6226fe2d242106f185b2161"
+    "827b32fd2962cd18a7a990d56eab0e64" "daa2a244b6226fe2d242106f185b2161"
 )
 _EXPECTED_SAMPLE_HASH = (
-    "8cca98fa3a38df78b78912f3ef7daed5"
-    "7f82902485d61d90db5a823c1ed4f031"
+    "8cca98fa3a38df78b78912f3ef7daed5" "7f82902485d61d90db5a823c1ed4f031"
 )
 
 _EXPECTED_INTENSITIES_COLUMNS = [
-    "sample_id", "peptide_id", "intensity",
+    "sample_id",
+    "peptide_id",
+    "intensity",
 ]
 _EXPECTED_VAR_COLUMNS = [
-    "peptide_id", "protein_id", "gene_id",
+    "peptide_id",
+    "protein_id",
+    "gene_id",
 ]
 _EXPECTED_SAMPLE_COLUMNS = [
-    "sample_id", "tissue", "mouse_id",
+    "sample_id",
+    "tissue",
+    "mouse_id",
 ]
 _EXPECTED_TISSUES = [
-    "BAT", "Brain", "Heart", "Liver", "Quad",
+    "BAT",
+    "Brain",
+    "Heart",
+    "Liver",
+    "Quad",
 ]
 
 
 # -- Helpers ---------------------------------------------------------
+
 
 def _files(tmp_path, ext=".tsv"):
     return (
@@ -51,6 +60,7 @@ def _sha256(data: bytes) -> str:
 
 
 # -- Content tests ---------------------------------------------------
+
 
 class TestWilliams2018Download:
     """Verify downloaded file content, structure, and error handling."""
@@ -68,10 +78,7 @@ class TestWilliams2018Download:
 
     def test_intensities_columns(self, files):
         df = pd.read_csv(files[0], sep="\t", nrows=0)
-        assert (
-            df.columns.tolist()
-            == _EXPECTED_INTENSITIES_COLUMNS
-        )
+        assert df.columns.tolist() == _EXPECTED_INTENSITIES_COLUMNS
 
     def test_var_annotation_columns(self, files):
         df = pd.read_csv(files[1], sep="\t", nrows=0)
@@ -79,28 +86,16 @@ class TestWilliams2018Download:
 
     def test_sample_annotation_columns(self, files):
         df = pd.read_csv(files[2], sep="\t", nrows=0)
-        assert (
-            df.columns.tolist()
-            == _EXPECTED_SAMPLE_COLUMNS
-        )
+        assert df.columns.tolist() == _EXPECTED_SAMPLE_COLUMNS
 
     def test_intensities_hash(self, files):
-        assert (
-            _sha256(files[0].read_bytes())
-            == _EXPECTED_INTENSITIES_HASH
-        )
+        assert _sha256(files[0].read_bytes()) == _EXPECTED_INTENSITIES_HASH
 
     def test_var_annotation_hash(self, files):
-        assert (
-            _sha256(files[1].read_bytes())
-            == _EXPECTED_VAR_HASH
-        )
+        assert _sha256(files[1].read_bytes()) == _EXPECTED_VAR_HASH
 
     def test_sample_annotation_hash(self, files):
-        assert (
-            _sha256(files[2].read_bytes())
-            == _EXPECTED_SAMPLE_HASH
-        )
+        assert _sha256(files[2].read_bytes()) == _EXPECTED_SAMPLE_HASH
 
     def test_sample_count(self, files):
         df = pd.read_csv(files[2], sep="\t")
@@ -108,28 +103,19 @@ class TestWilliams2018Download:
 
     def test_tissues_in_file(self, files):
         df = pd.read_csv(files[2], sep="\t")
-        assert (
-            sorted(df["tissue"].unique())
-            == _EXPECTED_TISSUES
-        )
+        assert sorted(df["tissue"].unique()) == _EXPECTED_TISSUES
 
     def test_csv_extension_uses_comma(self, tmp_path):
         p = _files(tmp_path, ext=".csv")
         williams_2018(*p)
         df = pd.read_csv(p[0], sep=",", nrows=0)
-        assert (
-            df.columns.tolist()
-            == _EXPECTED_INTENSITIES_COLUMNS
-        )
+        assert df.columns.tolist() == _EXPECTED_INTENSITIES_COLUMNS
 
     def test_tsv_extension_uses_tab(self, tmp_path):
         p = _files(tmp_path, ext=".tsv")
         williams_2018(*p)
         df = pd.read_csv(p[0], sep="\t", nrows=0)
-        assert (
-            df.columns.tolist()
-            == _EXPECTED_INTENSITIES_COLUMNS
-        )
+        assert df.columns.tolist() == _EXPECTED_INTENSITIES_COLUMNS
 
     def test_file_exists_error(self, tmp_path):
         p = _files(tmp_path)
@@ -145,9 +131,7 @@ class TestWilliams2018Download:
         williams_2018(*p, force=True)
         for path in p:
             assert path.read_bytes() != dummy
-        assert (
-            _sha256(p[0].read_bytes()) == _EXPECTED_INTENSITIES_HASH
-        )
+        assert _sha256(p[0].read_bytes()) == _EXPECTED_INTENSITIES_HASH
         assert _sha256(p[1].read_bytes()) == _EXPECTED_VAR_HASH
         assert _sha256(p[2].read_bytes()) == _EXPECTED_SAMPLE_HASH
 
@@ -158,7 +142,8 @@ class TestWilliams2018Download:
 
     def test_invalid_path_type_raises(self, tmp_path):
         with pytest.raises(
-            TypeError, match="must be str or Path",
+            TypeError,
+            match="must be str or Path",
         ):
             williams_2018(
                 123,
@@ -169,21 +154,24 @@ class TestWilliams2018Download:
     def test_invalid_sep_type_raises(self, tmp_path):
         p = _files(tmp_path)
         with pytest.raises(
-            TypeError, match="sep must be str or None",
+            TypeError,
+            match="sep must be str or None",
         ):
             williams_2018(*p, sep=123)
 
     def test_fill_na_bool_raises(self, tmp_path):
         p = _files(tmp_path)
         with pytest.raises(
-            TypeError, match="fill_na must be",
+            TypeError,
+            match="fill_na must be",
         ):
             williams_2018(*p, fill_na=True)
 
     def test_force_non_bool_raises(self, tmp_path):
         p = _files(tmp_path)
         with pytest.raises(
-            TypeError, match="force must be bool",
+            TypeError,
+            match="force must be bool",
         ):
             williams_2018(*p, force=1)
 

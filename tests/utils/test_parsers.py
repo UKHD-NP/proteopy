@@ -1,6 +1,6 @@
-"""
-Tests for proteopy.utils.parsers.parse_stat_test_varm_slot function.
-"""
+"""Tests for proteopy.utils.parsers.parse_stat_test_varm_slot
+function."""
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -13,7 +13,8 @@ class TestParseStatTestVarmSlot:
     """Tests for parse_stat_test_varm_slot function."""
 
     def test_parse_welch_two_group_no_layer(self):
-        """Test parsing a Welch's t-test two-group slot without layer."""
+        """Test parsing a Welch's t-test two-group slot without
+        layer."""
         slot = "welch;condition;treated_vs_control"
         result = parse_stat_test_varm_slot(slot)
 
@@ -58,12 +59,12 @@ class TestParseStatTestVarmSlot:
         assert result["layer"] == "raw_intensities"
 
     def test_layer_resolution_with_adata(self):
-        """Test that layer is resolved to original name when adata provided."""
+        """Test that layer is resolved to original name when adata
+        provided."""
         # Create AnnData with a layer that has spaces
         proteins = ["PROT_A", "PROT_B"]
         adata = AnnData(
-            np.arange(4).reshape(2, 2),
-            var=pd.DataFrame(index=proteins)
+            np.arange(4).reshape(2, 2), var=pd.DataFrame(index=proteins)
         )
         adata.var["protein_id"] = proteins
         adata.layers["Raw Intensities"] = np.arange(4).reshape(2, 2)
@@ -136,7 +137,8 @@ class TestParseStatTestVarmSlot:
             parse_stat_test_varm_slot(slot)
 
     def test_sanitized_group_names(self):
-        """Test parsing with sanitized group names containing underscores."""
+        """Test parsing with sanitized group names containing
+        underscores."""
         slot = "welch;sample_condition;Group_A_vs_Group_B"
         result = parse_stat_test_varm_slot(slot)
 

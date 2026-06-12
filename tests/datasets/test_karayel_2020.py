@@ -1,4 +1,5 @@
 """Tests for proteopy.datasets.karayel_2020."""
+
 import hashlib
 
 import anndata as ad
@@ -13,27 +14,29 @@ from proteopy.datasets import karayel_2020
 _EXPECTED_SHAPE = (20, 7758)
 
 _EXPECTED_X_HASH = (
-    "3f40838356b56b8f230bdb02bde8d16d"
-    "c574fcc41d106bdce02ebe666f4e02db"
+    "3f40838356b56b8f230bdb02bde8d16d" "c574fcc41d106bdce02ebe666f4e02db"
 )
 _EXPECTED_OBS_NAMES_HASH = (
-    "fef7fd91a6e93d20b719f61c63098865"
-    "bbd3f886dabfa46786cde09e520c0abe"
+    "fef7fd91a6e93d20b719f61c63098865" "bbd3f886dabfa46786cde09e520c0abe"
 )
 _EXPECTED_VAR_NAMES_HASH = (
-    "17d3bd09174bad3544738f30ed2867c4"
-    "bd431feccdf36515e5fae415110fc456"
+    "17d3bd09174bad3544738f30ed2867c4" "bd431feccdf36515e5fae415110fc456"
 )
 
 _EXPECTED_OBS_COLUMNS = ["sample_id", "cell_type", "replicate"]
 _EXPECTED_VAR_COLUMNS = ["protein_id", "gene_id"]
 _EXPECTED_CELL_TYPES = [
-    "LBaso", "Ortho", "Poly", "ProE&EBaso", "Progenitor",
+    "LBaso",
+    "Ortho",
+    "Poly",
+    "ProE&EBaso",
+    "Progenitor",
 ]
 _EXPECTED_REPLICATES = ["rep1", "rep2", "rep3", "rep4"]
 
 
 # -- Fixtures --------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def adata():
@@ -42,6 +45,7 @@ def adata():
 
 
 # -- Helpers ---------------------------------------------------------
+
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -59,6 +63,7 @@ def _encode_index(index) -> bytes:
 
 # -- Content tests ---------------------------------------------------
 
+
 class TestKarayel2020:
     """Verify structure and content of the karayel_2020 dataset."""
 
@@ -75,32 +80,20 @@ class TestKarayel2020:
         assert adata.var.columns.tolist() == _EXPECTED_VAR_COLUMNS
 
     def test_cell_types(self, adata):
-        assert (
-            sorted(adata.obs["cell_type"].unique())
-            == _EXPECTED_CELL_TYPES
-        )
+        assert sorted(adata.obs["cell_type"].unique()) == _EXPECTED_CELL_TYPES
 
     def test_replicates(self, adata):
-        assert (
-            sorted(adata.obs["replicate"].unique())
-            == _EXPECTED_REPLICATES
-        )
+        assert sorted(adata.obs["replicate"].unique()) == _EXPECTED_REPLICATES
 
     def test_four_replicates_per_cell_type(self, adata):
         counts = adata.obs.groupby("cell_type").size()
         assert (counts == 4).all()
 
     def test_obs_names_match_sample_id(self, adata):
-        assert (
-            list(adata.obs_names)
-            == list(adata.obs["sample_id"])
-        )
+        assert list(adata.obs_names) == list(adata.obs["sample_id"])
 
     def test_var_names_match_protein_id(self, adata):
-        assert (
-            list(adata.var_names)
-            == list(adata.var["protein_id"])
-        )
+        assert list(adata.var_names) == list(adata.var["protein_id"])
 
     def test_x_dtype(self, adata):
         assert adata.X.dtype == np.float64

@@ -1,19 +1,23 @@
+from pybtex.style.names import BaseNameStyle
+from pybtex.style.formatting.alpha import Style as _AlphaStyle
+from pybtex.richtext import Text
+import pybtex.plugin
+from pathlib import Path
+import sys
+
 project = "ProteoPy"
 copyright = (
     "2025, BludauLab Neuropathology Heidelberg, "
     "Ian Dirk Fichtner, Isabell Bludau"
-    )
+)
 author = (
-    "Ian Dirk Fichtner, Isabell Bludau, "
-    "BludauLab Neuropathology Heidelberg"
-    )
+    "Ian Dirk Fichtner, Isabell Bludau, " "BludauLab Neuropathology Heidelberg"
+)
 version = "0.1.1"
 release = "0.1.1"
 
 
 # -- Path setup --------------------------------------------------------------
-import sys
-from pathlib import Path
 
 # Add project root directory for autodoc to find proteopy package
 project_root = Path(__file__).resolve().parents[3]
@@ -39,20 +43,20 @@ extensions = [
 
 master_doc = "index"
 source_suffix = {
-    '.rst': 'restructuredtext',
-    '.md': 'markdown',
+    ".rst": "restructuredtext",
+    ".md": "markdown",
 }
 templates_path = ["_templates"]
 exclude_patterns = [
-    'build',
-    'Thumbs.db',
-    '.DS_Store',
-    '**.ipynb_checkpoints',
+    "build",
+    "Thumbs.db",
+    ".DS_Store",
+    "**.ipynb_checkpoints",
 ]
-language = 'en'
+language = "en"
 
 # Bug fix: Sphinx 9.x introduced autosummary.import_cycle detection bug
-suppress_warnings = ['autosummary.import_cycle']  
+suppress_warnings = ["autosummary.import_cycle"]
 
 # -- Custom roles ------------------------------------------------------------
 rst_prolog = """
@@ -98,7 +102,7 @@ autosummary_generate_overwrite = True
 autosummary_imported_members = True
 
 # -- nbsphinx configuration (Jupyter notebooks) ------------------------------
-nbsphinx_execute = 'never'  # Don't execute notebooks during build
+nbsphinx_execute = "never"  # Don't execute notebooks during build
 nbsphinx_allow_errors = True
 nbsphinx_timeout = 300
 
@@ -115,10 +119,6 @@ intersphinx_mapping = {
 }
 
 # -- Bibliography configuration (sphinxcontrib-bibtex) -----------------------
-import pybtex.plugin
-from pybtex.richtext import Text
-from pybtex.style.formatting.alpha import Style as _AlphaStyle
-from pybtex.style.names import BaseNameStyle
 
 
 class _LastInitialNameStyle(BaseNameStyle):
@@ -127,37 +127,37 @@ class _LastInitialNameStyle(BaseNameStyle):
     def format(self, person, abbr=False):
         parts = []
         for name in person.rich_prelast_names:
-            parts.extend([name, ' '])
+            parts.extend([name, " "])
         for i, name in enumerate(person.rich_last_names):
             if i > 0:
-                parts.append(' ')
+                parts.append(" ")
             parts.append(name)
-        initials = ''.join(
-            n[0] for n in
-            person.first_names + person.middle_names
-            if n
-            )
+        initials = "".join(
+            n[0] for n in person.first_names + person.middle_names if n
+        )
         if initials:
-            parts.extend([' ', initials])
+            parts.extend([" ", initials])
         if person.rich_lineage_names:
-            parts.append(', ')
+            parts.append(", ")
             for name in person.rich_lineage_names:
                 parts.append(name)
         return Text(*parts)
 
 
 class _ProteopyStyle(_AlphaStyle):
-    default_name_style = 'last_initial'
+    default_name_style = "last_initial"
 
 
 pybtex.plugin.register_plugin(
-    'pybtex.style.names', 'last_initial',
+    "pybtex.style.names",
+    "last_initial",
     _LastInitialNameStyle,
-    )
+)
 pybtex.plugin.register_plugin(
-    'pybtex.style.formatting', 'proteopy',
+    "pybtex.style.formatting",
+    "proteopy",
     _ProteopyStyle,
-    )
+)
 
 bibtex_bibfiles = ["references.bib"]
 bibtex_default_style = "proteopy"

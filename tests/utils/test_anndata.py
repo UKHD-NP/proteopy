@@ -42,8 +42,7 @@ class TestIsProteodata:
         proteins = ["PROT_A", "PROT_B"]
         with pytest.warns(UserWarning, match="Variable names are not unique"):
             adata = AnnData(
-                np.arange(4).reshape(2, 2),
-                var=pd.DataFrame(index=peptides)
+                np.arange(4).reshape(2, 2), var=pd.DataFrame(index=peptides)
             )
         adata.var["peptide_id"] = peptides
         adata.var["protein_id"] = proteins
@@ -120,8 +119,7 @@ class TestIsProteodata:
         proteins = ["PROT_A", "PROT_A"]
         with pytest.warns(UserWarning, match="Variable names are not unique"):
             adata = AnnData(
-                np.arange(4).reshape(2, 2),
-                var=pd.DataFrame(index=proteins)
+                np.arange(4).reshape(2, 2), var=pd.DataFrame(index=proteins)
             )
         adata.var["protein_id"] = proteins
 
@@ -155,7 +153,8 @@ class TestIsProteodata:
         adata = AnnData(
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=proteins),
         )
@@ -207,7 +206,8 @@ class TestIsProteodata:
         adata = AnnData(
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=peptides),
         )
@@ -228,7 +228,8 @@ class TestIsProteodata:
         adata = AnnData(
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=peptides),
         )
@@ -249,7 +250,8 @@ class TestIsProteodata:
         adata = AnnData(
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=proteins),
         )
@@ -271,14 +273,16 @@ class TestIsProteodata:
         adata = AnnData(
             np.arange(4).reshape(2, 2),
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=proteins),
         )
         adata.var["protein_id"] = proteins
 
         result = is_proteodata(
-            adata, layers="nonexistent",
+            adata,
+            layers="nonexistent",
         )
         assert result == (False, None)
 
@@ -299,7 +303,8 @@ class TestIsProteodata:
         adata = AnnData(
             X,
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=proteins),
         )
@@ -328,7 +333,8 @@ class TestIsProteodata:
         adata = AnnData(
             X,
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=proteins),
         )
@@ -336,7 +342,8 @@ class TestIsProteodata:
         adata.layers["raw"] = X.copy()
 
         assert is_proteodata(
-            adata, layers="raw",
+            adata,
+            layers="raw",
         ) == (True, "protein")
 
     def test_layers_multiple_keys(self):
@@ -346,7 +353,8 @@ class TestIsProteodata:
         adata = AnnData(
             X,
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=proteins),
         )
@@ -375,7 +383,8 @@ class TestIsProteodata:
         adata = AnnData(
             X,
             obs=pd.DataFrame(
-                {"sample_id": obs_names}, index=obs_names,
+                {"sample_id": obs_names},
+                index=obs_names,
             ),
             var=pd.DataFrame(index=proteins),
         )
@@ -383,7 +392,8 @@ class TestIsProteodata:
         adata.layers["raw"] = X.copy()
 
         assert check_proteodata(
-            adata, layers="raw",
+            adata,
+            layers="raw",
         ) == (True, "protein")
 
         bad_layer = X.copy()

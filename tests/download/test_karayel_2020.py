@@ -1,4 +1,5 @@
 """Tests for proteopy.download.karayel_2020."""
+
 import hashlib
 
 import pandas as pd
@@ -10,31 +11,37 @@ from proteopy.download import karayel_2020
 # -- Expected values -------------------------------------------------
 
 _EXPECTED_INTENSITIES_HASH = (
-    "0a87e35cba89def63e8745776728d1d9"
-    "2510fb2ecee1a3cf7dc092881cf7c660"
+    "0a87e35cba89def63e8745776728d1d9" "2510fb2ecee1a3cf7dc092881cf7c660"
 )
 _EXPECTED_VAR_HASH = (
-    "1932d3b6568ef923fca9079a1fa1915c"
-    "ea00fca33c9094c1b4b9443584967e73"
+    "1932d3b6568ef923fca9079a1fa1915c" "ea00fca33c9094c1b4b9443584967e73"
 )
 _EXPECTED_SAMPLE_HASH = (
-    "996521c86b23958ec642d531a79c9c7f"
-    "28dc8676ad9cc261a7ec86bf1feaa012"
+    "996521c86b23958ec642d531a79c9c7f" "28dc8676ad9cc261a7ec86bf1feaa012"
 )
 
 _EXPECTED_INTENSITIES_COLUMNS = [
-    "sample_id", "protein_id", "intensity",
+    "sample_id",
+    "protein_id",
+    "intensity",
 ]
 _EXPECTED_VAR_COLUMNS = ["protein_id", "gene_id"]
 _EXPECTED_SAMPLE_COLUMNS = [
-    "sample_id", "cell_type", "replicate",
+    "sample_id",
+    "cell_type",
+    "replicate",
 ]
 _EXPECTED_CELL_TYPES = [
-    "LBaso", "Ortho", "Poly", "ProE&EBaso", "Progenitor",
+    "LBaso",
+    "Ortho",
+    "Poly",
+    "ProE&EBaso",
+    "Progenitor",
 ]
 
 
 # -- Helpers ---------------------------------------------------------
+
 
 def _files(tmp_path, ext=".tsv"):
     return (
@@ -49,6 +56,7 @@ def _sha256(data: bytes) -> str:
 
 
 # -- Content tests ---------------------------------------------------
+
 
 class TestKarayel2020Download:
     """Verify downloaded file content, structure, and error handling."""
@@ -66,10 +74,7 @@ class TestKarayel2020Download:
 
     def test_intensities_columns(self, files):
         df = pd.read_csv(files[0], sep="\t", nrows=0)
-        assert (
-            df.columns.tolist()
-            == _EXPECTED_INTENSITIES_COLUMNS
-        )
+        assert df.columns.tolist() == _EXPECTED_INTENSITIES_COLUMNS
 
     def test_var_annotation_columns(self, files):
         df = pd.read_csv(files[1], sep="\t", nrows=0)
@@ -77,28 +82,16 @@ class TestKarayel2020Download:
 
     def test_sample_annotation_columns(self, files):
         df = pd.read_csv(files[2], sep="\t", nrows=0)
-        assert (
-            df.columns.tolist()
-            == _EXPECTED_SAMPLE_COLUMNS
-        )
+        assert df.columns.tolist() == _EXPECTED_SAMPLE_COLUMNS
 
     def test_intensities_hash(self, files):
-        assert (
-            _sha256(files[0].read_bytes())
-            == _EXPECTED_INTENSITIES_HASH
-        )
+        assert _sha256(files[0].read_bytes()) == _EXPECTED_INTENSITIES_HASH
 
     def test_var_annotation_hash(self, files):
-        assert (
-            _sha256(files[1].read_bytes())
-            == _EXPECTED_VAR_HASH
-        )
+        assert _sha256(files[1].read_bytes()) == _EXPECTED_VAR_HASH
 
     def test_sample_annotation_hash(self, files):
-        assert (
-            _sha256(files[2].read_bytes())
-            == _EXPECTED_SAMPLE_HASH
-        )
+        assert _sha256(files[2].read_bytes()) == _EXPECTED_SAMPLE_HASH
 
     def test_sample_count(self, files):
         df = pd.read_csv(files[2], sep="\t")
@@ -106,28 +99,19 @@ class TestKarayel2020Download:
 
     def test_cell_types_in_file(self, files):
         df = pd.read_csv(files[2], sep="\t")
-        assert (
-            sorted(df["cell_type"].unique())
-            == _EXPECTED_CELL_TYPES
-        )
+        assert sorted(df["cell_type"].unique()) == _EXPECTED_CELL_TYPES
 
     def test_csv_extension_uses_comma(self, tmp_path):
         p = _files(tmp_path, ext=".csv")
         karayel_2020(*p)
         df = pd.read_csv(p[0], sep=",", nrows=0)
-        assert (
-            df.columns.tolist()
-            == _EXPECTED_INTENSITIES_COLUMNS
-        )
+        assert df.columns.tolist() == _EXPECTED_INTENSITIES_COLUMNS
 
     def test_tsv_extension_uses_tab(self, tmp_path):
         p = _files(tmp_path, ext=".tsv")
         karayel_2020(*p)
         df = pd.read_csv(p[0], sep="\t", nrows=0)
-        assert (
-            df.columns.tolist()
-            == _EXPECTED_INTENSITIES_COLUMNS
-        )
+        assert df.columns.tolist() == _EXPECTED_INTENSITIES_COLUMNS
 
     def test_file_exists_error(self, tmp_path):
         p = _files(tmp_path)
@@ -143,9 +127,7 @@ class TestKarayel2020Download:
         karayel_2020(*p, force=True)
         for path in p:
             assert path.read_bytes() != dummy
-        assert (
-            _sha256(p[0].read_bytes()) == _EXPECTED_INTENSITIES_HASH
-        )
+        assert _sha256(p[0].read_bytes()) == _EXPECTED_INTENSITIES_HASH
         assert _sha256(p[1].read_bytes()) == _EXPECTED_VAR_HASH
         assert _sha256(p[2].read_bytes()) == _EXPECTED_SAMPLE_HASH
 
@@ -156,7 +138,8 @@ class TestKarayel2020Download:
 
     def test_invalid_path_type_raises(self, tmp_path):
         with pytest.raises(
-            TypeError, match="must be str or Path",
+            TypeError,
+            match="must be str or Path",
         ):
             karayel_2020(
                 123,
@@ -167,21 +150,24 @@ class TestKarayel2020Download:
     def test_invalid_sep_type_raises(self, tmp_path):
         p = _files(tmp_path)
         with pytest.raises(
-            TypeError, match="sep must be str or None",
+            TypeError,
+            match="sep must be str or None",
         ):
             karayel_2020(*p, sep=123)
 
     def test_fill_na_bool_raises(self, tmp_path):
         p = _files(tmp_path)
         with pytest.raises(
-            TypeError, match="fill_na must be",
+            TypeError,
+            match="fill_na must be",
         ):
             karayel_2020(*p, fill_na=True)
 
     def test_force_non_bool_raises(self, tmp_path):
         p = _files(tmp_path)
         with pytest.raises(
-            TypeError, match="force must be bool",
+            TypeError,
+            match="force must be bool",
         ):
             karayel_2020(*p, force=1)
 

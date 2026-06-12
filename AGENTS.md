@@ -78,7 +78,7 @@ AnnData.X matrix is also sparse.
 
 
 General argument guidelines:
- - essential arguments which should be found in all functions unless it does not make sense: 
+ - essential arguments which should be found in all functions unless it does not make sense:
     adata : AnnData
         Input AnnData with .X (obs x vars) and .var annotations.
         Default=None (do not include this line in docstrings)
@@ -355,7 +355,7 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
   Call plt.show() at the end of the function (default=True).
 
 - `save: str | Path | None`
-  Save the figure: str/Path for a specific path, None to skip saving (default=None).  
+  Save the figure: str/Path for a specific path, None to skip saving (default=None).
 
 - `ax: matplotlib.axes.Axes | None`
   Matplotlib Axes object to plot onto. If `None`, a new figure and axes are created. The function always returns the Axes object used for plotting (default=None).
@@ -712,7 +712,7 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
   Call plt.show() at the end of the function (default=True).
 
 - `save: str | Path | None`
-  Save the figure: str/Path for a specific path, None to skip saving (default=None).  
+  Save the figure: str/Path for a specific path, None to skip saving (default=None).
 
 - `ax: matplotlib.axes.Axes | None`
   Matplotlib Axes object to plot onto. If `None`, a new figure and axes are created. The function always returns the Axes object used for plotting (default=None).

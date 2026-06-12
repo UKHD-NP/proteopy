@@ -35,14 +35,9 @@ def _is_log_transformed_array(
     frac_negative = float(np.mean(vals < 0))
     p95 = float(np.nanpercentile(vals, 95))
     p5 = float(np.nanpercentile(vals, 5))
-    dr_ratio = float(
-        (p95 - p5) / max(abs(p5), 1e-12)
-    )
+    dr_ratio = float((p95 - p5) / max(abs(p5), 1e-12))
 
-    is_log = (
-        frac_negative >= neg_frac_thresh
-        or p95 <= p95_thresh
-    )
+    is_log = frac_negative >= neg_frac_thresh or p95 <= p95_thresh
 
     stats = dict(
         frac_negative=frac_negative,
@@ -56,13 +51,12 @@ def _is_log_transformed_array(
 
 
 def is_log_transformed(
-        adata,
-        layer=None,
-        neg_frac_thresh=5e-3,
-        p95_thresh=100.0,
+    adata,
+    layer=None,
+    neg_frac_thresh=5e-3,
+    p95_thresh=100.0,
 ):
-    """
-    Heuristic detector for log-transformed matrices.
+    """Heuristic detector for log-transformed matrices.
 
     Returns
     -------
@@ -72,14 +66,8 @@ def is_log_transformed(
         {'frac_negative', 'p95', 'p5', 'dynamic_range_ratio',
          'n_finite'}
     """
-    Xsrc = (
-        adata.layers[layer] if layer is not None
-        else adata.X
-    )
-    X = (
-        Xsrc.toarray() if sparse.issparse(Xsrc)
-        else np.asarray(Xsrc)
-    )
+    Xsrc = adata.layers[layer] if layer is not None else adata.X
+    X = Xsrc.toarray() if sparse.issparse(Xsrc) else np.asarray(Xsrc)
     X = X.astype(float, copy=False)
 
     return _is_log_transformed_array(

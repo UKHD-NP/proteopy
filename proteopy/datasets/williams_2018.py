@@ -79,7 +79,8 @@ def williams_2018(
        DOI: 10.1074/mcp.RA118.000554.
     """
     if fill_na is not None and not isinstance(
-        fill_na, (int, float),
+        fill_na,
+        (int, float),
     ):
         raise TypeError(
             f"fill_na must be float, int, or None, "
@@ -124,7 +125,8 @@ def williams_2018(
     # Select intensity columns: named cols where row 0 == "Intensity",
     # excluding _mito fractions
     intensity_cols = [
-        c for c in df.columns
+        c
+        for c in df.columns
         if "Unnamed" not in str(c)
         and df[c].iloc[0] == "Intensity"
         and "_mito" not in str(c)
@@ -133,29 +135,22 @@ def williams_2018(
     df = df[list(meta_cols.keys()) + intensity_cols]
 
     # Remove _WholeCell suffix from sample column names
-    df = df.rename(columns={
-        c: c.replace("_WholeCell", "")
-        for c in intensity_cols
-    })
+    df = df.rename(
+        columns={c: c.replace("_WholeCell", "") for c in intensity_cols}
+    )
     df = df.rename(columns=meta_cols)
 
     # Drop the first row (secondary header)
     df = df.iloc[1:].reset_index(drop=True)
 
     # Extract peptide sequence (remove prefixes and suffixes)
-    df["peptide_id"] = (
-        df["peptide_id"].str.split("_").str[1]
-    )
+    df["peptide_id"] = df["peptide_id"].str.split("_").str[1]
 
     # Verify protein_id and gene_id are consistent
     # across charge states of the same peptide
-    meta_check = (
-        df.groupby("peptide_id")[["protein_id", "gene_id"]]
-        .nunique()
-    )
+    meta_check = df.groupby("peptide_id")[["protein_id", "gene_id"]].nunique()
     inconsistent = meta_check[
-        (meta_check["protein_id"] > 1)
-        | (meta_check["gene_id"] > 1)
+        (meta_check["protein_id"] > 1) | (meta_check["gene_id"] > 1)
     ]
     if not inconsistent.empty:
         raise ValueError(
@@ -166,35 +161,33 @@ def williams_2018(
 
     # Sum intensities across charge states of the same peptide
     sample_cols = [
-        c for c in df.columns
+        c
+        for c in df.columns
         if c not in ("peptide_id", "protein_id", "gene_id")
     ]
     df[sample_cols] = df[sample_cols].astype(float)
-    var = (
-        df.groupby("peptide_id")[["protein_id", "gene_id"]]
-        .first()
-    )
+    var = df.groupby("peptide_id")[["protein_id", "gene_id"]].first()
     var["peptide_id"] = var.index
-    X = (
-        df.groupby("peptide_id")[sample_cols]
-        .sum()
-        .values.T
-    )
+    X = df.groupby("peptide_id")[sample_cols].sum().values.T
 
     # Build obs annotation with tissue and mouse_id
     obs = pd.DataFrame({"sample_id": sample_cols})
     parts = obs["sample_id"].str.split(
-        "_", n=1, expand=True,
+        "_",
+        n=1,
+        expand=True,
     )
     parts.columns = ["p1", "p2"]
-    tissue_first = parts["p1"].str.fullmatch(
-        r"Brain|BAT|Heart|Liver|Quad"
-    )
+    tissue_first = parts["p1"].str.fullmatch(r"Brain|BAT|Heart|Liver|Quad")
     obs["tissue"] = np.where(
-        tissue_first, parts["p1"], parts["p2"],
+        tissue_first,
+        parts["p1"],
+        parts["p2"],
     )
     obs["mouse_id"] = np.where(
-        tissue_first, parts["p2"], parts["p1"],
+        tissue_first,
+        parts["p2"],
+        parts["p1"],
     )
     obs = obs.set_index("sample_id")
     obs.index.name = None

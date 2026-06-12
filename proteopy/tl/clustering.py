@@ -23,8 +23,8 @@ def _validate_linkage_and_values(
     Z: np.ndarray,
     values_df: pd.DataFrame,
 ) -> None:
-    """
-    Validate linkage matrix and values DataFrame for clustering operations.
+    """Validate linkage matrix and values DataFrame for clustering
+    operations.
 
     Parameters
     ----------
@@ -82,8 +82,8 @@ def hclustv_tree(
     key_added: str | None = None,
     verbose: bool = True,
 ) -> ad.AnnData | None:
-    """
-    Perform hierarchical clustering on variables (peptides or proteins).
+    """Perform hierarchical clustering on variables (peptides or
+    proteins).
 
     Computes a linkage matrix from variable profiles across samples or groups,
     storing the result in ``adata.uns`` for downstream visualization or analysis.
@@ -214,7 +214,9 @@ def hclustv_tree(
         duplicates = [v for v in selected_vars if v in seen or seen.add(v)]
         if duplicates:
             raise ValueError(
-                f"Duplicate variables in selected_vars: {list(set(duplicates))}"
+                f"Duplicate variables in selected_vars: {
+                    list(
+                        set(duplicates))}"
             )
         missing_vars = [v for v in selected_vars if v not in df.columns]
         if missing_vars:
@@ -347,14 +349,14 @@ def hclustv_tree(
 def hclustv_cluster_ann(
     adata: ad.AnnData,
     k: int,
-    linkage_key: str = 'auto',
-    values_key: str = 'auto',
+    linkage_key: str = "auto",
+    values_key: str = "auto",
     inplace: bool = True,
     key_added: str | None = None,
     verbose: bool = True,
 ) -> ad.AnnData | None:
-    """
-    Annotate variables with cluster assignments from hierarchical clustering.
+    """Annotate variables with cluster assignments from hierarchical
+    clustering.
 
     Uses :func:`scipy.cluster.hierarchy.fcluster` to cut the dendrogram
     at ``k`` clusters and stores cluster assignments in ``.var``.
@@ -501,7 +503,7 @@ def hclustv_cluster_ann(
 
 def hclustv_profiles(
     adata: ad.AnnData,
-    cluster_key: str = 'auto',
+    cluster_key: str = "auto",
     layer: str | None = None,
     group_by: str | None = None,
     method: str = "median",
@@ -512,8 +514,7 @@ def hclustv_profiles(
     key_added: str | None = None,
     verbose: bool = True,
 ) -> ad.AnnData | None:
-    """
-    Compute cluster profiles from cluster annotations.
+    """Compute cluster profiles from cluster annotations.
 
     Summarizes variables within each cluster using mean or median to create
     cluster profile intensities across all observations.
@@ -595,9 +596,7 @@ def hclustv_profiles(
 
     method = method.lower()
     if method not in ("mean", "median"):
-        raise ValueError(
-            f"method must be 'mean' or 'median', got '{method}'."
-        )
+        raise ValueError(f"method must be 'mean' or 'median', got '{method}'.")
 
     resolved_key = _resolve_hclustv_cluster_key(
         adata,
@@ -654,7 +653,9 @@ def hclustv_profiles(
     clusters = sorted(clusters)
 
     if len(clusters) == 0:
-        raise ValueError("No cluster assignments found in the specified column.")
+        raise ValueError(
+            "No cluster assignments found in the specified column."
+        )
 
     # Compute profiles for each cluster
     cluster_profiles = {}

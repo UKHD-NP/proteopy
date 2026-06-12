@@ -15,6 +15,7 @@ from proteopy.read import long
 # Helper constructors
 # ------------------------------------------------------------------
 
+
 def _make_peptide_intensities(
     sample_ids=None,
     peptide_ids=None,
@@ -72,15 +73,18 @@ def _make_protein_intensities(
         protein_ids = ["PROT1", "PROT2", "PROT1", "PROT2"]
     if intensities is None:
         intensities = [1.0, 2.0, 3.0, 4.0]
-    return pd.DataFrame({
-        "sample_id": sample_ids,
-        "protein_id": protein_ids,
-        "intensity": intensities,
-    })
+    return pd.DataFrame(
+        {
+            "sample_id": sample_ids,
+            "protein_id": protein_ids,
+            "intensity": intensities,
+        }
+    )
 
 
 def _make_sample_annotation(sample_ids, extra=None):
-    """Build a sample annotation DataFrame with an optional extra col."""
+    """Build a sample annotation DataFrame with an optional extra
+    col."""
     data = {"sample_id": list(sample_ids)}
     if extra:
         data.update(extra)
@@ -130,6 +134,7 @@ def _as_intensities(df, fmt, tmp_path):
 # ------------------------------------------------------------------
 # Tests
 # ------------------------------------------------------------------
+
 
 class TestLong:
     """Comprehensive tests for :func:`proteopy.read.long`."""
@@ -207,7 +212,9 @@ class TestLong:
 
     @pytest.mark.parametrize("fmt", ["dataframe", "csv", "tsv"])
     def test_peptide_minimal_with_protein_in_intensities(
-        self, fmt, tmp_path,
+        self,
+        fmt,
+        tmp_path,
     ):
         """Basic case: intensities carry ``protein_id`` directly.
 
@@ -270,8 +277,12 @@ class TestLong:
             sample_ids=["s1", "s1", "s1", "s2", "s2", "s2"],
             peptide_ids=["PEP1", "PEP2", "PEP3"] * 2,
             protein_ids=[
-                "PROT1", "PROT2", "PROT2",
-                "PROT1", "PROT2", "PROT2",
+                "PROT1",
+                "PROT2",
+                "PROT2",
+                "PROT1",
+                "PROT2",
+                "PROT2",
             ],
             intensities=[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
         )
@@ -280,7 +291,9 @@ class TestLong:
         assert adata.shape == (2, 3)
         assert list(adata.var_names) == ["PEP1", "PEP2", "PEP3"]
         assert list(adata.var["protein_id"]) == [
-            "PROT1", "PROT2", "PROT2",
+            "PROT1",
+            "PROT2",
+            "PROT2",
         ]
         np.testing.assert_allclose(
             adata.X,
@@ -329,7 +342,9 @@ class TestLong:
             extra={"group": ["A", "B"]},
         )
         adata = long(
-            df, level="peptide", sample_annotation=sample_ann,
+            df,
+            level="peptide",
+            sample_annotation=sample_ann,
         )
 
         assert "group" in adata.obs.columns
@@ -350,13 +365,17 @@ class TestLong:
     def test_duplicate_sample_annotation_warns_and_dedupes(self):
         """Duplicate annotation rows warn and keep the first."""
         df = _make_peptide_intensities()
-        sample_ann = pd.DataFrame({
-            "sample_id": ["s1", "s1", "s2"],
-            "group": ["FIRST", "SECOND", "OTHER"],
-        })
+        sample_ann = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s1", "s2"],
+                "group": ["FIRST", "SECOND", "OTHER"],
+            }
+        )
         with pytest.warns(UserWarning, match="Duplicate sample"):
             adata = long(
-                df, level="peptide", sample_annotation=sample_ann,
+                df,
+                level="peptide",
+                sample_annotation=sample_ann,
             )
 
         # First occurrence kept.
@@ -366,10 +385,12 @@ class TestLong:
     def test_duplicate_peptide_annotation_warns_and_dedupes(self):
         """Duplicate peptide annotation rows warn and keep first."""
         df = _make_peptide_intensities()
-        var_ann = pd.DataFrame({
-            "peptide_id": ["PEP1", "PEP1", "PEP2"],
-            "charge": [2, 3, 4],
-        })
+        var_ann = pd.DataFrame(
+            {
+                "peptide_id": ["PEP1", "PEP1", "PEP2"],
+                "charge": [2, 3, 4],
+            }
+        )
         with pytest.warns(UserWarning, match="Duplicate peptide"):
             adata = long(df, level="peptide", var_annotation=var_ann)
 
@@ -380,12 +401,14 @@ class TestLong:
 
     def test_column_map_remaps_peptide_level(self):
         """Non-standard peptide columns are canonicalized."""
-        df = pd.DataFrame({
-            "run": ["s1", "s1", "s2", "s2"],
-            "seq": ["PEP1", "PEP2", "PEP1", "PEP2"],
-            "prot": ["PROT1", "PROT1", "PROT1", "PROT1"],
-            "quant": [1.0, 2.0, 3.0, 4.0],
-        })
+        df = pd.DataFrame(
+            {
+                "run": ["s1", "s1", "s2", "s2"],
+                "seq": ["PEP1", "PEP2", "PEP1", "PEP2"],
+                "prot": ["PROT1", "PROT1", "PROT1", "PROT1"],
+                "quant": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
         adata = long(
             df,
             level="peptide",
@@ -408,11 +431,13 @@ class TestLong:
 
     def test_column_map_remaps_protein_level(self):
         """Non-standard protein columns are canonicalized."""
-        df = pd.DataFrame({
-            "run": ["s1", "s1", "s2", "s2"],
-            "prot": ["PROT1", "PROT2", "PROT1", "PROT2"],
-            "quant": [1.0, 2.0, 3.0, 4.0],
-        })
+        df = pd.DataFrame(
+            {
+                "run": ["s1", "s1", "s2", "s2"],
+                "prot": ["PROT1", "PROT2", "PROT1", "PROT2"],
+                "quant": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
         adata = long(
             df,
             level="protein",
@@ -434,7 +459,8 @@ class TestLong:
     # -- Missing-value handling ---------------------------------------
 
     def test_missing_pair_is_nan_peptide_level(self):
-        """Missing (sample, peptide) pairs become ``np.nan`` in ``.X``."""
+        """Missing (sample, peptide) pairs become ``np.nan`` in
+        ``.X``."""
         df = _make_peptide_intensities(
             sample_ids=["s1", "s1", "s2"],
             peptide_ids=["PEP1", "PEP2", "PEP1"],
@@ -550,7 +576,8 @@ class TestLong:
         expected = np.array([[np.nan, 2.0], [3.0, 4.0]])
         # Compare NaN-aware.
         np.testing.assert_array_equal(
-            np.isnan(adata.X), np.isnan(expected),
+            np.isnan(adata.X),
+            np.isnan(expected),
         )
         np.testing.assert_allclose(
             adata.X[~np.isnan(adata.X)],

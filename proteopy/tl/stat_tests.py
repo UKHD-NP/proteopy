@@ -1,6 +1,4 @@
-"""
-Statistical tests for differential abundance analysis.
-"""
+"""Statistical tests for differential abundance analysis."""
 
 import warnings
 
@@ -45,7 +43,10 @@ SUPPORTED_METHODS = {
 
 SUPPORTED_CORRECTIONS = [
     "bonferroni",
-    "fdr_bh", "fdr", "bh", "benjamini_hochberg",
+    "fdr_bh",
+    "fdr",
+    "bh",
+    "benjamini_hochberg",
 ]
 
 MIN_SAMPLES_PER_GROUP = 3
@@ -57,8 +58,7 @@ def _validate_setup_two_group(
     obs_column,
     method: str,
 ) -> None:
-    """
-    Validate setup dictionary for two-group comparison methods.
+    """Validate setup dictionary for two-group comparison methods.
 
     Parameters
     ----------
@@ -109,8 +109,7 @@ def _validate_setup_1vrest(
     group_by: str,
     obs_column: pd.Series,
 ) -> None:
-    """
-    Validate setup dictionary for one-vs-rest comparison methods.
+    """Validate setup dictionary for one-vs-rest comparison methods.
 
     Parameters
     ----------
@@ -152,8 +151,7 @@ def _validate_setup_1vrest(
             # Check for duplicates
             if len(groups_spec) != len(set(groups_spec)):
                 duplicates = [
-                    g for g in set(groups_spec)
-                    if groups_spec.count(g) > 1
+                    g for g in set(groups_spec) if groups_spec.count(g) > 1
                 ]
                 raise ValueError(
                     f"setup['groups'] contains duplicate values: {duplicates}"
@@ -178,8 +176,7 @@ def _perform_ttest(
     effective_space: str,
     equal_var: bool,
 ) -> dict:
-    """
-    Perform t-test between two groups and compute summary statistics.
+    """Perform t-test between two groups and compute summary statistics.
 
     Parameters
     ----------
@@ -242,30 +239,31 @@ def _perform_ttest(
     mean2 = X2.mean(axis=0)
 
     # Flatten if needed (in case of matrix return)
-    if hasattr(mean1, 'A1'):
+    if hasattr(mean1, "A1"):
         mean1 = mean1.A1
-    if hasattr(mean2, 'A1'):
+    if hasattr(mean2, "A1"):
         mean2 = mean2.A1
 
     # Compute logFC
-    if effective_space == 'log':
+    if effective_space == "log":
         logfc = mean1 - mean2
     else:  # linear -> compute log2 fold change
         logfc = np.log2(mean1 / mean2)
 
     # Execute t-test
     tstats, pvals = stats.ttest_ind(
-        X1, X2,
+        X1,
+        X2,
         axis=0,
         equal_var=equal_var,
     )
 
     return {
-        'mean1': mean1,
-        'mean2': mean2,
-        'logfc': logfc,
-        'tstat': tstats,
-        'pval': pvals,
+        "mean1": mean1,
+        "mean2": mean2,
+        "logfc": logfc,
+        "tstat": tstats,
+        "pval": pvals,
     }
 
 
@@ -279,8 +277,7 @@ def _execute_two_group_ttest(
     equal_var: bool,
     **kwargs,
 ) -> tuple[dict, str]:
-    """
-    Execute two-sample t-test for differential abundance.
+    """Execute two-sample t-test for differential abundance.
 
     Parameters
     ----------
@@ -354,8 +351,7 @@ def _execute_one_vs_rest_ttest(
     equal_var: bool,
     **kwargs,
 ) -> list[tuple[dict, str]]:
-    """
-    Execute one-vs-rest t-tests for differential abundance.
+    """Execute one-vs-rest t-tests for differential abundance.
 
     For each specified group, performs a t-test comparing that group against
     all other groups combined.
@@ -448,8 +444,7 @@ def _perform_anova(
     groups_to_test: list,
     equal_var: bool = True,
 ) -> dict:
-    """
-    Perform one-way ANOVA across groups for each variable.
+    """Perform one-way ANOVA across groups for each variable.
 
     Parameters
     ----------
@@ -513,16 +508,16 @@ def _perform_anova(
     )
 
     results = {
-        'fstat': fstats,
-        'pval': pvals,
+        "fstat": fstats,
+        "pval": pvals,
     }
 
     # Add per-group means
     for group in groups_to_test:
         mean_vals = group_arrays[group].mean(axis=0)
-        if hasattr(mean_vals, 'A1'):
+        if hasattr(mean_vals, "A1"):
             mean_vals = mean_vals.A1
-        results[f'mean_{sanitize_string(str(group))}'] = mean_vals
+        results[f"mean_{sanitize_string(str(group))}"] = mean_vals
 
     return results
 
@@ -537,8 +532,7 @@ def _execute_anova(
     equal_var: bool = True,
     **kwargs,
 ) -> list[tuple[dict, str]]:
-    """
-    Execute one-way ANOVA for differential abundance.
+    """Execute one-way ANOVA for differential abundance.
 
     Parameters
     ----------
@@ -604,9 +598,7 @@ def _execute_anova(
     if set(groups_to_test) == set(unique_groups):
         group_label = "all"
     else:
-        group_label = sanitize_string(
-            "_".join(sorted_groups)
-        )
+        group_label = sanitize_string("_".join(sorted_groups))
 
     return [(results, group_label)]
 
@@ -632,8 +624,7 @@ def differential_abundance(
     fill_na: float | int | None = None,
     inplace: bool = True,
 ) -> AnnData | None:
-    """
-    Perform differential abundance analysis between sample groups.
+    """Perform differential abundance analysis between sample groups.
 
     Compares expression values between groups using statistical tests.
     Computes log fold changes, p-values, and applies multiple testing
@@ -817,7 +808,7 @@ def differential_abundance(
             f"Column '{group_by}' not found in adata.obs. "
             f"Available columns: {list(target.obs.columns)}"
         )
-    
+
     # Validate layer
     if layer is not None and layer not in target.layers:
         available_layers = list(target.layers.keys())
@@ -829,13 +820,18 @@ def differential_abundance(
     # Get data
     obs_column = target.obs[group_by]
     X_orig = target.layers[layer] if layer is not None else target.X
-    X = X_orig.toarray() if sparse.issparse(X_orig) else np.asarray(X_orig, dtype=float)
+    X = (
+        X_orig.toarray()
+        if sparse.issparse(X_orig)
+        else np.asarray(X_orig, dtype=float)
+    )
 
     # Validate and apply fill_na
     if fill_na is not None:
         if not isinstance(fill_na, (int, float)):
             raise ValueError(
-                f"Parameter 'fill_na' must be a number, got {type(fill_na).__name__}."
+                f"Parameter 'fill_na' must be a number, got {
+                    type(fill_na).__name__}."
             )
         X = np.nan_to_num(X, fill_na)
 
@@ -882,11 +878,11 @@ def differential_abundance(
     data_is_log, _ = is_log_transformed(target, layer=layer)
 
     if data_is_log:
-        effective_space = 'log'
+        effective_space = "log"
     else:
-        effective_space = 'linear'
+        effective_space = "linear"
 
-    if space != 'auto' and space != effective_space:
+    if space != "auto" and space != effective_space:
         if force:
             effective_space = space
         else:
@@ -897,7 +893,7 @@ def differential_abundance(
             )
 
     X_proc = X.copy()
-    if effective_space == 'linear' and final_space == 'log':
+    if effective_space == "linear" and final_space == "log":
         pseudocount = 1
         if np.any((X_proc + pseudocount) <= 0):
             raise ValueError(
@@ -909,7 +905,7 @@ def differential_abundance(
             "Data treated as linear; applying log2 transform with "
             "pseudocount=1 for differential_abundance.",
         )
-        effective_space = 'log'
+        effective_space = "log"
 
     if final_space != effective_space:
         raise ValueError(
@@ -919,7 +915,7 @@ def differential_abundance(
 
     # Determine executor
     method_config = SUPPORTED_METHODS[method]
-    if method == 'ttest_two_sample' or method == 'welch':
+    if method == "ttest_two_sample" or method == "welch":
         # Determine comparison mode based on setup contents
         has_group_keys = "group1" in setup and "group2" in setup
         is_one_vs_rest = not has_group_keys
@@ -930,10 +926,10 @@ def differential_abundance(
         else:
             executor_name = method_config["executor"]
             executor = METHOD_EXECUTORS[executor_name]
-    elif method in ('anova_oneway', 'anova_oneway_welch'):
+    elif method in ("anova_oneway", "anova_oneway_welch"):
         executor = METHOD_EXECUTORS["_execute_anova"]
     else:
-        raise ValueError('Not implemented yet')
+        raise ValueError("Not implemented yet")
 
     results_list = executor(
         X=X_proc,
@@ -967,7 +963,7 @@ def differential_abundance(
     for results, group_label in results_list:
         # Multiple testing correction
         reject, pval_adj, _, _ = multipletests(
-            results['pval'],
+            results["pval"],
             alpha=alpha,
             method=correction_method,
         )
@@ -981,7 +977,9 @@ def differential_abundance(
         # Format: <test_type>;<group_by>;<design> or
         # <test_type>;<group_by>;<design>;<layer> if layer is used
         if layer_label is not None:
-            slot_name = f"{method_label};{group_by_label};{group_label};{layer_label}"
+            slot_name = (
+                f"{method_label};{group_by_label};{group_label};{layer_label}"
+            )
         else:
             slot_name = f"{method_label};{group_by_label};{group_label}"
 

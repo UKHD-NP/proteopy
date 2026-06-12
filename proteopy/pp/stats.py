@@ -11,8 +11,8 @@ from proteopy.utils.string import sanitize_string
 
 
 def _compute_cv_stats(X, zero_to_na=True):
-    """
-    Compute mean, std, and count across observations for CV calculation.
+    """Compute mean, std, and count across observations for CV
+    calculation.
 
     Parameters
     ----------
@@ -37,7 +37,7 @@ def _compute_cv_stats(X, zero_to_na=True):
             # TODO: implement sparse-native algorithm to avoid densification
             X_dense = X.toarray()
             with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=RuntimeWarning)
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
                 mean_ = np.nanmean(X_dense, axis=0)
                 std_ = np.nanstd(X_dense, axis=0, ddof=1)
             n_ = np.sum(~np.isnan(X_dense), axis=0)
@@ -45,7 +45,7 @@ def _compute_cv_stats(X, zero_to_na=True):
         else:
             X_dense = X.toarray()
             with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=RuntimeWarning)
+                warnings.filterwarnings("ignore", category=RuntimeWarning)
                 mean_ = np.nanmean(X_dense, axis=0)
                 std_ = np.nanstd(X_dense, axis=0, ddof=1)
             n_ = np.sum(~np.isnan(X_dense), axis=0)
@@ -57,7 +57,7 @@ def _compute_cv_stats(X, zero_to_na=True):
             X_arr[X_arr == 0] = np.nan
 
         with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=RuntimeWarning)
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
             mean_ = np.nanmean(X_arr, axis=0)
             std_ = np.nanstd(X_arr, axis=0, ddof=1)
         n_ = np.sum(~np.isnan(X_arr), axis=0)
@@ -74,8 +74,8 @@ def calculate_cv(
     key_added: str | None = None,
     inplace: bool = True,
 ) -> AnnData | None:
-    """
-    Compute the coefficient of variation (CV = std / mean) for each variable.
+    """Compute the coefficient of variation (CV = std / mean) for each
+    variable.
 
     Performed within ``group_by`` groups optionally.
     CV is calculated ignoring NaNs.

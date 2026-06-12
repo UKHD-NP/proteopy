@@ -23,8 +23,7 @@ def _stat_test_title_from_varm_slot(
     adata: ad.AnnData,
     varm_slot: str,
 ) -> str:
-    """
-    Generate a human-readable plot title from a stat test varm slot.
+    """Generate a human-readable plot title from a stat test varm slot.
 
     Parses the varm slot name to extract test type, group_by, design
     (group comparison), and optional layer information, then formats them
@@ -63,8 +62,7 @@ def _normalize_alt_color(
     adata: ad.AnnData,
     plot_index: pd.Index,
 ) -> pd.Series:
-    """
-    Validate and align alternative color boolean mask to plot data.
+    """Validate and align alternative color boolean mask to plot data.
 
     Converts the user-provided ``alt_color`` input into a boolean
     Series indexed by ``adata.var_names``, then reindexes to match
@@ -140,53 +138,34 @@ def _normalize_alt_color(
     series = series.reindex(plot_index)
     if series.isna().any():
         raise ValueError(
-            "alt_color contains missing values after aligning to "
-            "varm data."
+            "alt_color contains missing values after aligning to " "varm data."
         )
     return series
 
 
 def _validate_thresholds(fc_thresh, pval_thresh):
     if fc_thresh is not None:
-        if (
-            not isinstance(fc_thresh, (int, float))
-            or fc_thresh <= 0
-        ):
-            raise ValueError(
-                "fc_thresh must be a positive number."
-            )
+        if not isinstance(fc_thresh, (int, float)) or fc_thresh <= 0:
+            raise ValueError("fc_thresh must be a positive number.")
     if pval_thresh is not None:
         if (
             not isinstance(pval_thresh, (int, float))
             or pval_thresh <= 0
             or pval_thresh > 1
         ):
-            raise ValueError(
-                "pval_thresh must be a number in (0, 1]."
-            )
+            raise ValueError("pval_thresh must be a number in (0, 1].")
 
 
 def _validate_labels(top_labels, highlight_labels):
     if top_labels is not None:
-        if (
-            not isinstance(top_labels, int)
-            or top_labels < 0
-        ):
-            raise ValueError(
-                "top_labels must be a non-negative integer."
-            )
+        if not isinstance(top_labels, int) or top_labels < 0:
+            raise ValueError("top_labels must be a non-negative integer.")
     if highlight_labels is not None:
         if not isinstance(highlight_labels, list):
-            raise TypeError(
-                "highlight_labels must be a list of strings."
-            )
-    if (
-        top_labels is not None
-        and highlight_labels is not None
-    ):
+            raise TypeError("highlight_labels must be a list of strings.")
+    if top_labels is not None and highlight_labels is not None:
         raise ValueError(
-            "top_labels and highlight_labels are mutually "
-            "exclusive."
+            "top_labels and highlight_labels are mutually " "exclusive."
         )
 
 
@@ -194,14 +173,10 @@ def _validate_figsize(figsize):
     if (
         not isinstance(figsize, (tuple, list))
         or len(figsize) != 2
-        or not all(
-            isinstance(v, (int, float)) and v > 0
-            for v in figsize
-        )
+        or not all(isinstance(v, (int, float)) and v > 0 for v in figsize)
     ):
         raise ValueError(
-            "figsize must be a tuple/list of 2 positive "
-            "numbers."
+            "figsize must be a tuple/list of 2 positive " "numbers."
         )
 
 
@@ -218,8 +193,7 @@ def _validate_volcano_inputs(
     figsize: tuple[float, float],
     yscale_log: bool,
 ) -> tuple[pd.DataFrame, str]:
-    """
-    Validate all input parameters for the volcano plot function.
+    """Validate all input parameters for the volcano plot function.
 
     Checks the AnnData object, threshold values, label arguments,
     figure size, y-axis scale type, and the required columns in the
@@ -306,23 +280,18 @@ def _validate_volcano_inputs(
 
     # -- Validate varm slot exists and contains a DataFrame
     if varm_slot not in adata.varm:
-        raise KeyError(
-            f"varm_slot '{varm_slot}' not found in "
-            f"adata.varm."
-        )
+        raise KeyError(f"varm_slot '{varm_slot}' not found in " f"adata.varm.")
 
     results = adata.varm[varm_slot]
     if not isinstance(results, pd.DataFrame):
         raise TypeError(
-            "Expected adata.varm[varm_slot] to be a pandas "
-            "DataFrame."
+            "Expected adata.varm[varm_slot] to be a pandas " "DataFrame."
         )
 
     # -- Validate required columns exist
     if fc_col not in results.columns:
         raise KeyError(
-            f"Column '{fc_col}' not found in varm slot "
-            f"'{varm_slot}'."
+            f"Column '{fc_col}' not found in varm slot " f"'{varm_slot}'."
         )
 
     # Prioritize adjusted p-values, fall back to unadjusted
@@ -334,17 +303,12 @@ def _validate_volcano_inputs(
         pval_col_used = "pval"
     else:
         raise KeyError(
-            f"Columns '{pval_col}' or 'pval' not found in "
-            f"'{varm_slot}'."
+            f"Columns '{pval_col}' or 'pval' not found in " f"'{varm_slot}'."
         )
 
-    if (
-        alt_labels_key is not None
-        and alt_labels_key not in adata.var.columns
-    ):
+    if alt_labels_key is not None and alt_labels_key not in adata.var.columns:
         raise KeyError(
-            f"alt_labels_key '{alt_labels_key}' not found "
-            f"in adata.var."
+            f"alt_labels_key '{alt_labels_key}' not found " f"in adata.var."
         )
 
     return results, pval_col_used
@@ -371,8 +335,7 @@ def volcano(
     save: str | Path | None = None,
     ax: Axes | None = None,
 ) -> Axes:
-    """
-    Visualize differential abundance results as a volcano plot.
+    """Visualize differential abundance results as a volcano plot.
 
     Creates a scatter plot of log fold change (x-axis) versus p-value
     (y-axis) for proteins from a statistical test stored in
@@ -523,9 +486,17 @@ def volcano(
     ... )
     """
     results, pval_col_used = _validate_volcano_inputs(
-        adata, varm_slot, fc_col, pval_col, alt_labels_key,
-        fc_thresh, pval_thresh, top_labels,
-        highlight_labels, figsize, yscale_log,
+        adata,
+        varm_slot,
+        fc_col,
+        pval_col,
+        alt_labels_key,
+        fc_thresh,
+        pval_thresh,
+        top_labels,
+        highlight_labels,
+        figsize,
+        yscale_log,
     )
 
     fc_arr = results[fc_col].to_numpy()
@@ -542,13 +513,16 @@ def volcano(
     alt_arr = None
     if alt_color is not None:
         alt_series = _normalize_alt_color(
-            alt_color, adata, results.index,
+            alt_color,
+            adata,
+            results.index,
         )
         alt_arr = alt_series.to_numpy()
 
     if title is None:
         title = _stat_test_title_from_varm_slot(
-            adata, varm_slot,
+            adata,
+            varm_slot,
         )
 
     if ylabel is None:
@@ -579,15 +553,11 @@ def volcano(
 
 def _validate_varm_slot(adata, varm_slot):
     if varm_slot not in adata.varm:
-        raise KeyError(
-            f"varm_slot '{varm_slot}' not found in "
-            f"adata.varm."
-        )
+        raise KeyError(f"varm_slot '{varm_slot}' not found in " f"adata.varm.")
     results = adata.varm[varm_slot]
     if not isinstance(results, pd.DataFrame):
         raise TypeError(
-            "Expected adata.varm[varm_slot] to be a "
-            "pandas DataFrame."
+            "Expected adata.varm[varm_slot] to be a " "pandas DataFrame."
         )
     return results
 
@@ -598,8 +568,7 @@ def _resolve_pval_column(results, varm_slot):
     if "pval" in results.columns:
         return "pval"
     raise KeyError(
-        f"Neither 'pval_adj' nor 'pval' found in "
-        f"varm slot '{varm_slot}'."
+        f"Neither 'pval_adj' nor 'pval' found in " f"varm slot '{varm_slot}'."
     )
 
 
@@ -611,8 +580,7 @@ def _validate_diff_abundance_inputs(
     show_pval,
     pval_fontsize,
 ):
-    """
-    Validate inputs for :func:`differential_abundance_box`.
+    """Validate inputs for :func:`differential_abundance_box`.
 
     Checks the varm slot, ``top_n``, ``group_by`` column,
     layer, and ``pval_fontsize``. Parses the varm slot to
@@ -652,30 +620,23 @@ def _validate_diff_abundance_inputs(
     if top_n is None:
         top_n = 10
     if not isinstance(top_n, int) or top_n <= 0:
-        raise ValueError(
-            "top_n must be a positive integer."
-        )
+        raise ValueError("top_n must be a positive integer.")
 
     # -- Parse varm slot metadata
     parsed = parse_stat_test_varm_slot(
-        varm_slot, adata=adata,
+        varm_slot,
+        adata=adata,
     )
     group_by = parsed["group_by"]
 
     if group_by not in adata.obs.columns:
-        raise KeyError(
-            f"Column '{group_by}' not found in "
-            f"adata.obs."
-        )
+        raise KeyError(f"Column '{group_by}' not found in " f"adata.obs.")
 
     # -- Resolve layer
     if layer is None:
         layer = parsed["layer"]
     if layer is not None and layer not in adata.layers:
-        raise KeyError(
-            f"Layer '{layer}' not found in "
-            f"adata.layers."
-        )
+        raise KeyError(f"Layer '{layer}' not found in " f"adata.layers.")
 
     pval_col = _resolve_pval_column(results, varm_slot)
 
@@ -683,14 +644,12 @@ def _validate_diff_abundance_inputs(
     if show_pval:
         if (
             not isinstance(
-                pval_fontsize, (int, float),
+                pval_fontsize,
+                (int, float),
             )
             or pval_fontsize <= 0
         ):
-            raise ValueError(
-                "pval_fontsize must be a positive "
-                "number."
-            )
+            raise ValueError("pval_fontsize must be a positive " "number.")
 
     return results, group_by, layer, pval_col, top_n
 
@@ -705,8 +664,7 @@ def _prepare_diff_abundance_data(
     order,
     show_pval,
 ):
-    """
-    Prepare long-format DataFrame for boxplot rendering.
+    """Prepare long-format DataFrame for boxplot rendering.
 
     Sorts variables by p-value, extracts intensities for
     the top N variables, melts into long format, applies
@@ -745,20 +703,17 @@ def _prepare_diff_abundance_data(
     """
     # -- Sort by p-value and select top N
     results_sorted = results.sort_values(
-        by=pval_col, ascending=True,
+        by=pval_col,
+        ascending=True,
     )
     top_vars = results_sorted.head(top_n).index.tolist()
 
     if not top_vars:
-        raise ValueError(
-            "No valid variables found after filtering."
-        )
+        raise ValueError("No valid variables found after filtering.")
 
     pvals_to_plot = None
     if show_pval:
-        pvals_to_plot = results.loc[
-            top_vars, pval_col
-        ].reindex(top_vars)
+        pvals_to_plot = results.loc[top_vars, pval_col].reindex(top_vars)
 
     # -- Extract intensity matrix
     if layer is not None:
@@ -796,19 +751,13 @@ def _prepare_diff_abundance_data(
                 f"Available groups: "
                 f"{sorted(available_groups)}"
             )
-        df_long = df_long[
-            df_long[group_by].isin(order)
-        ]
+        df_long = df_long[df_long[group_by].isin(order)]
         group_order = list(order)
     else:
-        group_order = (
-            df_long[group_by].dropna().unique().tolist()
-        )
+        group_order = df_long[group_by].dropna().unique().tolist()
 
     if df_long.empty:
-        raise ValueError(
-            "No data remaining after filtering."
-        )
+        raise ValueError("No data remaining after filtering.")
 
     # -- Set variable categorical order (by significance)
     df_long["variable"] = pd.Categorical(
@@ -827,8 +776,7 @@ def _annotate_boxplot_pvals(
     top_vars,
     pval_fontsize,
 ):
-    """
-    Add per-variable p-value text annotations to boxplot axes.
+    """Add per-variable p-value text annotations to boxplot axes.
 
     Computes a uniform label y-position above the data
     range and annotates each variable's p-value centered
@@ -850,14 +798,8 @@ def _annotate_boxplot_pvals(
         Font size for the annotation text.
     """
     all_intensity = df_long["intensity"].to_numpy()
-    finite_intensity = all_intensity[
-        np.isfinite(all_intensity)
-    ]
-    data_max = (
-        float(finite_intensity.max())
-        if finite_intensity.size
-        else 0.0
-    )
+    finite_intensity = all_intensity[np.isfinite(all_intensity)]
+    data_max = float(finite_intensity.max()) if finite_intensity.size else 0.0
     y_min, y_max = _ax.get_ylim()
     span = y_max - y_min if y_max != y_min else 1.0
     label_y = data_max + 0.05 * span
@@ -896,8 +838,8 @@ def differential_abundance_box(
     save: str | Path | None = None,
     ax: bool | None = None,
 ) -> Axes | None:
-    """
-    Display boxplots of intensities for top differentially abundant variables.
+    """Display boxplots of intensities for top differentially abundant
+    variables.
 
     For each of the top N differentially abundant variables (sorted by
     p-value), shows side-by-side boxplots comparing intensities across
@@ -997,8 +939,12 @@ def differential_abundance_box(
     # -- Validate inputs
     results, group_by, layer, pval_col, top_n = (
         _validate_diff_abundance_inputs(
-            adata, varm_slot, top_n, layer,
-            show_pval, pval_fontsize,
+            adata,
+            varm_slot,
+            top_n,
+            layer,
+            show_pval,
+            pval_fontsize,
         )
     )
 
@@ -1009,8 +955,14 @@ def differential_abundance_box(
     # -- Prepare data
     df_long, top_vars, group_order, pvals_to_plot = (
         _prepare_diff_abundance_data(
-            adata, results, top_n, pval_col,
-            group_by, layer, order, show_pval,
+            adata,
+            results,
+            top_n,
+            pval_col,
+            group_by,
+            layer,
+            order,
+            show_pval,
         )
     )
 
@@ -1018,7 +970,8 @@ def differential_abundance_box(
     palette = None
     if color_scheme is not None:
         colors = _resolve_color_scheme(
-            color_scheme, group_order,
+            color_scheme,
+            group_order,
         )
         if colors:
             palette = dict(zip(group_order, colors))
@@ -1034,15 +987,18 @@ def differential_abundance_box(
         hue_order=group_order,
         palette=palette,
         gap=0.1,
-        flierprops={'marker': '.', 'markersize': 1},
+        flierprops={"marker": ".", "markersize": 1},
         ax=_ax,
     )
 
     # -- Annotate p-values
     if show_pval and pvals_to_plot is not None:
         _annotate_boxplot_pvals(
-            _ax, df_long, pvals_to_plot,
-            top_vars, pval_fontsize,
+            _ax,
+            df_long,
+            pvals_to_plot,
+            top_vars,
+            pval_fontsize,
         )
 
     # -- Style axes
@@ -1056,7 +1012,8 @@ def differential_abundance_box(
 
     if title is None:
         title = _stat_test_title_from_varm_slot(
-            adata, varm_slot,
+            adata,
+            varm_slot,
         )
     _ax.set_title(title)
 

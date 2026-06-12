@@ -14,6 +14,7 @@ from adjustText import adjust_text
 
 from proteopy.utils.anndata import check_proteodata
 
+
 def proteoform_scores(
     adata: ad.AnnData,
     *,
@@ -259,18 +260,15 @@ def proteoform_scores(
         if protein_id_key is not None:
             if protein_id_key not in adata.var.columns:
                 raise ValueError(
-                    f"Column '{protein_id_key}' not found "
-                    "in `adata.var`."
+                    f"Column '{protein_id_key}' not found " "in `adata.var`."
                 )
             # Validate 1-to-1 mapping.
             mapping_df = adata.var[
                 ["protein_id", protein_id_key]
             ].drop_duplicates()
-            dup_proteins = (
-                mapping_df
-                .groupby("protein_id")[protein_id_key]
-                .nunique()
-            )
+            dup_proteins = mapping_df.groupby("protein_id")[
+                protein_id_key
+            ].nunique()
             bad = dup_proteins[dup_proteins > 1]
             if not bad.empty:
                 raise ValueError(
@@ -295,8 +293,7 @@ def proteoform_scores(
             # highlight_prots may contain protein_id_key
             # values — resolve them to protein_ids.
             known_labels = set(mapping_df[protein_id_key])
-            resolved_pids = set()
-            unknown = (set(highlight_prots) - known_labels)
+            unknown = set(highlight_prots) - known_labels
             if unknown:
                 raise ValueError(
                     "The following values from "
@@ -304,9 +301,7 @@ def proteoform_scores(
                     f"`adata.var['{protein_id_key}']`: "
                     f"{sorted(unknown)}"
                 )
-            highlight_pids = {
-                label_to_pid[v] for v in highlight_prots
-            }
+            highlight_pids = {label_to_pid[v] for v in highlight_prots}
         else:
             pid_to_label = None
             known_ids = set(adata.var["protein_id"])
@@ -377,9 +372,7 @@ def proteoform_scores(
 
     if save is not None:
         if not isinstance(save, (str, Path)):
-            raise TypeError(
-                "`save` must be a path-like object or None."
-            )
+            raise TypeError("`save` must be a path-like object or None.")
         _fig.savefig(save, dpi=300, bbox_inches="tight")
     if show:
         plt.show()

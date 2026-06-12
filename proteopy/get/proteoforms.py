@@ -17,8 +17,7 @@ def proteoforms_df(
     pval_threshold: float | None = None,
     pval_adj_threshold: float | None = None,
 ) -> pd.DataFrame:
-    """
-    Return proteoform peptide assignment results as a tidy dataframe.
+    """Return proteoform peptide assignment results as a tidy dataframe.
 
     Parameters
     ----------
@@ -61,7 +60,8 @@ def proteoforms_df(
     ]
 
     missing_columns = [
-        column for column in proteoform_columns
+        column
+        for column in proteoform_columns
         if column not in adata.var.columns
     ]
 
@@ -114,10 +114,9 @@ def proteoforms_df(
         ]
 
     if only_proteins:
-        proteoforms = (
-            proteoforms.drop(columns=["peptide_id", "cluster_id"])
-            .drop_duplicates(ignore_index=True)
-        )
+        proteoforms = proteoforms.drop(
+            columns=["peptide_id", "cluster_id"]
+        ).drop_duplicates(ignore_index=True)
         return proteoforms
 
     return proteoforms.reset_index(drop=True)

@@ -1,6 +1,4 @@
-"""
-Utilities for downloading contaminant FASTA files.
-"""
+"""Utilities for downloading contaminant FASTA files."""
 
 from pathlib import Path
 from urllib.request import urlopen
@@ -35,10 +33,8 @@ def check_uniprot_accession_nr(accession: str) -> None:
 
 
 def _format_frankenfield_header(header: str) -> str:
-    """
-    Validate Frankenfield2022 headers; enforce three pipe-separated
-    fields and UniProt-style accession.
-    """
+    """Validate Frankenfield2022 headers; enforce three pipe-separated
+    fields and UniProt-style accession."""
     parts = header.split(maxsplit=1)
     id_part = parts[0]
     desc = parts[1] if len(parts) > 1 else ""
@@ -65,9 +61,7 @@ def _format_fasta(
     destination_path: Path,
     formatter: Callable[[str], str],
 ) -> None:
-    """
-    Rewrite FASTA headers using a formatter callable.
-    """
+    """Rewrite FASTA headers using a formatter callable."""
     with (
         open(source_path, encoding="utf-8") as src,
         open(
@@ -86,9 +80,7 @@ def _format_fasta(
 
 
 def _download(url: str, destination: Path) -> None:
-    """
-    Stream ``url`` to ``destination`` with a bounded timeout.
-    """
+    """Stream ``url`` to ``destination`` with a bounded timeout."""
     with (
         urlopen(url, timeout=_DOWNLOAD_TIMEOUT_SECONDS) as response,
         open(
@@ -100,10 +92,8 @@ def _download(url: str, destination: Path) -> None:
 
 
 def _validate_fasta(path: Path) -> None:
-    """
-    Verify ``path`` is non-empty and starts (after blank lines) with a
-    FASTA header line beginning with ``>``.
-    """
+    """Verify ``path`` is non-empty and starts (after blank lines) with
+    a FASTA header line beginning with ``>``."""
     with open(path, "rb") as src:
         for raw in src:
             line = raw.strip()
@@ -123,9 +113,7 @@ def _resolve_destination(
     candidate_path: Path,
     use_digest: bool,
 ) -> Path:
-    """
-    Resolve final destination, optionally appending an MD5 digest.
-    """
+    """Resolve final destination, optionally appending an MD5 digest."""
     if not use_digest:
         return base_destination
     digest = _md5_id(candidate_path)
@@ -135,9 +123,8 @@ def _resolve_destination(
 
 
 def _atomic_move(candidate_path: Path, destination: Path) -> None:
-    """
-    Move ``candidate_path`` to ``destination`` via same-fs staging.
-    """
+    """Move ``candidate_path`` to ``destination`` via same-fs
+    staging."""
     staging = destination.parent / f".{destination.name}.tmp"
     try:
         shutil.copy2(candidate_path, staging)
@@ -147,9 +134,8 @@ def _atomic_move(candidate_path: Path, destination: Path) -> None:
 
 
 def _check_no_existing(path: Path, force: bool) -> None:
-    """
-    Raise ``FileExistsError`` if ``path`` exists and ``force`` is False.
-    """
+    """Raise ``FileExistsError`` if ``path`` exists and ``force`` is
+    False."""
     if path.exists() and not force:
         raise FileExistsError(
             f"File already exists at {path}. Use force=True to overwrite.",
@@ -162,9 +148,8 @@ def _fetch_candidate(
     formatter: Callable[[str], str] | None,
     verbose: bool,
 ) -> Path:
-    """
-    Download FASTA into ``tmp_dir`` and apply ``formatter`` if given.
-    """
+    """Download FASTA into ``tmp_dir`` and apply ``formatter`` if
+    given."""
     raw_path = Path(tmp_dir) / "raw"
     _download(url, raw_path)
     _validate_fasta(raw_path)

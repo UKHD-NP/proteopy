@@ -19,8 +19,7 @@ from proteopy.utils.parsers import (
 
 
 def _compute_wcss(X: np.ndarray, labels: np.ndarray) -> float:
-    """
-    Compute within-cluster sum of squares.
+    """Compute within-cluster sum of squares.
 
     Parameters
     ----------
@@ -45,8 +44,8 @@ def _compute_wcss(X: np.ndarray, labels: np.ndarray) -> float:
 
 def hclustv_silhouette(
     adata: ad.AnnData,
-    linkage_key: str = 'auto',
-    values_key: str = 'auto',
+    linkage_key: str = "auto",
+    values_key: str = "auto",
     k: int = 15,
     figsize: tuple[float, float] = (6.0, 4.0),
     show: bool = True,
@@ -54,8 +53,7 @@ def hclustv_silhouette(
     save: str | Path | None = None,
     verbose: bool = True,
 ) -> Axes | None:
-    """
-    Plot silhouette scores for hierarchical clustering.
+    """Plot silhouette scores for hierarchical clustering.
 
     Evaluates clustering quality by computing the average silhouette
     score for cluster counts ranging from 2 to ``k``. Higher silhouette
@@ -114,10 +112,7 @@ def hclustv_silhouette(
         raise ValueError("k must be at least 2 to compute silhouette scores.")
 
     linkage_key, values_key = _resolve_hclustv_keys(
-        adata,
-        linkage_key,
-        values_key,
-        verbose
+        adata, linkage_key, values_key, verbose
     )
 
     Z = adata.uns[linkage_key]
@@ -182,8 +177,8 @@ def hclustv_silhouette(
 
 def hclustv_elbow(
     adata: ad.AnnData,
-    linkage_key: str = 'auto',
-    values_key: str = 'auto',
+    linkage_key: str = "auto",
+    values_key: str = "auto",
     k: int = 15,
     figsize: tuple[float, float] = (6.0, 4.0),
     show: bool = True,
@@ -191,8 +186,8 @@ def hclustv_elbow(
     save: str | Path | None = None,
     verbose: bool = True,
 ) -> Axes | None:
-    """
-    Plot within-cluster sum of squares (elbow plot) for hierarchical clustering.
+    """Plot within-cluster sum of squares (elbow plot) for hierarchical
+    clustering.
 
     Evaluates clustering by computing WCSS for cluster counts ranging from
     1 to ``k``. The "elbow" point where WCSS reduction diminishes suggests
@@ -251,10 +246,7 @@ def hclustv_elbow(
         raise ValueError("k must be at least 1 to compute WCSS.")
 
     linkage_key, values_key = _resolve_hclustv_keys(
-        adata,
-        linkage_key,
-        values_key,
-        verbose
+        adata, linkage_key, values_key, verbose
     )
 
     Z = adata.uns[linkage_key]
@@ -320,7 +312,7 @@ def hclustv_elbow(
 def hclustv_profile_intensities(
     adata: ad.AnnData,
     profiles: str | list[str] | None = None,
-    profile_key: str = 'auto',
+    profile_key: str = "auto",
     group_by: str | pd.Series | dict | None = None,
     sort_by: str | pd.Series | dict | None = None,
     order: list[str] | None = None,
@@ -331,10 +323,10 @@ def hclustv_profile_intensities(
     xlabel_rotation: float = 45,
     sort_by_label_rotation: float = 0,
     ylabel: str = "Intensity",
-    marker: str = 'o',
+    marker: str = "o",
     markersize: float = 6,
     linewidth: float = 1.5,
-    errorbar: str | tuple = 'se',
+    errorbar: str | tuple = "se",
     color: str | None = None,
     figsize: tuple[float, float] | None = None,
     show: bool = True,
@@ -342,8 +334,7 @@ def hclustv_profile_intensities(
     save: str | Path | None = None,
     verbose: bool = True,
 ) -> list[Axes] | None:
-    """
-    Plot cluster profile intensities across observations.
+    """Plot cluster profile intensities across observations.
 
     Displays line plots for each cluster profile showing how intensity
     varies across observations. When ``group_by`` is specified, observations
@@ -463,9 +454,7 @@ def hclustv_profile_intensities(
     check_proteodata(adata)
 
     # Resolve profiles key
-    resolved_key = _resolve_hclustv_profile_key(
-        adata, profile_key, verbose
-    )
+    resolved_key = _resolve_hclustv_profile_key(adata, profile_key, verbose)
 
     profiles_df = adata.uns[resolved_key]
 
@@ -484,7 +473,7 @@ def hclustv_profile_intensities(
     # Determine which profiles to plot
     if profiles is None:
         max_profiles = n_cols * n_rows
-        selected_profiles = available_profiles[:min(6, max_profiles)]
+        selected_profiles = available_profiles[: min(6, max_profiles)]
     elif isinstance(profiles, str):
         selected_profiles = [profiles]
     else:
@@ -547,12 +536,12 @@ def hclustv_profile_intensities(
                     f"{param_name} column '{param}' not found in adata.obs."
                 )
             obs_col_data = adata.obs[param]
-            if hasattr(obs_col_data, 'cat'):
+            if hasattr(obs_col_data, "cat"):
                 cat_order = obs_col_data.cat.categories.tolist()
             obs_in_profiles = profiles_df.index.intersection(adata.obs_names)
             mapping = adata.obs.loc[obs_in_profiles, param].to_dict()
         elif isinstance(param, pd.Series):
-            if hasattr(param, 'cat'):
+            if hasattr(param, "cat"):
                 cat_order = param.cat.categories.tolist()
             mapping = param.to_dict()
         elif isinstance(param, dict):
@@ -564,28 +553,30 @@ def hclustv_profile_intensities(
             )
         return mapping, cat_order
 
-    group_mapping, group_category_order = _extract_mapping(group_by, 'group_by')
-    sort_mapping, sort_category_order = _extract_mapping(sort_by, 'sort_by')
+    group_mapping, group_category_order = _extract_mapping(
+        group_by, "group_by"
+    )
+    sort_mapping, sort_category_order = _extract_mapping(sort_by, "sort_by")
 
     # Build long-form DataFrame for seaborn
     plot_data = profiles_df[selected_profiles].copy()
     plot_data = plot_data.reset_index()
     plot_data = plot_data.melt(
         id_vars=[plot_data.columns[0]],
-        var_name='profile',
-        value_name='intensity',
+        var_name="profile",
+        value_name="intensity",
     )
     obs_col = plot_data.columns[0]
 
     # Determine x variable and apply grouping/sorting
     if group_mapping is not None:
-        plot_data['group'] = plot_data[obs_col].map(group_mapping)
-        plot_data = plot_data.dropna(subset=['group'])
-        x_var = 'group'
+        plot_data["group"] = plot_data[obs_col].map(group_mapping)
+        plot_data = plot_data.dropna(subset=["group"])
+        x_var = "group"
         category_order = group_category_order
     elif sort_mapping is not None:
-        plot_data['_sort_group'] = plot_data[obs_col].map(sort_mapping)
-        plot_data = plot_data.dropna(subset=['_sort_group'])
+        plot_data["_sort_group"] = plot_data[obs_col].map(sort_mapping)
+        plot_data = plot_data.dropna(subset=["_sort_group"])
         x_var = obs_col
         category_order = sort_category_order
     else:
@@ -597,38 +588,38 @@ def hclustv_profile_intensities(
         group_order = order
     elif category_order is not None:
         if group_mapping is not None:
-            present_values = set(plot_data['group'].unique())
+            present_values = set(plot_data["group"].unique())
         elif sort_mapping is not None:
-            present_values = set(plot_data['_sort_group'].unique())
+            present_values = set(plot_data["_sort_group"].unique())
         else:
             present_values = set()
         group_order = [c for c in category_order if c in present_values]
     elif group_mapping is not None:
-        group_order = sorted(plot_data['group'].unique())
+        group_order = sorted(plot_data["group"].unique())
     elif sort_mapping is not None:
-        group_order = sorted(plot_data['_sort_group'].unique())
+        group_order = sorted(plot_data["_sort_group"].unique())
     else:
         group_order = None
 
     # Filter to only include specified groups
     if group_order is not None:
         if group_mapping is not None:
-            plot_data = plot_data[plot_data['group'].isin(group_order)]
+            plot_data = plot_data[plot_data["group"].isin(group_order)]
         elif sort_mapping is not None:
-            plot_data = plot_data[plot_data['_sort_group'].isin(group_order)]
+            plot_data = plot_data[plot_data["_sort_group"].isin(group_order)]
 
     # Determine x-axis order
     if group_mapping is not None:
         x_order = group_order
     elif sort_mapping is not None:
         # Sort observations by their group membership
-        plot_data['_sort_group'] = pd.Categorical(
-            plot_data['_sort_group'], categories=group_order, ordered=True
+        plot_data["_sort_group"] = pd.Categorical(
+            plot_data["_sort_group"], categories=group_order, ordered=True
         )
         sorted_obs = (
-            plot_data[[obs_col, '_sort_group']]
+            plot_data[[obs_col, "_sort_group"]]
             .drop_duplicates()
-            .sort_values('_sort_group')[obs_col]
+            .sort_values("_sort_group")[obs_col]
             .tolist()
         )
         x_order = sorted_obs
@@ -663,16 +654,16 @@ def hclustv_profile_intensities(
 
     for idx, profile_name in enumerate(selected_profiles):
         _ax = axes_flat[idx]
-        profile_data = plot_data[plot_data['profile'] == profile_name]
+        profile_data = plot_data[plot_data["profile"] == profile_name]
 
         if group_mapping is not None:
             sns.lineplot(
                 data=profile_data,
                 x=x_var,
-                y='intensity',
-                err_style='bars',
+                y="intensity",
+                err_style="bars",
                 errorbar=errorbar,
-                err_kws={'capsize': 4},
+                err_kws={"capsize": 4},
                 marker=marker,
                 markersize=markersize,
                 linewidth=linewidth,
@@ -684,12 +675,12 @@ def hclustv_profile_intensities(
             sns.lineplot(
                 data=profile_data,
                 x=x_var,
-                y='intensity',
+                y="intensity",
                 errorbar=None,
                 marker=marker,
                 markersize=markersize,
                 linewidth=linewidth,
-                color=color if color else '#4C78A8',
+                color=color if color else "#4C78A8",
                 ax=_ax,
                 sort=False,
             )
@@ -711,7 +702,8 @@ def hclustv_profile_intensities(
                 for group_label in group_order:
                     # Find observations belonging to this group
                     group_obs = [
-                        obs for obs in x_order
+                        obs
+                        for obs in x_order
                         if sort_mapping.get(obs) == group_label
                     ]
                     if not group_obs:
@@ -726,18 +718,18 @@ def hclustv_profile_intensities(
                         center_x,
                         label_y,
                         str(group_label),
-                        ha='center',
-                        va='top',
+                        ha="center",
+                        va="top",
                         fontsize=9,
                         rotation=sort_by_label_rotation,
                     )
 
         # Set x-axis tick labels with rotation
-        _ax.tick_params(axis='x', rotation=xlabel_rotation)
+        _ax.tick_params(axis="x", rotation=xlabel_rotation)
         for label in _ax.get_xticklabels():
-            label.set_ha('right')
+            label.set_ha("right")
 
-        _ax.set_xlabel('')
+        _ax.set_xlabel("")
         _ax.set_ylabel(ylabel)
 
         # Set subplot title

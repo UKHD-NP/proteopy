@@ -1,9 +1,10 @@
-from pybtex.style.names import BaseNameStyle
-from pybtex.style.formatting.alpha import Style as _AlphaStyle
-from pybtex.richtext import Text
-import pybtex.plugin
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import pybtex.plugin
+from pybtex.richtext import Text
+from pybtex.style.formatting.alpha import Style as _AlphaStyle
+from pybtex.style.names import BaseNameStyle
 
 project = "ProteoPy"
 copyright = (
@@ -11,7 +12,7 @@ copyright = (
     "Ian Dirk Fichtner, Isabell Bludau"
 )
 author = (
-    "Ian Dirk Fichtner, Isabell Bludau, " "BludauLab Neuropathology Heidelberg"
+    "Ian Dirk Fichtner, Isabell Bludau, BludauLab Neuropathology Heidelberg"
 )
 version = "0.1.1"
 release = "0.1.1"

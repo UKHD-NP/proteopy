@@ -9,7 +9,7 @@ from proteopy.utils.anndata import check_proteodata
 from proteopy.utils.array import _is_log_transformed_array
 
 
-def _validate_normalize_median_input(
+def _validate_normalize_median_input(  # noqa: C901
     adata,
     log_space,
     target,

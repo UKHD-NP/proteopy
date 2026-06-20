@@ -7,6 +7,15 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- **Preprocessing** (`pr.pp`): `normalize_median()`
+  - now defaults to `log_space=True`
+  - renamed the `batch_id` parameter to `group_by`
+  - renamed the `zeros_to_na` parameter to `zero_to_na`, for
+    consistency with sibling functions
+  - no longer accepts sparse `.X` input
+
 ## [0.1.1] - 2025-03-24
 
 ### Added

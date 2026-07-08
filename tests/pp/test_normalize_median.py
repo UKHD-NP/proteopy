@@ -1,4 +1,28 @@
-"""Tests for median normalization preprocessing."""
+"""Contract tests for median normalization preprocessing.
+
+The suite is organized by banner sections so specific behavior is easy
+to locate:
+
+1. Log-space normalization: additive shifts, target handling, and
+   factor values.
+2. Factor storage and schema: `.uns` keys and factor DataFrame columns.
+3. Linear-space normalization: multiplicative scaling and zero-median
+   failure behavior.
+4. Grouped normalization: independent targets and factors per group.
+5. Edge cases: single samples, equal medians, interpolated medians,
+   zeros, NaNs, all-NaN samples, and copy behavior.
+6. Input-space detection: matching/mismatching detected and requested
+   spaces, including `force=True` overrides.
+7. Verbose validation: reported space, storage location, all-NaN
+   samples, and group counts.
+8. Input validation: argument types, invalid combinations, sparse
+   input, and proteodata checks.
+
+Small protein-level AnnData examples keep expected matrices and factors
+explicit. Tests parametrize `inplace` where mutation and copy behavior
+both matter, and private helper behavior is exercised only through
+`normalize_median`.
+"""
 
 import numpy as np
 import pandas as pd
@@ -440,6 +464,37 @@ class TestNormalizeMedian:
             [1.0, -1.0],
         )
 
+    @pytest.mark.parametrize("inplace", [True, False])
+    def test_target_max_ignores_all_nan_sample_median(self, inplace):
+        adata = self.make_protein_adata(
+            [
+                [np.nan, np.nan, np.nan],
+                [18.0, 20.0, 22.0],
+                [20.0, 22.0, 24.0],
+            ]
+        )
+
+        result, factors = self.normalize_and_collect(
+            adata,
+            inplace,
+            log_space=True,
+            target="max",
+        )
+
+        expected = np.array(
+            [
+                [np.nan, np.nan, np.nan],
+                [20.0, 22.0, 24.0],
+                [20.0, 22.0, 24.0],
+            ]
+        )
+        np.testing.assert_allclose(result.X, expected)
+        assert np.isnan(factors.loc[0, "shift_log"])
+        np.testing.assert_allclose(
+            factors.loc[1:, "shift_log"].to_numpy(),
+            [2.0, 0.0],
+        )
+
     def test_inplace_false_returns_independent_copy_and_factors(self):
         adata = self.make_protein_adata(
             [
@@ -461,7 +516,7 @@ class TestNormalizeMedian:
         adata_out.X[0, 0] = -100.0
         assert adata.X[0, 0] == 18.0
 
-    # ── F. Log-space detection ───────────────────────────────────────
+    # ── F. Input-space detection ─────────────────────────────────────
 
     def test_logspace_detected_allows_log_space_without_force(self):
         adata = self.make_protein_adata(
@@ -478,6 +533,22 @@ class TestNormalizeMedian:
 
         assert "normalization_factors" in adata.uns
 
+    def test_linear_space_detected_allows_linear_space_without_force(self):
+        adata = self.make_protein_adata(
+            [
+                [100.0, 200.0, 300.0],
+                [200.0, 400.0, 600.0],
+            ]
+        )
+
+        normalize_median(
+            adata,
+            log_space=False,
+        )
+
+        assert "normalization_factors" in adata.uns
+        assert "scale_linear" in adata.uns["normalization_factors"].columns
+
     def test_raises_when_log_space_true_for_linear_like_data(self):
         adata = self.make_protein_adata(
             [
@@ -491,6 +562,32 @@ class TestNormalizeMedian:
                 adata,
                 log_space=True,
             )
+
+    def test_force_allows_linear_detection_mismatch(self):
+        adata = self.make_protein_adata(
+            [
+                [100.0, 200.0, 300.0],
+                [200.0, 400.0, 600.0],
+            ]
+        )
+
+        normalize_median(
+            adata,
+            log_space=True,
+            force=True,
+        )
+
+        expected = np.array(
+            [
+                [200.0, 300.0, 400.0],
+                [100.0, 300.0, 500.0],
+            ]
+        )
+        np.testing.assert_allclose(adata.X, expected)
+        np.testing.assert_allclose(
+            adata.uns["normalization_factors"]["shift_log"],
+            [100.0, -100.0],
+        )
 
     # ── G. Verbose output ────────────────────────────────────────────
 
@@ -729,19 +826,25 @@ class TestNormalizeMedian:
             [20.0 / 19.0, 20.0 / 21.0],
         )
 
-    def test_raises_for_zero_median_in_linear_space(self):
+    @pytest.mark.parametrize("inplace", [True, False])
+    def test_raises_for_zero_median_in_linear_space(self, inplace):
         adata = self.make_protein_adata(
             [
                 [0.0, 0.0, 0.0],
                 [100.0, 200.0, 300.0],
             ]
         )
+        original = adata.X.copy()
 
         with pytest.raises(ValueError, match="sample\\(s\\): s0"):
             normalize_median(
                 adata,
                 log_space=False,
+                inplace=inplace,
             )
+
+        np.testing.assert_allclose(adata.X, original)
+        assert "normalization_factors" not in adata.uns
 
     def test_raises_when_no_finite_values_are_available(self):
         adata = self.make_protein_adata(

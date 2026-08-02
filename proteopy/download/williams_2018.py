@@ -7,16 +7,13 @@ from proteopy.utils.string import detect_separator_from_extension
 
 
 _DEFAULT_INTENSITIES = (
-    "williams-2018_ms-proteomics"
-    "_mouse-tissue_intensities.tsv"
+    "williams-2018_ms-proteomics" "_mouse-tissue_intensities.tsv"
 )
 _DEFAULT_VAR = (
-    "williams-2018_ms-proteomics"
-    "_mouse-tissue_peptide-annotation.tsv"
+    "williams-2018_ms-proteomics" "_mouse-tissue_peptide-annotation.tsv"
 )
 _DEFAULT_SAMPLE = (
-    "williams-2018_ms-proteomics"
-    "_mouse-tissue_sample-annotation.tsv"
+    "williams-2018_ms-proteomics" "_mouse-tissue_sample-annotation.tsv"
 )
 
 
@@ -25,6 +22,7 @@ def _check_williams_2018_types(
     var_annotation_path,
     sample_annotation_path,
     sep,
+    zero_to_na,
     fill_na,
     force,
 ):
@@ -36,27 +34,27 @@ def _check_williams_2018_types(
     ):
         if not isinstance(value, (str, Path)):
             raise TypeError(
-                f"{name} must be str or Path, "
-                f"got {type(value).__name__}"
+                f"{name} must be str or Path, " f"got {type(value).__name__}"
             )
     if sep is not None and not isinstance(sep, str):
         raise TypeError(
-            f"sep must be str or None, "
-            f"got {type(sep).__name__}"
+            f"sep must be str or None, " f"got {type(sep).__name__}"
+        )
+    if not isinstance(zero_to_na, bool):
+        raise TypeError(
+            f"zero_to_na must be bool, " f"got {type(zero_to_na).__name__}"
         )
     if fill_na is not None and (
-        isinstance(fill_na, bool)
-        or not isinstance(fill_na, (int, float))
+        isinstance(fill_na, bool) or not isinstance(fill_na, (int, float))
     ):
         raise TypeError(
             f"fill_na must be float, int, or None, "
             f"got {type(fill_na).__name__}"
         )
+    if zero_to_na and fill_na is not None:
+        raise ValueError("`zero_to_na` and `fill_na` are mutually exclusive.")
     if not isinstance(force, bool):
-        raise TypeError(
-            f"force must be bool, "
-            f"got {type(force).__name__}"
-        )
+        raise TypeError(f"force must be bool, " f"got {type(force).__name__}")
 
 
 def _check_williams_2018_paths(
@@ -101,6 +99,7 @@ def williams_2018(
     sample_annotation_path: str | Path = _DEFAULT_SAMPLE,
     *,
     sep: str | None = None,
+    zero_to_na: bool = False,
     fill_na: float | int | None = None,
     force: bool = False,
 ) -> None:
@@ -135,9 +134,13 @@ def williams_2018(
         separator is inferred from each file extension via
         ``detect_separator_from_extension()``
         (``.tsv`` → tab, ``.csv`` → comma).
+    zero_to_na : bool, optional
+        If True, zeros in the intensity matrix are treated as missing
+        values (NaN). Mutually exclusive with ``fill_na``.
     fill_na : float | int | None, optional
         If not ``None``, replace NaN values in the long-format
-        intensities DataFrame with this value before saving.
+        intensities DataFrame with this value before saving. Mutually
+        exclusive with ``zero_to_na``.
     force : bool, optional
         If ``True``, overwrite existing files at the output
         paths. Otherwise, raise ``FileExistsError`` when a
@@ -171,6 +174,7 @@ def williams_2018(
         var_annotation_path,
         sample_annotation_path,
         sep,
+        zero_to_na,
         fill_na,
         force,
     )
@@ -183,7 +187,7 @@ def williams_2018(
         )
     )
 
-    adata = _load_williams_2018()
+    adata = _load_williams_2018(zero_to_na=zero_to_na)
 
     # Auto-detect separator from file extension if not provided
     if sep is None:
@@ -222,33 +226,31 @@ def williams_2018(
         intensities_path,
         sep=sep_intensities,
         index=False,
-        lineterminator='\n',
+        lineterminator="\n",
     )
 
     # Save .var annotation
-    df_var = adata.var[
-        ["peptide_id", "protein_id", "gene_id"]
-    ].copy()
+    df_var = adata.var[["peptide_id", "protein_id", "gene_id"]].copy()
     var_annotation_path.parent.mkdir(
-        parents=True, exist_ok=True,
+        parents=True,
+        exist_ok=True,
     )
     df_var.to_csv(
         var_annotation_path,
         sep=sep_var,
         index=False,
-        lineterminator='\n',
+        lineterminator="\n",
     )
 
     # Save .obs annotation
-    df_obs = adata.obs[
-        ["sample_id", "tissue", "mouse_id"]
-    ].copy()
+    df_obs = adata.obs[["sample_id", "tissue", "mouse_id"]].copy()
     sample_annotation_path.parent.mkdir(
-        parents=True, exist_ok=True,
+        parents=True,
+        exist_ok=True,
     )
     df_obs.to_csv(
         sample_annotation_path,
         sep=sep_sample,
         index=False,
-        lineterminator='\n',
+        lineterminator="\n",
     )

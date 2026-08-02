@@ -1,4 +1,5 @@
 """Tests for proteopy.datasets.williams_2018."""
+
 import hashlib
 
 import anndata as ad
@@ -13,27 +14,32 @@ from proteopy.datasets import williams_2018
 _EXPECTED_SHAPE = (40, 32690)
 
 _EXPECTED_X_HASH = (
-    "a2406828c5c11c28c566ac2bf9f694ac"
-    "eb90550ab37d91f085746b8b7fddf2c5"
+    "a2406828c5c11c28c566ac2bf9f694ac" "eb90550ab37d91f085746b8b7fddf2c5"
 )
 _EXPECTED_OBS_NAMES_HASH = (
-    "4a510a6124dd8b917c42f4270353aee2"
-    "0a11fd97d0bbd38200319af5f6b602ee"
+    "4a510a6124dd8b917c42f4270353aee2" "0a11fd97d0bbd38200319af5f6b602ee"
 )
 _EXPECTED_VAR_NAMES_HASH = (
-    "35bac1a175466852feb110553409be8c"
-    "f56c6564aaa73a75e4dc910b1cbb2d0e"
+    "35bac1a175466852feb110553409be8c" "f56c6564aaa73a75e4dc910b1cbb2d0e"
 )
 
 _EXPECTED_OBS_COLUMNS = ["tissue", "mouse_id", "sample_id"]
 _EXPECTED_VAR_COLUMNS = ["protein_id", "gene_id", "peptide_id"]
 _EXPECTED_TISSUES = ["BAT", "Brain", "Heart", "Liver", "Quad"]
 _EXPECTED_MOUSE_IDS = [
-    "101", "45", "66", "68", "73", "80", "C57", "DBA",
+    "101",
+    "45",
+    "66",
+    "68",
+    "73",
+    "80",
+    "C57",
+    "DBA",
 ]
 
 
 # -- Fixtures --------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def adata():
@@ -42,6 +48,7 @@ def adata():
 
 
 # -- Helpers ---------------------------------------------------------
+
 
 def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
@@ -59,6 +66,7 @@ def _encode_index(index) -> bytes:
 
 # -- Content tests ---------------------------------------------------
 
+
 class TestWilliams2018:
     """Verify structure and content of the williams_2018 dataset."""
 
@@ -75,32 +83,20 @@ class TestWilliams2018:
         assert adata.var.columns.tolist() == _EXPECTED_VAR_COLUMNS
 
     def test_tissues(self, adata):
-        assert (
-            sorted(adata.obs["tissue"].unique())
-            == _EXPECTED_TISSUES
-        )
+        assert sorted(adata.obs["tissue"].unique()) == _EXPECTED_TISSUES
 
     def test_mouse_ids(self, adata):
-        assert (
-            sorted(adata.obs["mouse_id"].unique())
-            == _EXPECTED_MOUSE_IDS
-        )
+        assert sorted(adata.obs["mouse_id"].unique()) == _EXPECTED_MOUSE_IDS
 
     def test_eight_mice_per_tissue(self, adata):
         counts = adata.obs.groupby("tissue").size()
         assert (counts == 8).all()
 
     def test_obs_names_match_sample_id(self, adata):
-        assert (
-            list(adata.obs_names)
-            == list(adata.obs["sample_id"])
-        )
+        assert list(adata.obs_names) == list(adata.obs["sample_id"])
 
     def test_var_names_match_peptide_id(self, adata):
-        assert (
-            list(adata.var_names)
-            == list(adata.var["peptide_id"])
-        )
+        assert list(adata.var_names) == list(adata.var["peptide_id"])
 
     def test_x_dtype(self, adata):
         assert adata.X.dtype == np.float64

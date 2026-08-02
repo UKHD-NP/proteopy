@@ -16,6 +16,7 @@ _KNOWN_HASH = (
 
 
 def williams_2018(
+    zero_to_na: bool = False,
     fill_na: float | int | None = None,
 ) -> ad.AnnData:
     """Load Williams 2018 mouse multi-tissue proteomics dataset.
@@ -29,6 +30,21 @@ def williams_2018(
     intensities from different charge states are summed
     per peptide sequence. By default, missing values
     are represented as ``np.nan``.
+
+    Missing values and zeros are kept distinct, because
+    they mean different things:
+
+    - A **zero** is a measurement, and is preserved
+      as ``0.0``.
+    - A **missing** value is the absence of one.
+      Charge-state summation propagates it, so a peptide
+      is quantified in a sample only if *every* one of
+      its charge states was quantified there; a
+      partially measured group yields ``np.nan`` rather
+      than a partial total.
+
+    Pass ``zero_to_na=True`` to treat zeros as missing
+    instead.
 
     Sample annotation (``.obs``) includes:
         - ``sample_id``: Unique sample identifier
@@ -45,9 +61,14 @@ def williams_2018(
 
     Parameters
     ----------
+    zero_to_na : bool, optional
+        If True, zeros in ``.X`` are treated as missing
+        values (NaN). Mutually exclusive with
+        ``fill_na``.
     fill_na : float | int | None, optional
         If not ``None``, replace ``np.nan`` in ``.X``
-        with this value.
+        with this value. Mutually exclusive with
+        ``zero_to_na``.
 
     Returns
     -------
@@ -78,6 +99,10 @@ def williams_2018(
        Cellular Proteomics, 2018, 17(9):1766-1777.
        DOI: 10.1074/mcp.RA118.000554.
     """
+    if not isinstance(zero_to_na, bool):
+        raise TypeError(
+            f"zero_to_na must be bool, got {type(zero_to_na).__name__}"
+        )
     if fill_na is not None and not isinstance(
         fill_na,
         (int, float),
@@ -86,6 +111,8 @@ def williams_2018(
             f"fill_na must be float, int, or None, "
             f"got {type(fill_na).__name__}"
         )
+    if zero_to_na and fill_na is not None:
+        raise ValueError("`zero_to_na` and `fill_na` are mutually exclusive.")
 
     url = (
         "https://ars.els-cdn.com/content/image/"
@@ -159,16 +186,35 @@ def williams_2018(
             f"{inconsistent.index.tolist()}"
         )
 
-    # Sum intensities across charge states of the same peptide
+    # Sum intensities across charge states of the same peptide.
+    #
+    # The sum PROPAGATES missing values: a peptide is quantified in a
+    # sample only if every one of its charge states was quantified
+    # there. `DataFrameGroupBy.sum()` cannot express this on its own --
+    # it has no `skipna` argument, and `min_count` governs only the
+    # all-missing case -- so the sum is masked on the count.
+    #
+    # Both halves matter, and neither is sufficient alone:
+    #
+    #   min_count=1     without it, a group whose charge states are ALL
+    #                   missing sums to 0.0, inventing a measurement
+    #                   that was never made.
+    #   .where(complete) without it, a PARTIALLY measured group reports
+    #                   a partial total as though it were complete --
+    #                   e.g. [NaN, 5000] -> 5000.
     sample_cols = [
         c
         for c in df.columns
         if c not in ("peptide_id", "protein_id", "gene_id")
     ]
     df[sample_cols] = df[sample_cols].astype(float)
-    var = df.groupby("peptide_id")[["protein_id", "gene_id"]].first()
+    grouped = df.groupby("peptide_id")
+    var = grouped[["protein_id", "gene_id"]].first()
     var["peptide_id"] = var.index
-    X = df.groupby("peptide_id")[sample_cols].sum().values.T
+
+    intensities = grouped[sample_cols]
+    complete = intensities.count().eq(grouped.size(), axis=0)
+    X = intensities.sum(min_count=1).where(complete).values.T
 
     # Build obs annotation with tissue and mouse_id
     obs = pd.DataFrame({"sample_id": sample_cols})
@@ -193,9 +239,16 @@ def williams_2018(
     obs.index.name = None
     obs["sample_id"] = obs.index
 
-    # Construct anndata
+    # Construct anndata.
+    #
+    # NOTE: by default zeros are NOT coerced to NaN. A zero in this
+    # dataset is a measurement -- the peptide was looked for and its
+    # intensity was zero -- and is not interchangeable with "not
+    # measured". 13,547 of the 1,307,600 cells are genuine zeros.
     adata = ad.AnnData(X=X, obs=obs, var=var)
-    adata.X[adata.X == 0] = np.nan
+
+    if zero_to_na:
+        adata.X[adata.X == 0] = np.nan
 
     if fill_na is not None:
         adata.X[np.isnan(adata.X)] = fill_na

@@ -7,8 +7,29 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- **Datasets** (`pr.datasets`) and **Download** (`pr.download`):
+  `williams_2018()` no longer conflates measured zeros with missing
+  values. Three defects, each masked by another:
+  - zeros in `.X` were coerced to `np.nan`, discarding 13,547 genuine
+    measurements
+  - charge-state summation used pandas' default `min_count=0`, so a
+    group with no measurements at all summed to `0.0`, inventing 3,324
+  - the same summation skipped `NaN` inside a *partially* measured
+    group, reporting a partial total as complete for 260 cells
+  - **this changes `.X`**, and therefore the output of
+    `pr.download.williams_2018()`. Verified against the PRIDE deposit
+    used by the original publication: the two are now bit-identical
+    with an identical missingness pattern.
+
 ### Changed
 
+- **Datasets** (`pr.datasets`) and **Download** (`pr.download`):
+  `williams_2018()` gained a `zero_to_na` parameter (default `False`),
+  for consistency with sibling functions. It is mutually exclusive
+  with `fill_na`. Note it governs zero semantics only and does not
+  restore the summation defects above.
 - **Preprocessing** (`pr.pp`): `normalize_median()`
   - now defaults to `log_space=True`
   - renamed the `batch_id` parameter to `group_by`

@@ -14,8 +14,16 @@ from proteopy.datasets import williams_2018
 _EXPECTED_SHAPE = (40, 32690)
 
 _EXPECTED_X_HASH = (
-    "a2406828c5c11c28c566ac2bf9f694ac" "eb90550ab37d91f085746b8b7fddf2c5"
+    "2f319804269569ce370f2f3477e3d957" "9118e389a07e27d06dfc2a7a798dfbc3"
 )
+
+# Cell-state census of .X. These are pinned individually as well as via
+# the hash, because the hash says only THAT the matrix changed, while
+# these say WHAT it should contain -- and the distinction between a
+# zero and a missing value is the thing most easily broken here.
+_EXPECTED_N_NAN = 3584
+_EXPECTED_N_ZERO = 13547
+_EXPECTED_N_POSITIVE = 1290469
 _EXPECTED_OBS_NAMES_HASH = (
     "4a510a6124dd8b917c42f4270353aee2" "0a11fd97d0bbd38200319af5f6b602ee"
 )
@@ -123,3 +131,36 @@ class TestWilliams2018:
     def test_fill_na_string_raises(self):
         with pytest.raises(TypeError, match="fill_na must be"):
             williams_2018(fill_na="0")
+
+    def test_zeros_are_preserved_not_coerced_to_nan(self, adata):
+        """A zero is a measurement and must survive as 0.0."""
+        assert (adata.X == 0).sum() == _EXPECTED_N_ZERO
+
+    def test_nan_count(self, adata):
+        assert np.isnan(adata.X).sum() == _EXPECTED_N_NAN
+
+    def test_positive_count(self, adata):
+        assert (adata.X > 0).sum() == _EXPECTED_N_POSITIVE
+
+    def test_cell_states_are_exhaustive(self, adata):
+        """No negative intensities, and the three states tile .X."""
+        assert (adata.X < 0).sum() == 0
+        assert (
+            _EXPECTED_N_POSITIVE + _EXPECTED_N_ZERO + _EXPECTED_N_NAN
+            == adata.X.size
+        )
+
+    def test_zero_to_na_converts_zeros(self):
+        """Opt-in flag for callers who want zeros treated as missing."""
+        result = williams_2018(zero_to_na=True)
+        assert (result.X == 0).sum() == 0
+        assert np.isnan(result.X).sum() == _EXPECTED_N_NAN + _EXPECTED_N_ZERO
+        assert (result.X > 0).sum() == _EXPECTED_N_POSITIVE
+
+    def test_zero_to_na_with_fill_na_raises(self):
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            williams_2018(zero_to_na=True, fill_na=0)
+
+    def test_zero_to_na_non_bool_raises(self):
+        with pytest.raises(TypeError, match="zero_to_na must be bool"):
+            williams_2018(zero_to_na="yes")

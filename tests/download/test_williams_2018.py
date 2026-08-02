@@ -10,8 +10,12 @@ from proteopy.download import williams_2018
 
 # -- Expected values -------------------------------------------------
 
+# Changed by the missing-value fix in datasets.williams_2018. The var
+# and sample annotation hashes below are deliberately UNCHANGED: the
+# fix touches .X only, and their staying put is part of the evidence
+# that it is correctly scoped.
 _EXPECTED_INTENSITIES_HASH = (
-    "021410ece8505f9ef1181a4f1bbb5cde" "c884011eba53a77e72cc6d6f51f1a531"
+    "0444cade741974e18c9d04ff4661bb7b" "6c84437cc23f2e643b097a1ad7844012"
 )
 _EXPECTED_VAR_HASH = (
     "827b32fd2962cd18a7a990d56eab0e64" "daa2a244b6226fe2d242106f185b2161"
@@ -59,6 +63,14 @@ def _sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _is_zero(token: str) -> bool:
+    """True if a raw field parses to exactly 0.0, False if non-numeric."""
+    try:
+        return float(token) == 0.0
+    except ValueError:
+        return False
+
+
 # -- Content tests ---------------------------------------------------
 
 
@@ -96,6 +108,27 @@ class TestWilliams2018Download:
 
     def test_sample_annotation_hash(self, files):
         assert _sha256(files[2].read_bytes()) == _EXPECTED_SAMPLE_HASH
+
+    def test_zeros_and_missing_survive_serialisation(self, files):
+        """A zero must round-trip as 0.0, not as an empty field.
+
+        The dataset loader keeps zeros and missing values distinct;
+        this checks that writing to TSV does not collapse them again.
+        Read with pandas' NA handling disabled so that the two remain
+        distinguishable in the parsed frame.
+        """
+        df = pd.read_csv(
+            files[0],
+            sep="\t",
+            dtype=str,
+            keep_default_na=False,
+            na_values=[],
+        )
+        values = df["intensity"]
+        n_zero = (values.map(_is_zero)).sum()
+        n_missing = (values == "").sum()
+        assert n_zero == 13547
+        assert n_missing == 3584
 
     def test_sample_count(self, files):
         df = pd.read_csv(files[2], sep="\t")
@@ -180,6 +213,30 @@ class TestWilliams2018Download:
         williams_2018(*p, fill_na=0)
         df = pd.read_csv(p[0], sep="\t")
         assert not df["intensity"].isna().any()
+
+    def test_zero_to_na_removes_zeros(self, tmp_path):
+        p = _files(tmp_path)
+        williams_2018(*p, zero_to_na=True)
+        df = pd.read_csv(
+            p[0],
+            sep="\t",
+            dtype=str,
+            keep_default_na=False,
+            na_values=[],
+        )
+        values = df["intensity"]
+        assert values.map(_is_zero).sum() == 0
+        assert (values == "").sum() == 3584 + 13547
+
+    def test_zero_to_na_with_fill_na_raises(self, tmp_path):
+        p = _files(tmp_path)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            williams_2018(*p, zero_to_na=True, fill_na=0)
+
+    def test_zero_to_na_non_bool_raises(self, tmp_path):
+        p = _files(tmp_path)
+        with pytest.raises(TypeError, match="zero_to_na must be bool"):
+            williams_2018(*p, zero_to_na="yes")
 
     def test_default_intensities_contain_nan(self, tmp_path):
         p = _files(tmp_path)

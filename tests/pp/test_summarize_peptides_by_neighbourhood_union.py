@@ -1654,6 +1654,41 @@ class TestSummarizePeptidesByNeighbourhoodUnion:
         assert survivors(strict) == survivors(lenient)
         np.testing.assert_array_equal(strict.X, lenient.X)
 
+    def test_summation_propagates_missing_values(self):
+        """At ``top_n > 1`` the contributors are summed, and the sum
+        propagates: a sample missing in any contributor is missing in
+        the result. Sample 1 is complete in both members; sample 2 is
+        missing in one."""
+        adata = make_adata(
+            ["ACDEF", "AC(UniMod:4)DEF"],
+            ["P1", "P1"],
+            [[10.0, 30.0], [5.0, np.nan]],
+        )
+        out = summarize(
+            adata,
+            _FASTA,
+            top_n=2,
+            keep_less=True,
+            inplace=False,
+        )
+        assert out.X[0, 0] == 40.0
+        assert np.isnan(out.X[1, 0])
+
+    def test_all_missing_group_sums_to_missing(self):
+        adata = make_adata(
+            ["ACDEF", "AC(UniMod:4)DEF"],
+            ["P1", "P1"],
+            [[np.nan, np.nan]],
+        )
+        out = summarize(
+            adata,
+            _FASTA,
+            top_n=2,
+            keep_less=True,
+            inplace=False,
+        )
+        assert np.isnan(out.X).all()
+
     def test_top_n_below_one_raises(self):
         adata = make_adata(["ACDEF"], ["P1"], [[1.0]])
         with pytest.raises(ValueError, match="top_n"):
@@ -1772,7 +1807,11 @@ class TestSummarizePeptidesByNeighbourhoodUnion:
         out = summarize(adata, _FASTA, inplace=False)
         assert not out.layers
 
-    def test_sparse_input_yields_sparse_output(self):
+    def test_sparse_input_is_densified(self):
+        """A peptide intensity matrix is not meaningfully sparse -- an
+        absent measurement is missing, not zero -- and the algorithm
+        ranks and reorders whole columns, so nothing is gained by
+        preserving the format."""
         adata = make_adata(
             ["ACDEF", "EFGHI"],
             ["P1", "P1"],
@@ -1780,11 +1819,8 @@ class TestSummarizePeptidesByNeighbourhoodUnion:
         )
         adata.X = sparse.csr_matrix(adata.X)
         out = summarize(adata, _FASTA, inplace=False)
-        assert sparse.issparse(out.X)
-        np.testing.assert_array_equal(
-            out.X.toarray(),
-            np.array([[99.0]]),
-        )
+        assert not sparse.issparse(out.X)
+        np.testing.assert_array_equal(out.X, np.array([[99.0]]))
 
     def test_output_passes_check_proteodata(self):
         adata = make_adata(
@@ -1816,6 +1852,42 @@ class TestSummarizePeptidesByNeighbourhoodUnion:
         )
         out = summarize(adata, _FASTA, inplace=False)
         assert out.var.index.name is None
+
+    def test_protein_level_input_raises(self):
+        """The function is peptide-level only: it needs a peptide
+        identifier to locate in a protein sequence."""
+        var = pd.DataFrame({"protein_id": ["P1"]}, index=["P1"])
+        obs = pd.DataFrame({"sample_id": ["s1"]}, index=["s1"])
+        adata = AnnData(X=np.array([[1.0]]), obs=obs, var=var)
+        with pytest.raises((KeyError, ValueError), match="peptide"):
+            summarize(adata, _FASTA, inplace=False)
+
+    def test_var_names_out_of_sync_raises(self):
+        """`peptide_id` present but not matching `.var_names`, so the
+        object is not peptide-level proteodata."""
+        var = pd.DataFrame(
+            {"peptide_id": ["ACDEF"], "protein_id": ["P1"]},
+            index=["something_else"],
+        )
+        obs = pd.DataFrame({"sample_id": ["s1"]}, index=["s1"])
+        adata = AnnData(X=np.array([[1.0]]), obs=obs, var=var)
+        with pytest.raises(ValueError, match="peptide-level"):
+            summarize(adata, _FASTA, inplace=False)
+
+    def test_multi_mapped_peptide_raises(self):
+        """One peptide mapping to two proteins is not peptide-level
+        proteodata either."""
+        var = pd.DataFrame(
+            {
+                "peptide_id": ["ACDEF", "ACDEF"],
+                "protein_id": ["P1", "P2"],
+            },
+            index=["ACDEF", "ACDEF"],
+        )
+        obs = pd.DataFrame({"sample_id": ["s1"]}, index=["s1"])
+        adata = AnnData(X=np.array([[1.0, 2.0]]), obs=obs, var=var)
+        with pytest.raises(ValueError):
+            summarize(adata, _FASTA, inplace=False)
 
     def test_obs_is_preserved(self):
         adata = make_adata(

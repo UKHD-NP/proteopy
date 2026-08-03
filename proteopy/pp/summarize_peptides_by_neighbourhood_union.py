@@ -3,27 +3,115 @@
 Reimplementation of CCprofiler's
 ``summarizeAlternativePeptideSequences(topN = 1)`` together with the
 ``proteinQuantification(topN, keep_less)`` selection it delegates to.
-Reference source: CCprofiler at git ref ``31a3043`` (branch
-``proteoformLocationMapping``), files ``R/summarizeRedundantPeptides.R``
-and ``R/proteinQuantification.R``.
 
-The algorithm has three layers, and the terms are used consistently
-throughout this module:
+Reference source
+    https://github.com/CCprofiler/CCprofiler/tree/proteoformLocationMapping
 
-**neighbourhood**
-    ``coPeps(x)`` -- the peptides ``q`` of the same protein whose start
-    OR end position falls inside ``x``'s interval.
-**label**
-    the union of every neighbourhood that contains ``x``.
-**group**
-    all peptides carrying an identical label. Exactly one row survives
-    per group.
+    Branch ``proteoformLocationMapping``, git ref ``31a3043``, files
+    ``R/summarizeRedundantPeptides.R`` and ``R/proteinQuantification.R``.
+    Note this is a branch, not a release tag: the functions below are
+    absent from ``v1.0.1-copf``.
 
-This is not the same grouping as
-:func:`~proteopy.pp.summarize_overlapping_peptides`, which uses
-substring containment and aggregates. Here peptides are grouped by
-their positions in the protein sequence, and the most abundant member
-is *selected* while the rest are discarded.
+Algorithm
+---------
+Peptides are handled one protein at a time. Let ``P`` be the peptides
+of a protein. Each ``x`` in ``P`` carries a closed, 1-based interval
+``[s(x), e(x)]`` locating where its modification-stripped sequence
+first occurs in the protein sequence, or ``UNDEF`` when the sequence
+cannot be located there at all.
+
+**Membership.** The neighbourhood of ``x`` is every peptide whose start
+or end falls inside ``x``'s interval::
+
+    N(x) = { q in P : s(q) in [s(x), e(x)]  or  e(q) in [s(x), e(x)] }
+
+Every comparison involving ``UNDEF`` is false, so an unlocated peptide
+belongs to no neighbourhood and its own neighbourhood is empty.
+
+``N`` is deliberately **not symmetric**. If ``q`` lies strictly inside
+``x`` then ``q`` is in ``N(x)`` but ``x`` is not in ``N(q)``, because
+the test only asks where the *other* peptide's endpoints land.
+
+**Label.** The label of ``x`` is the union of every neighbourhood that
+contains it — a one-hop union, *not* a transitive closure::
+
+    L(x) = union of { N(y) : y in P and x in N(y) }
+
+**Group.** Peptides carrying the same label form a group::
+
+    G(x) = { q in P : L(q) = L(x) }
+
+**Selection.** With ``T(x)`` the total intensity of ``x`` summed over
+all samples, propagating missing values, the members of a group are
+ordered by::
+
+    key(x) = ( T(x) is missing,  -T(x),  tie_break_key(id(x)) )
+
+Complete peptides come first, then descending abundance, then a
+deterministic tie-break on the identifier. The leading ``top_n``
+members are kept and the rest discarded, so exactly one row survives
+per group.
+
+Worked example
+--------------
+Protein ``ACDEFGHIKLMNPQRSTVWY`` with five peptides: a chain of four in
+which only adjacent pairs overlap, plus ``CDE`` lying strictly inside
+``ACDEF``::
+
+    ACDEF [1, 5]   EFGHI [4, 8]   HIKLM [7, 11]   LMNPQ [10, 14]
+    CDE   [2, 4]
+
+    N(ACDEF) = {ACDEF, CDE, EFGHI}
+    N(CDE)   = {CDE, EFGHI}                 <- ACDEF absent: N is asymmetric
+    N(EFGHI) = {ACDEF, CDE, EFGHI, HIKLM}
+    N(HIKLM) = {EFGHI, HIKLM, LMNPQ}
+    N(LMNPQ) = {HIKLM, LMNPQ}
+
+    L(ACDEF) = L(CDE)   = {ACDEF, CDE, EFGHI, HIKLM}
+    L(EFGHI) = L(HIKLM) = {ACDEF, CDE, EFGHI, HIKLM, LMNPQ}
+    L(LMNPQ)            = {EFGHI, HIKLM, LMNPQ}
+
+    G1 = {ACDEF, CDE}    G2 = {EFGHI, HIKLM}    G3 = {LMNPQ}
+
+Three groups, so three peptides survive. Two properties are visible
+here and both are load-bearing:
+
+* ``CDE`` groups with the container it sits inside, even though the
+  membership relation between them runs one way only.
+* A transitive closure over the same overlaps would merge all five into
+  a single group and keep ONE peptide. The chain's two interior members
+  are what separate the rules: each sits in three neighbourhoods, so
+  each absorbs the whole set, while the two ends do not.
+
+Missing values
+--------------
+A peptide with any missing sample has ``T(x)`` missing and sorts LAST,
+so any complete competitor beats it however small its observed values
+are. This is deprioritisation, not removal:
+
+* With a complete member present, that member wins and the incomplete
+  one is discarded like any other loser.
+* When **every** member is missing, all totals are missing, nothing
+  separates them on abundance, and ``tie_break_key`` alone decides. The
+  winner passes through with its missing values intact, for a later
+  completeness filter to act on.
+* At ``top_n = 1`` no arithmetic happens — the surviving row is copied
+  verbatim — so a missing value can be neither created nor spread.
+* At ``top_n > 1`` the selected rows are summed and missingness
+  **propagates**: a sample missing in any contributor is missing in the
+  result, and a group whose members are all missing sums to missing.
+
+Relationship to summarize_overlapping_peptides
+----------------------------------------------
+A different grouping and a different reduction.
+:func:`~proteopy.pp.summarize_overlapping_peptides` groups by substring
+containment and *aggregates* the members; this function groups by
+position in the protein sequence and *selects* among them. Positional
+overlap also sees pairs that containment cannot — ``ACDEF`` and
+``EFGHI`` above overlap in the protein while neither contains the
+other — and it needs no separate modification-summarisation step,
+because two peptidoforms of one stripped sequence share an interval and
+therefore a group.
 """
 
 import re
@@ -34,13 +122,12 @@ from collections.abc import Callable, Iterable
 import anndata as ad
 import numpy as np
 import pandas as pd
-from scipy import sparse
 
 from proteopy.pp.quantification import (
     _aggregate_var_value,
     _rebuild_adata,
 )
-from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.anndata import check_proteodata, is_proteodata
 
 # IUPAC one-letter codes. Broader than the canonical twenty on purpose:
 # UniProt sequences legitimately contain U (selenocysteine) and the
@@ -164,6 +251,18 @@ def _validate_var(
     for col in keep_var_cols or ():
         if col not in adata.var.columns:
             raise KeyError(f"'{col}' not found in adata.var")
+
+    # Nothing to classify when there are no peptides; `is_proteodata`
+    # reports such an object as level-less, which would be a confusing
+    # error for what is a legitimate (if degenerate) input.
+    _, level = is_proteodata(adata) if adata.n_vars else (True, "peptide")
+    if level != "peptide":
+        raise ValueError(
+            "summarize_peptides_by_neighbourhood_union requires "
+            "peptide-level proteodata: .var must hold 'peptide_id' "
+            "matching .var_names and 'protein_id', with each peptide "
+            f"mapping to exactly one protein. Detected level: {level!r}."
+        )
 
     clashes = [c for c in written_cols if c in adata.var.columns]
     if clashes:
@@ -571,7 +670,8 @@ def summarize_peptides_by_neighbourhood_union(
         annotations are dropped: the surviving row's metadata is one
         member's, not the group's, and carrying it would invite it to
         be read as representative. Layers are dropped for the same
-        reason.
+        reason. ``.X`` is always dense, including when the input was
+        sparse.
 
     Raises
     ------
@@ -584,30 +684,53 @@ def summarize_peptides_by_neighbourhood_union(
 
     Examples
     --------
-    Positional overlap groups peptides that substring containment
-    cannot see: ``ABCDEF`` and ``DEFGHI`` overlap in the protein but
-    neither contains the other.
+    The worked example from the module docstring: a chain of four
+    overlapping peptides, plus ``CDE`` lying strictly inside ``ACDEF``.
+    It yields three groups — ``{ACDEF, CDE}``, ``{EFGHI, HIKLM}`` and
+    ``{LMNPQ}`` — so three of the five peptides survive.
 
     >>> import numpy as np
     >>> import pandas as pd
     >>> from anndata import AnnData
     >>> import proteopy as pr
-    >>> pids = ["ABCDEF", "DEFGHI"]
+    >>> pids = ["ACDEF", "CDE", "EFGHI", "HIKLM", "LMNPQ"]
     >>> var = pd.DataFrame(
-    ...     {"peptide_id": pids, "protein_id": ["P1", "P1"]},
+    ...     {"peptide_id": pids, "protein_id": ["P1"] * 5},
     ...     index=pids,
     ... )
     >>> obs = pd.DataFrame({"sample_id": ["s1"]}, index=["s1"])
     >>> adata = AnnData(
-    ...     X=np.array([[10.0, 99.0]]), obs=obs, var=var,
+    ...     X=np.array([[30.0, 5.0, 20.0, 99.0, 40.0]]),
+    ...     obs=obs,
+    ...     var=var,
     ... )
     >>> out = pr.pp.summarize_peptides_by_neighbourhood_union(
-    ...     adata, {"P1": "ABCDEFGHI"}, inplace=False,
+    ...     adata, {"P1": "ACDEFGHIKLMNPQRSTVWY"}, inplace=False,
     ... )
+
+    The most abundant member of each group survives, ordered by
+    descending identifier:
+
     >>> out.var_names.tolist()
-    ['DEFGHI']
+    ['LMNPQ', 'HIKLM', 'ACDEF']
     >>> out.X
-    array([[99.]])
+    array([[40., 99., 30.]])
+
+    Every member is recorded, including the ones that lost:
+
+    >>> out.var["peptide_ids"].tolist()
+    ['LMNPQ', 'EFGHI;HIKLM', 'ACDEF;CDE']
+    >>> out.var["n_grouped"].tolist()
+    [1, 2, 2]
+
+    ``ACDEF`` and ``EFGHI`` overlap in the protein while neither
+    contains the other, which is what substring containment misses; and
+    ``CDE`` is grouped with the container it sits strictly inside.
+
+    >>> out.var[["peptide_start", "peptide_end"]].values
+    array([[10., 14.],
+           [ 7., 11.],
+           [ 1.,  5.]])
     """
     # -- validate everything before doing any work
     _validate_arguments(
@@ -642,8 +765,12 @@ def summarize_peptides_by_neighbourhood_union(
     )
 
     # -- matrix, densified; only .X is read
-    was_sparse = sparse.issparse(adata.X)
-    X = adata.X.toarray() if was_sparse else np.asarray(adata.X)
+    X = adata.X
+    # Densified unconditionally: the algorithm ranks and reorders whole
+    # columns and gains nothing from sparsity, and a matrix of peptide
+    # intensities is not meaningfully sparse -- an absent measurement is
+    # missing, not zero.
+    X = X.toarray() if hasattr(X, "toarray") else np.asarray(X)
     X = X.astype(float, copy=True)
     if zero_to_na:
         X[X == 0] = np.nan
@@ -740,9 +867,6 @@ def summarize_peptides_by_neighbourhood_union(
             f"{adata.n_vars} -> {var_new.shape[0]} peptides across "
             f"{len(selections)} neighbourhood group(s)"
         )
-
-    if was_sparse:
-        X_new = sparse.csr_matrix(X_new)
 
     result = _rebuild_adata(adata, X_new, var_new, inplace)
     check_proteodata(adata if inplace else result)

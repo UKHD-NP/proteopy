@@ -7,15 +7,15 @@ from .filtering import (
     filter_samples_by_category_count,
     remove_zero_variance_vars,
     remove_contaminants,
-    )
+)
 
 from .imputation import (
     impute_downshift,
-    )
+)
 
 from .normalization import (
     normalize_median,
-    )
+)
 
 from .quantification import (
     extract_peptide_groups,
@@ -24,6 +24,10 @@ from .quantification import (
     quantify_by_category,
     quantify_proteins,
     quantify_proteoforms,
-    )
+)
+
+from .summarize_peptides_by_neighbourhood_union import (
+    summarize_peptides_by_neighbourhood_union,
+)
 
 from .stats import calculate_cv

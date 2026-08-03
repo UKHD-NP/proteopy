@@ -1,119 +1,3 @@
-"""Peptide summarisation by positional neighbourhood union.
-
-Reimplementation of CCprofiler's
-``summarizeAlternativePeptideSequences(topN = 1)`` together with the
-``proteinQuantification(topN, keep_less)`` selection it delegates to.
-
-Reference source
-    https://github.com/CCprofiler/CCprofiler/tree/proteoformLocationMapping
-
-    Branch ``proteoformLocationMapping``, git ref ``31a3043``, files
-    ``R/summarizeRedundantPeptides.R`` and ``R/proteinQuantification.R``.
-    Note this is a branch, not a release tag: the functions below are
-    absent from ``v1.0.1-copf``.
-
-Algorithm
----------
-Peptides are handled one protein at a time. Let ``P`` be the peptides
-of a protein. Each ``x`` in ``P`` carries a closed, 1-based interval
-``[s(x), e(x)]`` locating where its modification-stripped sequence
-first occurs in the protein sequence, or ``UNDEF`` when the sequence
-cannot be located there at all.
-
-**Membership.** The neighbourhood of ``x`` is every peptide whose start
-or end falls inside ``x``'s interval::
-
-    N(x) = { q in P : s(q) in [s(x), e(x)]  or  e(q) in [s(x), e(x)] }
-
-Every comparison involving ``UNDEF`` is false, so an unlocated peptide
-belongs to no neighbourhood and its own neighbourhood is empty.
-
-``N`` is deliberately **not symmetric**. If ``q`` lies strictly inside
-``x`` then ``q`` is in ``N(x)`` but ``x`` is not in ``N(q)``, because
-the test only asks where the *other* peptide's endpoints land.
-
-**Label.** The label of ``x`` is the union of every neighbourhood that
-contains it — a one-hop union, *not* a transitive closure::
-
-    L(x) = union of { N(y) : y in P and x in N(y) }
-
-**Group.** Peptides carrying the same label form a group::
-
-    G(x) = { q in P : L(q) = L(x) }
-
-**Selection.** With ``T(x)`` the total intensity of ``x`` summed over
-all samples, propagating missing values, the members of a group are
-ordered by::
-
-    key(x) = ( T(x) is missing,  -T(x),  tie_break_key(id(x)) )
-
-Complete peptides come first, then descending abundance, then a
-deterministic tie-break on the identifier. The leading ``top_n``
-members are kept and the rest discarded, so exactly one row survives
-per group.
-
-Worked example
---------------
-Protein ``ACDEFGHIKLMNPQRSTVWY`` with five peptides: a chain of four in
-which only adjacent pairs overlap, plus ``CDE`` lying strictly inside
-``ACDEF``::
-
-    ACDEF [1, 5]   EFGHI [4, 8]   HIKLM [7, 11]   LMNPQ [10, 14]
-    CDE   [2, 4]
-
-    N(ACDEF) = {ACDEF, CDE, EFGHI}
-    N(CDE)   = {CDE, EFGHI}                 <- ACDEF absent: N is asymmetric
-    N(EFGHI) = {ACDEF, CDE, EFGHI, HIKLM}
-    N(HIKLM) = {EFGHI, HIKLM, LMNPQ}
-    N(LMNPQ) = {HIKLM, LMNPQ}
-
-    L(ACDEF) = L(CDE)   = {ACDEF, CDE, EFGHI, HIKLM}
-    L(EFGHI) = L(HIKLM) = {ACDEF, CDE, EFGHI, HIKLM, LMNPQ}
-    L(LMNPQ)            = {EFGHI, HIKLM, LMNPQ}
-
-    G1 = {ACDEF, CDE}    G2 = {EFGHI, HIKLM}    G3 = {LMNPQ}
-
-Three groups, so three peptides survive. Two properties are visible
-here and both are load-bearing:
-
-* ``CDE`` groups with the container it sits inside, even though the
-  membership relation between them runs one way only.
-* A transitive closure over the same overlaps would merge all five into
-  a single group and keep ONE peptide. The chain's two interior members
-  are what separate the rules: each sits in three neighbourhoods, so
-  each absorbs the whole set, while the two ends do not.
-
-Missing values
---------------
-A peptide with any missing sample has ``T(x)`` missing and sorts LAST,
-so any complete competitor beats it however small its observed values
-are. This is deprioritisation, not removal:
-
-* With a complete member present, that member wins and the incomplete
-  one is discarded like any other loser.
-* When **every** member is missing, all totals are missing, nothing
-  separates them on abundance, and ``tie_break_key`` alone decides. The
-  winner passes through with its missing values intact, for a later
-  completeness filter to act on.
-* At ``top_n = 1`` no arithmetic happens — the surviving row is copied
-  verbatim — so a missing value can be neither created nor spread.
-* At ``top_n > 1`` the selected rows are summed and missingness
-  **propagates**: a sample missing in any contributor is missing in the
-  result, and a group whose members are all missing sums to missing.
-
-Relationship to summarize_overlapping_peptides
-----------------------------------------------
-A different grouping and a different reduction.
-:func:`~proteopy.pp.summarize_overlapping_peptides` groups by substring
-containment and *aggregates* the members; this function groups by
-position in the protein sequence and *selects* among them. Positional
-overlap also sees pairs that containment cannot — ``ACDEF`` and
-``EFGHI`` above overlap in the protein while neither contains the
-other — and it needs no separate modification-summarisation step,
-because two peptidoforms of one stripped sequence share an interval and
-therefore a group.
-"""
-
 import re
 from pathlib import Path
 from typing import Any
@@ -575,19 +459,42 @@ def summarize_peptides_by_neighbourhood_union(
     verbose: bool = False,
 ) -> ad.AnnData | None:
     """
-    Collapse peptides that overlap in the protein sequence.
+    Collapse peptides by their position in the protein sequence.
 
     Reimplements CCprofiler's
-    ``summarizeAlternativePeptideSequences(topN = 1)``. Peptide
+    ``summarizeAlternativePeptideSequences(topN = 1)`` [1]_. Peptide
     positions are resolved from ``annotator``, peptides are grouped by
     the union of their positional neighbourhoods, and the most abundant
     member of each group is selected while the rest are discarded.
 
-    Unlike :func:`~proteopy.pp.summarize_overlapping_peptides`, which
-    groups by substring containment and aggregates, this function
-    selects. It also needs no separate modification-summarisation step:
-    two peptidoforms of one stripped sequence share an interval, so they
-    group and one is selected.
+    Grouping happens within a protein. Each peptide ``x`` carries the
+    closed 1-based interval ``[s(x), e(x)]`` where its
+    modification-stripped sequence first occurs, and any comparison
+    involving an unlocated peptide is false::
+
+        N(x) = { q : s(q) in [s(x), e(x)] or e(q) in [s(x), e(x)] }
+        L(x) = union of { N(y) : x in N(y) }
+        G(x) = { q : L(q) = L(x) }
+
+    ``N`` is asymmetric — a peptide lying strictly inside ``x`` is in
+    ``N(x)`` but not the reverse — and ``L`` is a one-hop union rather
+    than a transitive closure, so a chain of overlaps can yield several
+    groups instead of one. Unlocated peptides share the empty label and
+    so collapse into a single group per protein.
+
+    Members of a group are ordered by ``(T(x) is missing, -T(x),
+    tie_break_key(id(x)))``, where ``T(x)`` is the intensity of ``x``
+    summed over samples. The leading ``top_n`` are kept and one row
+    survives per group.
+
+    Missing values are deprioritised, not removed. ``T`` propagates
+    them, so an incomplete peptide sorts last and loses to any complete
+    competitor however small the competitor's values; when every member
+    is incomplete, ``tie_break_key`` alone decides and the winner passes
+    through with its missing values intact. At ``top_n = 1`` the
+    surviving row is copied verbatim, so nothing is created or spread;
+    at ``top_n > 1`` the sum propagates, and an all-missing group sums
+    to missing.
 
     Parameters
     ----------
@@ -682,55 +589,51 @@ def summarize_peptides_by_neighbourhood_union(
         protein is absent from ``annotator`` or a peptide is not found
         in its protein sequence.
 
+    See Also
+    --------
+    summarize_overlapping_peptides : groups by substring containment
+        and aggregates the members, rather than grouping by position
+        and selecting among them.
+
     Examples
     --------
-    The worked example from the module docstring: a chain of four
-    overlapping peptides, plus ``CDE`` lying strictly inside ``ACDEF``.
-    It yields three groups — ``{ACDEF, CDE}``, ``{EFGHI, HIKLM}`` and
-    ``{LMNPQ}`` — so three of the five peptides survive.
+    Four peptides forming a chain in which only adjacent pairs overlap,
+    plus ``CDE`` lying strictly inside ``ACDEF``. Three groups form —
+    ``{ACDEF, CDE}``, ``{EFGHI, HIKLM}`` and ``{LMNPQ}`` — so three of
+    the five peptides survive, each represented by its most abundant
+    member.
 
     >>> import numpy as np
     >>> import pandas as pd
     >>> from anndata import AnnData
     >>> import proteopy as pr
     >>> pids = ["ACDEF", "CDE", "EFGHI", "HIKLM", "LMNPQ"]
-    >>> var = pd.DataFrame(
-    ...     {"peptide_id": pids, "protein_id": ["P1"] * 5},
-    ...     index=pids,
-    ... )
-    >>> obs = pd.DataFrame({"sample_id": ["s1"]}, index=["s1"])
     >>> adata = AnnData(
     ...     X=np.array([[30.0, 5.0, 20.0, 99.0, 40.0]]),
-    ...     obs=obs,
-    ...     var=var,
+    ...     obs=pd.DataFrame({"sample_id": ["s1"]}, index=["s1"]),
+    ...     var=pd.DataFrame(
+    ...         {"peptide_id": pids, "protein_id": ["P1"] * 5},
+    ...         index=pids,
+    ...     ),
     ... )
     >>> out = pr.pp.summarize_peptides_by_neighbourhood_union(
     ...     adata, {"P1": "ACDEFGHIKLMNPQRSTVWY"}, inplace=False,
     ... )
-
-    The most abundant member of each group survives, ordered by
-    descending identifier:
-
     >>> out.var_names.tolist()
     ['LMNPQ', 'HIKLM', 'ACDEF']
+    >>> out.var["peptide_ids"].tolist()
+    ['LMNPQ', 'EFGHI;HIKLM', 'ACDEF;CDE']
     >>> out.X
     array([[40., 99., 30.]])
 
-    Every member is recorded, including the ones that lost:
-
-    >>> out.var["peptide_ids"].tolist()
-    ['LMNPQ', 'EFGHI;HIKLM', 'ACDEF;CDE']
-    >>> out.var["n_grouped"].tolist()
-    [1, 2, 2]
-
-    ``ACDEF`` and ``EFGHI`` overlap in the protein while neither
-    contains the other, which is what substring containment misses; and
-    ``CDE`` is grouped with the container it sits strictly inside.
-
-    >>> out.var[["peptide_start", "peptide_end"]].values
-    array([[10., 14.],
-           [ 7., 11.],
-           [ 1.,  5.]])
+    References
+    ----------
+    .. [1] Hafen R and Bludau I. CCprofiler, version 0.99.1, branch
+       ``proteoformLocationMapping`` at git ref ``31a3043``; files
+       ``R/summarizeRedundantPeptides.R`` and
+       ``R/proteinQuantification.R``. Note this is a branch and not a
+       release tag: these functions are absent from ``v1.0.1-copf``.
+       https://github.com/CCprofiler/CCprofiler/tree/proteoformLocationMapping
     """
     # -- validate everything before doing any work
     _validate_arguments(

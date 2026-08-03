@@ -1074,6 +1074,104 @@ class TestSummarizePeptidesByNeighbourhoodUnion:
             "n_grouped",
         }
 
+    def test_keep_var_cols_retains_a_column(self):
+        adata = make_adata(
+            ["ACDEF", "EFGHI"],
+            ["P1", "P1"],
+            [[10.0, 99.0]],
+            var_extra={"gene_id": ["Sorbs2", "Sorbs2"]},
+        )
+        out = summarize(
+            adata, _FASTA, keep_var_cols=["gene_id"], inplace=False
+        )
+        assert out.var["gene_id"].tolist() == ["Sorbs2"]
+
+    def test_kept_column_aggregates_over_the_whole_group(self):
+        """The survivor's own value is NOT used. Members that disagree
+        are joined, so the column describes the group rather than
+        whichever peptide happened to win."""
+        adata = make_adata(
+            ["ACDEF", "EFGHI"],
+            ["P1", "P1"],
+            [[10.0, 99.0]],
+            var_extra={"charge": ["2", "3"]},
+        )
+        out = summarize(adata, _FASTA, keep_var_cols=["charge"], inplace=False)
+        assert out.var["charge"].tolist() == ["2;3"]
+
+    def test_kept_column_collapses_when_members_agree(self):
+        adata = make_adata(
+            ["ACDEF", "EFGHI"],
+            ["P1", "P1"],
+            [[10.0, 99.0]],
+            var_extra={"gene_id": ["same", "same"]},
+        )
+        out = summarize(
+            adata, _FASTA, keep_var_cols=["gene_id"], inplace=False
+        )
+        assert out.var["gene_id"].tolist() == ["same"]
+
+    def test_keep_var_cols_extends_the_column_set(self):
+        adata = make_adata(
+            ["ACDEF", "EFGHI"],
+            ["P1", "P1"],
+            [[10.0, 99.0]],
+            var_extra={"gene_id": ["g", "g"], "charge": ["2", "3"]},
+        )
+        out = summarize(
+            adata,
+            _FASTA,
+            keep_var_cols=["gene_id", "charge"],
+            inplace=False,
+        )
+        assert set(out.var.columns) == {
+            "peptide_id",
+            "protein_id",
+            "peptide_start",
+            "peptide_end",
+            "peptide_ids",
+            "n_grouped",
+            "gene_id",
+            "charge",
+        }
+
+    def test_unlisted_columns_are_still_dropped(self):
+        adata = make_adata(
+            ["ACDEF", "EFGHI"],
+            ["P1", "P1"],
+            [[10.0, 99.0]],
+            var_extra={"gene_id": ["g", "g"], "charge": ["2", "3"]},
+        )
+        out = summarize(
+            adata, _FASTA, keep_var_cols=["gene_id"], inplace=False
+        )
+        assert "charge" not in out.var.columns
+
+    def test_keep_var_cols_unknown_column_raises(self):
+        adata = make_adata(["ACDEF"], ["P1"], [[1.0]])
+        with pytest.raises(KeyError, match="absent_col"):
+            summarize(
+                adata,
+                _FASTA,
+                keep_var_cols=["absent_col"],
+                inplace=False,
+            )
+
+    def test_keep_var_cols_cannot_name_a_written_column(self):
+        adata = make_adata(
+            ["ACDEF"],
+            ["P1"],
+            [[1.0]],
+            var_extra={"gene_id": ["g"]},
+        )
+        with pytest.raises(ValueError, match="n_grouped"):
+            summarize(
+                adata,
+                _FASTA,
+                keep_var_cols=["gene_id", "n_grouped"],
+                inplace=False,
+            )
+
     # -- Identifier naming ------------------------------------------------
 
     # (was class TestNaming)

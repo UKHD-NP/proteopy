@@ -36,7 +36,10 @@ import numpy as np
 import pandas as pd
 from scipy import sparse
 
-from proteopy.pp.quantification import _rebuild_adata
+from proteopy.pp.quantification import (
+    _aggregate_var_value,
+    _rebuild_adata,
+)
 from proteopy.utils.anndata import check_proteodata
 
 # IUPAC one-letter codes. Broader than the canonical twenty on purpose:
@@ -138,9 +141,27 @@ def _validate_arguments(
         raise ValueError("`zero_to_na` and `fill_na` are mutually exclusive.")
 
 
-def _validate_var(adata, peptide_col, protein_col, written_cols):
+def _validate_var(
+    adata, peptide_col, protein_col, written_cols, keep_var_cols
+):
     """Check the required columns exist and the written ones do not."""
     for col in (peptide_col, protein_col):
+        if col not in adata.var.columns:
+            raise KeyError(f"'{col}' not found in adata.var")
+
+    # Reserved before existent: a reserved name is a contract error
+    # whether or not the caller happens to have such a column.
+    reserved = [
+        c
+        for c in (keep_var_cols or ())
+        if c in (peptide_col, protein_col, *written_cols)
+    ]
+    if reserved:
+        raise ValueError(
+            "keep_var_cols must not name a column this function "
+            f"already writes: {', '.join(repr(c) for c in reserved)}."
+        )
+    for col in keep_var_cols or ():
         if col not in adata.var.columns:
             raise KeyError(f"'{col}' not found in adata.var")
 
@@ -450,6 +471,7 @@ def summarize_peptides_by_neighbourhood_union(
     fill_na: float | int | None = None,
     sort_descending_id: bool = True,
     key_added: str = "peptide_ids",
+    keep_var_cols: list[str] | None = None,
     inplace: bool = True,
     verbose: bool = False,
 ) -> ad.AnnData | None:
@@ -544,11 +566,12 @@ def summarize_peptides_by_neighbourhood_union(
         The summarised object when ``inplace=False``, otherwise None.
 
         ``.var`` is reduced to ``peptide_id``, ``protein_id``,
-        ``peptide_start``, ``peptide_end``, ``key_added`` and
-        ``n_grouped``. Other annotations are dropped: the surviving
-        row's metadata is one member's, not the group's, and carrying
-        it would invite it to be read as representative. Layers are
-        dropped for the same reason.
+        ``peptide_start``, ``peptide_end``, ``key_added``,
+        ``n_grouped`` and anything named in ``keep_var_cols``. Other
+        annotations are dropped: the surviving row's metadata is one
+        member's, not the group's, and carrying it would invite it to
+        be read as representative. Layers are dropped for the same
+        reason.
 
     Raises
     ------
@@ -598,7 +621,7 @@ def summarize_peptides_by_neighbourhood_union(
         fill_na,
     )
     written = (_START_COL, _END_COL, key_added, _N_COL)
-    _validate_var(adata, peptide_col, protein_col, written)
+    _validate_var(adata, peptide_col, protein_col, written, keep_var_cols)
     check_proteodata(adata)
 
     sequences = _resolve_annotator(annotator)
@@ -632,6 +655,9 @@ def summarize_peptides_by_neighbourhood_union(
     X = X[:, kept]
     peptides, proteins = peptides[kept], proteins[kept]
     starts, ends = starts[kept], ends[kept]
+    # Positionally aligned with the arrays above, so group member
+    # indices address it directly.
+    source_var = adata.var.iloc[kept]
 
     # A plain sum, so NaN propagates -- an incomplete peptide gets a NaN
     # total and ranks last.
@@ -674,6 +700,13 @@ def summarize_peptides_by_neighbourhood_union(
                 _N_COL: len(sel["members"]),
             }
         )
+        for col in keep_var_cols or ():
+            # Aggregated over every member, not taken from the
+            # survivor: the point of dropping annotations is that one
+            # member's value is not the group's.
+            records[-1][col] = _aggregate_var_value(
+                source_var[col].iloc[sel["members"]]
+            )
 
     if columns:
         X_new = np.column_stack(columns)
@@ -689,6 +722,7 @@ def summarize_peptides_by_neighbourhood_union(
             _END_COL,
             key_added,
             _N_COL,
+            *(keep_var_cols or ()),
         ],
     )
     var_new[_START_COL] = var_new[_START_COL].astype(float)

@@ -1706,6 +1706,19 @@ class TestSummarizePeptidesByNeighbourhoodUnion:
         out = summarize(adata, _FASTA, inplace=False)
         assert out.var["peptide_id"].tolist() == out.var_names.tolist()
 
+    def test_var_index_is_unnamed(self):
+        """A named var index turns ``.reset_index()`` into a
+        differently-named column, which breaks the COPF tools
+        downstream. Caught only by running the pipeline, so pinned
+        here."""
+        adata = make_adata(
+            ["ACDEF", "EFGHI"],
+            ["P1", "P1"],
+            [[10.0, 99.0]],
+        )
+        out = summarize(adata, _FASTA, inplace=False)
+        assert out.var.index.name is None
+
     def test_obs_is_preserved(self):
         adata = make_adata(
             ["ACDEF", "EFGHI"],

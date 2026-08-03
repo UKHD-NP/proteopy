@@ -24,7 +24,8 @@ and this project adheres to
     incomplete peptide sorts last and loses to any complete
     competitor, but survives if its group has no complete member
   - equal totals are resolved by `tie_break_key`, so the result does
-    not depend on input row order; `letters_first_key` is the default
+    not depend on input row order; the default sorts non-letters after
+    letters, favouring the unmodified form of an identifier
   - `on_unknown_protein` and `on_unlocated_peptide` decide whether an
     unresolvable position raises, skips the peptide, or leaves the
     position undefined

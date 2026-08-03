@@ -27,7 +27,6 @@ from .quantification import (
 )
 
 from .summarize_peptides_by_neighbourhood_union import (
-    letters_first_key,
     summarize_peptides_by_neighbourhood_union,
 )
 

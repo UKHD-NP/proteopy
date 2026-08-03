@@ -543,8 +543,10 @@ def summarize_peptides_by_neighbourhood_union(
         silence is the reference's real blind spot.
     tie_break_key : callable, optional
         Key applied to the peptide identifier to resolve equal totals.
-        Defaults to :func:`letters_first_key`, which places ``(`` and
-        ``[`` after the letters so an unmodified identifier wins.
+        Defaults to an ordering that places non-letters after
+        letters, so ``(`` and ``[`` both sort after ``Z`` and an
+        unmodified identifier wins a tie against any annotated form
+        of itself.
     zero_to_na : bool, optional
         If True, treat zeros as missing before ranking.
     fill_na : float | int | None, optional

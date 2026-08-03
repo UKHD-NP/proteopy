@@ -48,7 +48,6 @@ filtering, normalization, and imputation of proteomics data.
    proteopy.pp.summarize_modifications
    proteopy.pp.summarize_overlapping_peptides
    proteopy.pp.summarize_peptides_by_neighbourhood_union
-   proteopy.pp.letters_first_key
    proteopy.pp.quantify_proteins
    proteopy.pp.quantify_proteoforms
 

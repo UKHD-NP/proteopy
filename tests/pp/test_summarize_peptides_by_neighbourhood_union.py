@@ -101,11 +101,19 @@ def write_fasta(tmp_path, text, name="dummy.fasta"):
     return str(path)
 
 
-# -- FASTA handling ---------------------------------------------------
+class TestSummarizePeptidesByNeighbourhoodUnion:
+    """CCprofiler-equivalent peptide summarisation.
 
+    One class per function under test. The topic groupings that
+    were previously separate classes are retained below as header
+    comments, each naming the class it replaced.
+    """
 
-class TestFasta:
-    """Header parsing replicates CCprofiler's ``gsub``."""
+    # -- FASTA handling ---------------------------------------------------
+
+    # (was class TestFasta)
+    #
+    # Header parsing replicates CCprofiler's ``gsub``.
 
     def test_accession_is_extracted_between_pipes(self, tmp_path):
         path = write_fasta(
@@ -160,13 +168,12 @@ class TestFasta:
         assert survivors(from_path) == survivors(from_dict)
         np.testing.assert_array_equal(from_path.X, from_dict.X)
 
+    # -- Position annotation ----------------------------------------------
 
-# -- Position annotation ----------------------------------------------
-
-
-class TestPositions:
-    """Positions match ``seqinr::words.pos(...)[1]``: first occurrence,
-    1-based, inclusive."""
+    # (was class TestPositions)
+    #
+    # Positions match ``seqinr::words.pos(...)[1]``: first occurrence,
+    # 1-based, inclusive.
 
     def test_positions_are_first_occurrence_one_based(self):
         adata = make_adata(
@@ -240,27 +247,26 @@ class TestPositions:
         out = summarize(adata, _FASTA, inplace=False)
         assert out.var_names.tolist() == ["AC(UniMod:4)DEF"]
 
+    # -- The stripped sequence must be an amino-acid sequence -------------
 
-# -- The stripped sequence must be an amino-acid sequence -------------
-
-
-class TestStrippedSequenceAlphabet:
-    """After ``mod_regex`` is applied, what remains must be a pure
-    amino-acid sequence. Anything else is a malformed identifier.
-
-    This is what makes ``mod_regex`` self-checking: the caller declares
-    what to disregard, and the alphabet check verifies the declaration
-    was complete. No notation-specific pattern has to be hard-coded to
-    detect mass shifts, bracket tags, lowercase markers or anything
-    else -- none of them are amino-acid letters.
-
-    It is a hard error under every policy. An identifier carrying
-    residual notation is a configuration mistake, not a property of the
-    data, so neither ``on_unlocated_peptide`` nor ``on_unknown_protein``
-    suppresses it. Letting it through would give the peptide NaN
-    positions and drop it silently into the empty-label group, which is
-    exactly the behaviour this check exists to prevent.
-    """
+    # (was class TestStrippedSequenceAlphabet)
+    #
+    # After ``mod_regex`` is applied, what remains must be a pure
+    # amino-acid sequence. Anything else is a malformed identifier.
+    #
+    # This is what makes ``mod_regex`` self-checking: the caller declares
+    # what to disregard, and the alphabet check verifies the declaration
+    # was complete. No notation-specific pattern has to be hard-coded to
+    # detect mass shifts, bracket tags, lowercase markers or anything
+    # else -- none of them are amino-acid letters.
+    #
+    # It is a hard error under every policy. An identifier carrying
+    # residual notation is a configuration mistake, not a property of the
+    # data, so neither ``on_unlocated_peptide`` nor ``on_unknown_protein``
+    # suppresses it. Letting it through would give the peptide NaN
+    # positions and drop it silently into the empty-label group, which is
+    # exactly the behaviour this check exists to prevent.
+    #
 
     def test_residual_mass_shift_raises(self):
         adata = make_adata(["AC[+57]DEF"], ["P1"], [[1.0]])
@@ -374,29 +380,28 @@ class TestStrippedSequenceAlphabet:
         )
         assert survivors(out) == {"ACDEF"}
 
+    # -- Proteins missing from the annotator ------------------------------
 
-# -- Proteins missing from the annotator ------------------------------
-
-
-class TestUnknownProtein:
-    """A protein absent from the annotator, governed by
-    ``on_unknown_protein: {'raise', 'skip', 'keep'}``.
-
-    ``'raise'`` is the default: a protein missing from the FASTA is
-    usually a mismatched-input error worth stopping for, and the
-    reference is only half-vocal about it (it prints the accession and
-    carries on).
-
-    ``'keep'`` reproduces the reference exactly -- every peptide of the
-    protein gets a NaN position, so they share the empty label, collapse
-    into one group, and the single survivor is then removed downstream
-    by the >=2-peptide filter.
-
-    ``'skip'`` discards those peptides upfront. Measured equivalent on
-    the reference dataset (5 proteins, 23 peptides, identical
-    24,534-peptide result) but NOT equivalent in general, which
-    ``test_keep_and_skip_differ_for_a_one_peptide_protein`` pins.
-    """
+    # (was class TestUnknownProtein)
+    #
+    # A protein absent from the annotator, governed by
+    # ``on_unknown_protein: {'raise', 'skip', 'keep'}``.
+    #
+    # ``'raise'`` is the default: a protein missing from the FASTA is
+    # usually a mismatched-input error worth stopping for, and the
+    # reference is only half-vocal about it (it prints the accession and
+    # carries on).
+    #
+    # ``'keep'`` reproduces the reference exactly -- every peptide of the
+    # protein gets a NaN position, so they share the empty label, collapse
+    # into one group, and the single survivor is then removed downstream
+    # by the >=2-peptide filter.
+    #
+    # ``'skip'`` discards those peptides upfront. Measured equivalent on
+    # the reference dataset (5 proteins, 23 peptides, identical
+    # 24,534-peptide result) but NOT equivalent in general, which
+    # ``test_keep_and_skip_differ_for_a_one_peptide_protein`` pins.
+    #
 
     def test_absent_protein_raises_by_default(self):
         adata = make_adata(["ACDEF"], ["ABSENT"], [[1.0]])
@@ -414,7 +419,7 @@ class TestUnknownProtein:
         assert "GHOST_A" in str(excinfo.value)
         assert "GHOST_B" in str(excinfo.value)
 
-    def test_error_names_the_available_modes(self):
+    def test_unknown_protein_error_names_the_available_modes(self):
         adata = make_adata(["ACDEF"], ["ABSENT"], [[1.0]])
         with pytest.raises(ValueError, match="skip"):
             summarize(adata, _FASTA, inplace=False)
@@ -550,19 +555,18 @@ class TestUnknownProtein:
                 inplace=False,
             )
 
+    # -- Peptides not found in their protein sequence ---------------------
 
-# -- Peptides not found in their protein sequence ---------------------
-
-
-class TestUnlocatedPeptides:
-    """A peptide whose sequence does not occur in its protein.
-
-    The reference is silent about this case -- ``words.pos(...)[1]``
-    yields NA and the peptide continues as one that overlaps nothing.
-    ``'raise'`` is the default because that silence is the reference's
-    real blind spot; ``'keep'`` reproduces it exactly and is what the
-    COPF pipeline passes.
-    """
+    # (was class TestUnlocatedPeptides)
+    #
+    # A peptide whose sequence does not occur in its protein.
+    #
+    # The reference is silent about this case -- ``words.pos(...)[1]``
+    # yields NA and the peptide continues as one that overlaps nothing.
+    # ``'raise'`` is the default because that silence is the reference's
+    # real blind spot; ``'keep'`` reproduces it exactly and is what the
+    # COPF pipeline passes.
+    #
 
     def test_unlocated_peptide_raises_by_default(self):
         adata = make_adata(["WWWWW"], ["P1"], [[1.0]])
@@ -574,7 +578,7 @@ class TestUnlocatedPeptides:
         with pytest.raises(ValueError, match="P1"):
             summarize(adata, _FASTA, inplace=False)
 
-    def test_error_names_the_available_modes(self):
+    def test_unlocated_peptide_error_names_the_available_modes(self):
         adata = make_adata(["WWWWW"], ["P1"], [[1.0]])
         with pytest.raises(ValueError, match="skip"):
             summarize(adata, _FASTA, inplace=False)
@@ -717,12 +721,11 @@ class TestUnlocatedPeptides:
                 inplace=False,
             )
 
+    # -- Grouping semantics -----------------------------------------------
 
-# -- Grouping semantics -----------------------------------------------
-
-
-class TestGrouping:
-    """The three fidelity-critical properties of the grouping rule."""
+    # (was class TestGrouping)
+    #
+    # The three fidelity-critical properties of the grouping rule.
 
     def test_strictly_contained_peptide_groups_with_its_container(
         self,
@@ -862,13 +865,12 @@ class TestGrouping:
         out = summarize(adata, _FASTA, inplace=False)
         assert survivors(out) == {"AC(UniMod:4)DEF"}
 
+    # -- Selection --------------------------------------------------------
 
-# -- Selection --------------------------------------------------------
-
-
-class TestSelection:
-    """``topN = 1`` SELECTS the most abundant member; it does not
-    aggregate."""
+    # (was class TestSelection)
+    #
+    # ``topN = 1`` SELECTS the most abundant member; it does not
+    # aggregate.
 
     def test_most_abundant_is_selected_not_summed(self):
         """Totals across samples: ACDEF = 1 + 2 = 3,
@@ -893,27 +895,26 @@ class TestSelection:
         out = summarize(adata, _FASTA, inplace=False)
         assert survivors(out) == {"ACDEF"}
 
+    # -- Tie breaking -----------------------------------------------------
 
-# -- Tie breaking -----------------------------------------------------
-
-
-class TestTieBreaking:
-    """Equal totals are resolved by ``tie_break_key``, never by input
-    order.
-
-    CCprofiler uses ``ties.method = "first"``, i.e. whichever row
-    happened to come first, which makes the output depend on how the
-    input table was sorted. A deterministic key removes that
-    dependency.
-
-    Measured on the reference dataset: of 26,473 groups, 4,752 have
-    more than one member and only 7 have a tied winner -- 6 of them
-    ties between two incomplete peptides, 1 a genuine equal-total tie.
-    Switching from row order to the default key changes the pick in 4
-    of the 7, and none of those 4 peptides reaches the reference's
-    24,534-peptide set, so the change costs nothing here. That margin
-    is dataset-specific; re-measure on new data.
-    """
+    # (was class TestTieBreaking)
+    #
+    # Equal totals are resolved by ``tie_break_key``, never by input
+    # order.
+    #
+    # CCprofiler uses ``ties.method = "first"``, i.e. whichever row
+    # happened to come first, which makes the output depend on how the
+    # input table was sorted. A deterministic key removes that
+    # dependency.
+    #
+    # Measured on the reference dataset: of 26,473 groups, 4,752 have
+    # more than one member and only 7 have a tied winner -- 6 of them
+    # ties between two incomplete peptides, 1 a genuine equal-total tie.
+    # Switching from row order to the default key changes the pick in 4
+    # of the 7, and none of those 4 peptides reaches the reference's
+    # 24,534-peptide set, so the change costs nothing here. That margin
+    # is dataset-specific; re-measure on new data.
+    #
 
     def test_ties_are_broken_by_the_ordering_key(self):
         """The default key sorts letters before any non-letter, so the
@@ -998,19 +999,18 @@ class TestTieBreaking:
         out = summarize(adata, _FASTA, inplace=False)
         assert survivors(out) == {"AC(UniMod:4)DEF"}
 
+    # -- Output .var columns ----------------------------------------------
 
-# -- Output .var columns ----------------------------------------------
-
-
-class TestVarColumns:
-    """The surviving row's annotations are NOT representative of its
-    group, so they are not carried over.
-
-    Only two kinds of column survive: those a peptide-level proteodata
-    object requires, and those this function computes. Everything else
-    is dropped, because keeping it would invite the reader to treat one
-    member's metadata as the whole group's.
-    """
+    # (was class TestVarColumns)
+    #
+    # The surviving row's annotations are NOT representative of its
+    # group, so they are not carried over.
+    #
+    # Only two kinds of column survive: those a peptide-level proteodata
+    # object requires, and those this function computes. Everything else
+    # is dropped, because keeping it would invite the reader to treat one
+    # member's metadata as the whole group's.
+    #
 
     def test_var_holds_exactly_the_expected_columns(self):
         adata = make_adata(
@@ -1074,14 +1074,13 @@ class TestVarColumns:
             "n_grouped",
         }
 
+    # -- Identifier naming ------------------------------------------------
 
-# -- Identifier naming ------------------------------------------------
-
-
-class TestNaming:
-    """``id_from`` selects how the surviving row is identified. Only
-    ``'top_ranked'`` is implemented; the parameter exists so that other
-    schemes can be added without a signature change."""
+    # (was class TestNaming)
+    #
+    # ``id_from`` selects how the surviving row is identified. Only
+    # ``'top_ranked'`` is implemented; the parameter exists so that other
+    # schemes can be added without a signature change.
 
     def test_default_names_the_row_after_the_top_ranked_member(self):
         adata = make_adata(
@@ -1118,11 +1117,9 @@ class TestNaming:
         with pytest.raises(ValueError, match="top_ranked"):
             summarize(adata, _FASTA, id_from="longest", inplace=False)
 
+    # -- Provenance -------------------------------------------------------
 
-# -- Provenance -------------------------------------------------------
-
-
-class TestProvenance:
+    # (was class TestProvenance)
 
     def test_peptide_ids_lists_all_group_members_sorted(self):
         adata = make_adata(
@@ -1180,14 +1177,13 @@ class TestProvenance:
         assert "ACDEF" in out.var["peptide_ids"].iloc[0]
         assert "ACDEF" not in survivors(out)
 
+    # -- Guards against silently overwriting .var -------------------------
 
-# -- Guards against silently overwriting .var -------------------------
-
-
-class TestColumnGuards:
-    """Every column the function writes must be absent from the input
-    ``.var``, so a second call or a pre-existing annotation can never
-    be overwritten without the user noticing."""
+    # (was class TestColumnGuards)
+    #
+    # Every column the function writes must be absent from the input
+    # ``.var``, so a second call or a pre-existing annotation can never
+    # be overwritten without the user noticing.
 
     def test_existing_peptide_start_raises(self):
         adata = make_adata(
@@ -1284,23 +1280,22 @@ class TestColumnGuards:
         with pytest.raises(ValueError, match="drop"):
             summarize(adata, _FASTA, inplace=False)
 
+    # -- Missing-value policy ---------------------------------------------
 
-# -- Missing-value policy ---------------------------------------------
-
-
-class TestMissingValues:
-    """Missing values are handled exactly as CCprofiler handles them,
-    with no parameter to choose otherwise.
-
-    ``proteinQuantification`` sums with ``na.rm = FALSE`` and ranks with
-    ``rank()``'s default ``na.last = TRUE``, so a peptide with any
-    missing sample has a ``NaN`` total and ranks LAST.
-
-    That is deprioritisation, not removal. A NaN-bearing peptide with no
-    complete competitor still wins its group and is passed through
-    untouched. The reference depends on this: its zero-variance step is
-    what finally removes such peptides, via ``var()`` propagating ``NA``.
-    """
+    # (was class TestMissingValues)
+    #
+    # Missing values are handled exactly as CCprofiler handles them,
+    # with no parameter to choose otherwise.
+    #
+    # ``proteinQuantification`` sums with ``na.rm = FALSE`` and ranks with
+    # ``rank()``'s default ``na.last = TRUE``, so a peptide with any
+    # missing sample has a ``NaN`` total and ranks LAST.
+    #
+    # That is deprioritisation, not removal. A NaN-bearing peptide with no
+    # complete competitor still wins its group and is passed through
+    # untouched. The reference depends on this: its zero-variance step is
+    # what finally removes such peptides, via ``var()`` propagating ``NA``.
+    #
 
     def test_nan_input_is_accepted(self):
         adata = make_adata(
@@ -1428,11 +1423,9 @@ class TestMissingValues:
         out = summarize(adata, _FASTA, inplace=False)
         assert not np.isnan(out.X).any()
 
+    # -- top_n and keep_less ----------------------------------------------
 
-# -- top_n and keep_less ----------------------------------------------
-
-
-class TestTopNAndKeepLess:
+    # (was class TestTopNAndKeepLess)
 
     def test_top_n_two_sums_the_two_most_abundant(self):
         """Group members total 30 and 10; their sum is 40 per sample."""
@@ -1568,14 +1561,13 @@ class TestTopNAndKeepLess:
         with pytest.raises(ValueError, match="top_n"):
             summarize(adata, _FASTA, top_n=0, inplace=False)
 
+    # -- Output ordering --------------------------------------------------
 
-# -- Output ordering --------------------------------------------------
-
-
-class TestOrdering:
-    """Row order is load-bearing: average-linkage clustering downstream
-    breaks ties by row order, so the reference's closing
-    ``setorder(traces, -id)`` must be reproducible."""
+    # (was class TestOrdering)
+    #
+    # Row order is load-bearing: average-linkage clustering downstream
+    # breaks ties by row order, so the reference's closing
+    # ``setorder(traces, -id)`` must be reproducible.
 
     def test_output_is_ordered_by_descending_identifier(self):
         adata = make_adata(
@@ -1610,11 +1602,9 @@ class TestOrdering:
         values = dict(zip(out.var_names, out.X[0]))
         assert values == {"ACDEF": 1.0, "RSTVWY": 2.0, "LMNPQ": 3.0}
 
+    # -- API contract -----------------------------------------------------
 
-# -- API contract -----------------------------------------------------
-
-
-class TestContract:
+    # (was class TestContract)
 
     def test_inplace_returns_none_and_mutates(self):
         adata = make_adata(

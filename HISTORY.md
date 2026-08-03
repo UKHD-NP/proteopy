@@ -7,6 +7,32 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- **Preprocessing** (`pr.pp`): `summarize_peptides_by_neighbourhood_union()`
+  collapses peptides that overlap in the protein sequence, keeping the
+  most abundant member of each group. Peptide positions are resolved
+  from a FASTA in the same call. A reimplementation of CCprofiler's
+  `summarizeAlternativePeptideSequences(topN = 1)`.
+  - groups by positional overlap rather than substring containment, so
+    it sees peptide pairs that overlap without either containing the
+    other, and needs no separate modification-summarisation step
+  - selects the most abundant member instead of aggregating; `top_n`
+    sums the leading members instead, with `keep_less` controlling
+    undersized groups
+  - missing values are deprioritised rather than removed: an
+    incomplete peptide sorts last and loses to any complete
+    competitor, but survives if its group has no complete member
+  - equal totals are resolved by `tie_break_key`, so the result does
+    not depend on input row order; `letters_first_key` is the default
+  - `on_unknown_protein` and `on_unlocated_peptide` decide whether an
+    unresolvable position raises, skips the peptide, or leaves the
+    position undefined
+  - `.var` is reduced to the peptide-level proteodata columns plus the
+    function's own output, since the surviving row's annotations
+    describe one member rather than the group; `keep_var_cols` carries
+    chosen columns through, aggregated across the group
+
 ### Fixed
 
 - **Datasets** (`pr.datasets`) and **Download** (`pr.download`):

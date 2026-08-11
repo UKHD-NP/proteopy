@@ -7,6 +7,36 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- **Plotting** (`pr.pl`): `n_var_per_sample()`, and with it
+  `n_peptides_per_sample()` and `n_proteins_per_sample()`, now derive
+  every axis and group order deterministically instead of following
+  the order rows happen to occupy in the AnnData object. Bars, groups
+  and blocks follow the category order of the annotation when the
+  column is a Categorical, otherwise the lexicographic order of its
+  values — so a user fixes the order once, by storing the annotation
+  as an ordered Categorical, instead of relying on how the file was
+  read. **This changes existing figures**: a plot whose bars followed
+  `.obs_names` will now be sorted.
+  - x-axis labels come from `adata.obs["sample_id"]` rather than
+    `adata.obs_names`. The drawn strings are unchanged —
+    `check_proteodata()` enforces that the two are identical — but an
+    AnnData axis index cannot carry a category order, so the column is
+    the only source that can.
+  - `order` now **subsets**, as its documented semantics always
+    claimed: values it omits are excluded from the plot and from the
+    printed statistics, instead of being appended after the listed
+    ones. Its values are validated against `adata.obs["sample_id"]`.
+  - `ascending` combined with `order_by` sorts samples within each
+    group; it was silently ignored before. It is still ignored, with a
+    warning, when `order` or `group_by` is set.
+  - samples with a missing `order_by` value are drawn in a trailing
+    block labelled `NA` instead of `nan`.
+  - new `proteopy/pl/_utils.py` holds `resolve_default_order()`, the
+    shared implementation of the rule, for the remaining `pl`
+    functions to adopt.
+
 ### Added
 
 - **Preprocessing** (`pr.pp`): `summarize_peptides_by_neighbourhood_union()`

@@ -23,6 +23,7 @@ from proteopy.utils.anndata import check_proteodata, is_proteodata
 from proteopy.utils.matplotlib import _resolve_color_scheme
 from proteopy.utils.functools import partial_with_docsig
 from proteopy.utils.string import sanitize_string
+from proteopy.pl._utils import dedupe, resolve_default_order
 from proteopy.pp.stats import calculate_cv
 
 
@@ -918,22 +919,6 @@ def completeness_per_sample(
     )
 
 
-def _contains_value(seq, value) -> bool:
-    """Check if *value* is in *seq*, treating NaN as equal."""
-    for item in seq:
-        if pd.isna(item) and pd.isna(value):
-            return True
-        if item == value:
-            return True
-    return False
-
-
-def _append_unique(seq, value) -> None:
-    """Append *value* to *seq* only if not already present."""
-    if not _contains_value(seq, value):
-        seq.append(value)
-
-
 def _n_var_summary_stats(series):
     """Return a one-row DataFrame of count summary stats."""
     return pd.DataFrame(
@@ -968,6 +953,8 @@ def _print_stats_df(df):
         )
     )
 
+
+_NA_BLOCK_LABEL = "NA"
 
 _AGG_STATS = {
     "mean_count": "mean",
@@ -1036,8 +1023,8 @@ def _validate_n_var_per_sample_args(  # noqa: C901
             valid = set(adata.obs[order_by].dropna().unique())
             source = f"adata.obs['{order_by}']"
         else:
-            valid = set(adata.obs_names)
-            source = "adata.obs_names"
+            valid = set(adata.obs["sample_id"])
+            source = "adata.obs['sample_id']"
         invalid = [o for o in order if o not in valid]
         if invalid:
             invalid_str = ", ".join(map(str, invalid))
@@ -1182,7 +1169,6 @@ def _n_var_resolve_bar_colors(
 
 def _n_var_group_by_path(
     counts,
-    adata,
     group_by,
     order,
     color_scheme,
@@ -1197,43 +1183,28 @@ def _n_var_group_by_path(
     ax=None,
 ):
     """Plot mean +/- std bar chart grouped by an obs column."""
-    group_df = adata.obs[[group_by]].copy()
-    group_df = group_df.rename_axis(
-        "obs",
-    ).reset_index()
-    counts = pd.merge(
-        counts,
-        group_df,
-        on="obs",
-        how="left",
-    )
     counts = counts.dropna(subset=[group_by])
     if counts.empty:
         raise ValueError(
             "No observations remain after " "aligning `group_by` labels.",
         )
 
-    group_values = counts[group_by]
-    if isinstance(
-        group_values.dtype,
-        pd.CategoricalDtype,
-    ):
-        group_values = group_values.cat.remove_unused_categories()
-        counts[group_by] = group_values
-
-    available_groups: list[Any] = []
-    for value in group_values:
-        _append_unique(available_groups, value)
-
+    # -- Group order: `order` wins, else the default rule.
+    #    A group with no observation has no bar to draw, so
+    #    empty categories are dropped here.
     group_order = _n_var_resolve_group_order(
         order,
-        available_groups,
-        group_values,
+        counts[group_by],
     )
 
-    # Append any groups not yet in order
-    for value in available_groups:
-        _append_unique(group_order, value)
+    # `order` subsets: groups it omits are excluded outright,
+    # so they leave the statistics as well as the axis.
+    counts = counts[counts[group_by].astype(object).isin(group_order)]
+    if counts.empty:
+        raise ValueError(
+            "No observations remain after applying "
+            "`order` to the `group_by` groups.",
+        )
 
     # -- Compute per-group statistics
     stats_df = (
@@ -1298,87 +1269,88 @@ def _n_var_group_by_path(
     return _ax
 
 
-def _n_var_resolve_group_order(
-    order,
-    available_groups,
-    group_values,
-):
-    """Resolve group ordering from order arg or categories."""
-    if order:
-        # Deduplicate while preserving order
-        group_order: list[Any] = []
-        for grp in order:
-            if not _contains_value(
-                group_order,
-                grp,
-            ):
-                group_order.append(grp)
-        return group_order
+def _n_var_resolve_group_order(order, group_values):
+    """Resolve group ordering from `order` or the default rule."""
+    if order is not None:
+        return dedupe(order)
 
-    if isinstance(
-        group_values.dtype,
-        pd.CategoricalDtype,
-    ):
-        return list(
-            group_values.cat.categories,
+    # A group with no observation has no bar to draw.
+    return resolve_default_order(
+        group_values,
+        keep_unused_categories=False,
+    )
+
+
+def _n_var_resolve_sample_order(counts, order, ascending):
+    """Order samples: `order`, else `ascending`, else default."""
+    if order is not None:
+        return dedupe(order)
+
+    if ascending is not None:
+        sorted_counts = counts.sort_values(
+            "count",
+            ascending=ascending,
+            kind="mergesort",
         )
-    return available_groups.copy()
+        return sorted_counts["sample_id"].tolist()
+
+    # A sample absent from the data has no bar to draw.
+    return resolve_default_order(
+        counts["sample_id"],
+        keep_unused_categories=False,
+    )
 
 
 def _n_var_resolve_obs_ordering(
     counts,
-    obs_df,
     group_key,
     order,
-    available_groups,
     ascending,
 ):
-    """Resolve observation ordering for the per-obs bar path."""
-    has_grouping = group_key != "_group"
-
-    if has_grouping:
-        group_order = _n_var_resolve_group_order(
+    """Resolve sample ordering for the per-sample bar path."""
+    if group_key == "_group":
+        x_ordered = _n_var_resolve_sample_order(
+            counts,
             order,
-            available_groups,
-            obs_df[group_key],
+            ascending,
         )
-        for grp in available_groups:
-            _append_unique(group_order, grp)
+        return x_ordered, {"all": x_ordered}
 
-        cat_index_map: dict[str, list[str]] = {}
-        for grp in group_order:
-            obs_list = obs_df.loc[obs_df[group_key] == grp, "obs"].tolist()
-            if obs_list:
-                cat_index_map[str(grp)] = obs_list
-        x_ordered = [
-            obs for obs_list in cat_index_map.values() for obs in obs_list
-        ]
-    else:
-        if order:
-            # Deduplicate, then append remaining obs
-            x_ordered: list[Any] = []
-            for obs_name in order:
-                _append_unique(
-                    x_ordered,
-                    obs_name,
-                )
-            for obs_name in counts["obs"]:
-                _append_unique(
-                    x_ordered,
-                    obs_name,
-                )
-        else:
-            if ascending is not None:
-                sorted_counts = counts.sort_values(
-                    "count",
-                    ascending=ascending,
-                    kind="mergesort",
-                )
-                x_ordered = sorted_counts["obs"].tolist()
-            else:
-                x_ordered = counts["obs"].tolist()
-        cat_index_map = {"all": x_ordered}
+    # -- Blocks follow the `order_by` column; within a block
+    #    the samples follow `ascending`, else the default rule
+    group_order = _n_var_resolve_group_order(
+        order,
+        counts[group_key],
+    )
 
+    cat_index_map: dict[str, list[Any]] = {}
+    for grp in group_order:
+        block = counts[counts[group_key] == grp]
+        if block.empty:
+            continue
+        cat_index_map[str(grp)] = _n_var_resolve_sample_order(
+            block,
+            None,
+            ascending,
+        )
+
+    # Samples with no `order_by` label keep a trailing block
+    # rather than dropping out of the figure unannounced —
+    # unless `order` was given, which subsets to named groups.
+    unlabelled = counts[counts[group_key].isna()]
+    if order is None and not unlabelled.empty:
+        na_label = _NA_BLOCK_LABEL
+        while na_label in cat_index_map:
+            na_label += "_"
+        cat_index_map[na_label] = _n_var_resolve_sample_order(
+            unlabelled,
+            None,
+            ascending,
+        )
+
+    x_ordered = [
+        sample for samples in cat_index_map.values() for sample in samples
+    ]
     return x_ordered, cat_index_map
 
 
@@ -1431,7 +1403,10 @@ def _n_var_plot_per_obs(
             _print_stats_df(print_df)
 
     # -- Resolve colors
-    counts[group_key] = counts[group_key].astype(str)
+    #    Unlabelled samples share the trailing block's key.
+    counts[group_key] = (
+        counts[group_key].astype(object).fillna(_NA_BLOCK_LABEL).astype(str)
+    )
 
     unique_groups = list(cat_index_map.keys())
     colors = _resolve_color_scheme(
@@ -1454,7 +1429,7 @@ def _n_var_plot_per_obs(
         fig, _ax = plt.subplots(figsize=figsize)
     counts.plot(
         kind="bar",
-        x="obs",
+        x="sample_id",
         y="count",
         ax=_ax,
         legend=False,
@@ -1470,7 +1445,7 @@ def _n_var_plot_per_obs(
     _ax.set_ylabel(ylabel)
 
     # -- Add group labels above bars
-    obs_idx_map = {obs: i for i, obs in enumerate(x_ordered)}
+    obs_idx_map = {sample: i for i, sample in enumerate(x_ordered)}
     ymax = counts["count"].max()
     for cat, obs_list in cat_index_map.items():
         if not obs_list:
@@ -1529,6 +1504,23 @@ def n_var_per_sample(
     """
     Plot the number of detected variables (peptides or protein) per sample.
 
+    Unless ``order`` or ``ascending`` imposes an order, bars
+    follow the default order of ``adata.obs["sample_id"]``: its
+    category order when the column is a Categorical, otherwise
+    its values sorted lexicographically. The same rule orders
+    the groups of ``group_by`` and the blocks of ``order_by``.
+    Store an annotation as an ordered Categorical to control
+    the order::
+
+        adata.obs["sample_id"] = pd.Categorical(
+            adata.obs["sample_id"],
+            categories=["s1", "s2", "s10"],
+            ordered=True,
+        )
+
+    Categories that no observation matches are dropped, since
+    an empty group has no bar to draw.
+
     Parameters
     ----------
     adata : AnnData
@@ -1547,24 +1539,29 @@ def n_var_per_sample(
         Display y-axis values as a percentage of total
         variables instead of raw counts.
     ascending : bool or None, optional
-        Sort observations by detected counts. ``True`` places
-        lower counts to the left; ``False`` places higher counts
-        to the left; ``None`` preserves the existing
-        observation order.
+        Sort samples by detected counts. ``True`` places lower
+        counts to the left, ``False`` higher counts to the left.
+        With ``order_by`` the sort applies within each group.
+        ``None`` imposes no count order, so the default order
+        below applies. Ignored, with a warning, when ``order``
+        or ``group_by`` is set.
     order_by : str or None, optional
         Column in ``adata.obs`` used for grouping and
-        colouring bars.
+        colouring bars. Samples with a missing value in this
+        column are drawn in a trailing ``"NA"`` block.
     order : Sequence[str] or None, optional
-        Controls ordering and subsetting on the x-axis.
-        Without ``group_by`` or ``order_by`` it lists
-        observation names. With ``order_by`` it specifies
-        the group order. With ``group_by`` it specifies
-        the group order for the bar chart.
+        Ordering *and* subsetting of the x-axis: the listed
+        values are drawn, in the given sequence, and everything
+        else is excluded — from the statistics as well as the
+        plot. Without ``group_by`` or ``order_by`` the values
+        are ``adata.obs["sample_id"]`` entries; with either of
+        them they are values of that column.
     group_by : str or None, optional
         Column in ``adata.obs`` used to summarise
         observations into groups. When provided, a mean
         +/- std bar chart is shown. Mutually exclusive
-        with ``order_by``.
+        with ``order_by``. Observations with a missing value
+        in this column are dropped.
     print_stats : bool, optional
         Print summary statistics as a DataFrame.
     figsize : tuple of float, optional
@@ -1648,15 +1645,20 @@ def n_var_per_sample(
         adata,
     )
 
-    # -- Build counts DataFrame
-    counts_series = pd.Series(
-        counts_array,
-        index=adata.obs_names,
-        name="count",
+    # -- Build counts DataFrame keyed on the sample_id column.
+    #    Never .obs_names: an AnnData axis index is a plain
+    #    string index and cannot carry a category order, so
+    #    labelling from it would discard the order the user set.
+    counts = pd.DataFrame(
+        {
+            "sample_id": (adata.obs["sample_id"].reset_index(drop=True)),
+            "count": counts_array,
+        }
     )
-    counts = counts_series.rename_axis(
-        "obs",
-    ).reset_index()
+
+    grouping_key = group_by if group_by is not None else order_by
+    if grouping_key is not None and grouping_key != "sample_id":
+        counts[grouping_key] = adata.obs[grouping_key].reset_index(drop=True)
 
     # -- Warn when ascending has no effect
     if ascending is not None:
@@ -1677,7 +1679,6 @@ def n_var_per_sample(
     if group_by is not None:
         return _n_var_group_by_path(
             counts,
-            adata,
             group_by,
             order,
             color_scheme,
@@ -1692,60 +1693,28 @@ def n_var_per_sample(
             ax,
         )
 
-    # -- Per-observation bar plot (with optional order_by)
-    has_grouping = order_by is not None
-    group_key = order_by if has_grouping else "_group"
-
-    # Attach grouping column to counts
-    if has_grouping:
-        if group_key != "obs":
-            obs = adata.obs[[group_key]].copy()
-            obs = obs.rename_axis(
-                "obs",
-            ).reset_index()
-            counts = pd.merge(
-                counts,
-                obs,
-                on="obs",
-                how="left",
-            )
-        else:
-            counts[group_key] = counts["obs"]
-    else:
+    # -- Per-sample bar plot (with optional order_by)
+    group_key = order_by if order_by is not None else "_group"
+    if order_by is None:
         counts[group_key] = "all"
 
-    obs_df = adata.obs.copy()
-    obs_df = obs_df.rename_axis(
-        "obs",
-    ).reset_index()
-    if group_key not in obs_df.columns:
-        obs_df[group_key] = "all"
-    if has_grouping and isinstance(
-        obs_df[group_key].dtype,
-        pd.CategoricalDtype,
-    ):
-        obs_df[group_key] = obs_df[group_key].astype("category")
-
-    available_groups: list[Any] = []
-    for value in obs_df[group_key]:
-        _append_unique(available_groups, value)
-
-    # -- Resolve observation ordering
+    # -- Resolve sample ordering
     x_ordered, cat_index_map = _n_var_resolve_obs_ordering(
         counts,
-        obs_df,
         group_key,
         order,
-        available_groups,
         ascending,
     )
 
-    counts["obs"] = pd.Categorical(
-        counts["obs"],
+    # `order` subsets: samples it omits become NaN here and are
+    # dropped, so they leave the statistics as well as the axis.
+    counts["sample_id"] = pd.Categorical(
+        counts["sample_id"].astype(object),
         categories=x_ordered,
         ordered=True,
     )
-    counts = counts.sort_values("obs")
+    counts = counts.dropna(subset=["sample_id"])
+    counts = counts.sort_values("sample_id")
 
     # -- Plot per-observation bars
     return _n_var_plot_per_obs(
@@ -1776,7 +1745,24 @@ Plot the number of detected peptides per sample.
 
 For each sample (observation), counts the number of
 peptides with non-missing values. Requires peptide-level
-proteodata.""",
+proteodata.
+
+Unless ``order`` or ``ascending`` imposes an order, bars
+follow the default order of ``adata.obs["sample_id"]``: its
+category order when the column is a Categorical, otherwise
+its values sorted lexicographically. The same rule orders
+the groups of ``group_by`` and the blocks of ``order_by``.
+Store an annotation as an ordered Categorical to control
+the order::
+
+    adata.obs["sample_id"] = pd.Categorical(
+        adata.obs["sample_id"],
+        categories=["s1", "s2", "s10"],
+        ordered=True,
+    )
+
+Categories that no observation matches are dropped, since
+an empty group has no bar to draw.""",
     docstr_examples="""\
 >>> import proteopy as pr
 >>> adata = pr.datasets.williams_2018()
@@ -1799,7 +1785,23 @@ Plot the number of detected proteins per sample.
 
 For each sample (observation), counts the number of
 proteins with non-missing values.
-""",
+
+Unless ``order`` or ``ascending`` imposes an order, bars
+follow the default order of ``adata.obs["sample_id"]``: its
+category order when the column is a Categorical, otherwise
+its values sorted lexicographically. The same rule orders
+the groups of ``group_by`` and the blocks of ``order_by``.
+Store an annotation as an ordered Categorical to control
+the order::
+
+    adata.obs["sample_id"] = pd.Categorical(
+        adata.obs["sample_id"],
+        categories=["s1", "s2", "s10"],
+        ordered=True,
+    )
+
+Categories that no observation matches are dropped, since
+an empty group has no bar to draw.""",
     docstr_examples="""\
 >>> import proteopy as pr
 

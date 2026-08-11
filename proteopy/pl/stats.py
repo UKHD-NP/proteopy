@@ -1,6 +1,7 @@
 import warnings
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
+from collections.abc import Callable, Sequence
 import uuid
 
 import numpy as np
@@ -41,14 +42,9 @@ def _validate_completeness_args(  # noqa: C901
     check_proteodata(adata)
 
     if axis not in (0, 1):
-        raise ValueError(
-            "`axis` must be either 0 (var) or 1 (obs)."
-        )
+        raise ValueError("`axis` must be either 0 (var) or 1 (obs).")
 
-    if (
-        group_by_resolution is not None
-        and group_by_partition is not None
-    ):
+    if group_by_resolution is not None and group_by_partition is not None:
         raise ValueError(
             "`group_by_resolution` and `group_by_partition` "
             "are mutually exclusive. Provide one or neither."
@@ -63,18 +59,13 @@ def _validate_completeness_args(  # noqa: C901
     if fraction_thresh is not None and (
         fraction_thresh < 0 or fraction_thresh > 1
     ):
-        raise ValueError(
-            "`fraction_thresh` must be between 0 and 1."
-        )
+        raise ValueError("`fraction_thresh` must be between 0 and 1.")
 
     if bin_width is not None and bin_width <= 0:
-        raise ValueError(
-            "`bin_width` must be a positive number."
-        )
+        raise ValueError("`bin_width` must be a positive number.")
 
-    if (
-        group_by_resolution is None
-        and (min_count is not None or min_fraction is not None)
+    if group_by_resolution is None and (
+        min_count is not None or min_fraction is not None
     ):
         warnings.warn(
             "`min_count` and `min_fraction` are only used when "
@@ -88,15 +79,12 @@ def _validate_completeness_args(  # noqa: C901
         matrix = adata.X
     else:
         if layer not in adata.layers:
-            raise KeyError(
-                f"Layer '{layer}' not found in adata.layers."
-            )
+            raise KeyError(f"Layer '{layer}' not found in adata.layers.")
         matrix = adata.layers[layer]
 
     if matrix is None:
         raise ValueError(
-            "Selected matrix is empty; cannot compute "
-            "completeness."
+            "Selected matrix is empty; cannot compute " "completeness."
         )
 
     n_obs, n_vars = matrix.shape
@@ -113,14 +101,10 @@ def _validate_completeness_args(  # noqa: C901
         grouping_frame = adata.var
 
     if axis_length == 0:
-        raise ValueError(
-            "Cannot compute completeness on empty axis."
-        )
+        raise ValueError("Cannot compute completeness on empty axis.")
 
     if n_items == 0:
-        raise ValueError(
-            "No items to compute completeness for."
-        )
+        raise ValueError("No items to compute completeness for.")
 
     if order is not None and group_by_partition is None:
         warnings.warn(
@@ -130,24 +114,36 @@ def _validate_completeness_args(  # noqa: C901
         )
 
     return [
-        matrix, axis_labels, n_items, axis_length,
-        grouping_frame, min_count, min_fraction,
+        matrix,
+        axis_labels,
+        n_items,
+        axis_length,
+        grouping_frame,
+        min_count,
+        min_fraction,
     ]
 
 
 def _summary_stats(values):
     """Return a single-row DataFrame of summary statistics."""
-    s = pd.Series(values) if not isinstance(
-        values, pd.Series,
-    ) else values
-    return pd.DataFrame({
-        "count": [s.count()],
-        "mean": [s.mean()],
-        "median": [s.median()],
-        "std": [s.std()],
-        "min": [s.min()],
-        "max": [s.max()],
-    })
+    s = (
+        pd.Series(values)
+        if not isinstance(
+            values,
+            pd.Series,
+        )
+        else values
+    )
+    return pd.DataFrame(
+        {
+            "count": [s.count()],
+            "mean": [s.mean()],
+            "median": [s.median()],
+            "std": [s.std()],
+            "min": [s.min()],
+            "max": [s.max()],
+        }
+    )
 
 
 def _count_nonmissing(mat, ax, zero_to_na):
@@ -198,9 +194,7 @@ def _resolve_partition_order(order, available):
             order = [order]
         else:
             order = list(order)
-        missing = [
-            g for g in order if g not in available
-        ]
+        missing = [g for g in order if g not in available]
         if missing:
             raise ValueError(
                 "Unknown group(s) in `order`: "
@@ -211,7 +205,10 @@ def _resolve_partition_order(order, available):
 
 
 def _group_completeness_counts(
-    matrix, axis, g_mask, zero_to_na,
+    matrix,
+    axis,
+    g_mask,
+    zero_to_na,
 ):
     """Count non-missing values per item within a group mask."""
     if axis == 0:
@@ -249,13 +246,13 @@ def _plot_completeness_partition(
     group_series = grouping_frame[group_by_partition]
     available = list(group_series.dropna().unique())
     unique_groups = _resolve_partition_order(
-        order, available,
+        order,
+        available,
     )
 
     if len(unique_groups) == 0:
         raise ValueError(
-            "No groups found for the given "
-            "`group_by_partition` column.",
+            "No groups found for the given " "`group_by_partition` column.",
         )
 
     # -- compute completeness per item within each group
@@ -263,35 +260,40 @@ def _plot_completeness_partition(
     for g in unique_groups:
         g_mask = (group_series == g).values
         counts_g, g_size = _group_completeness_counts(
-            matrix, axis, g_mask, zero_to_na,
+            matrix,
+            axis,
+            g_mask,
+            zero_to_na,
         )
         fracs = counts_g / g_size
         for f in fracs:
-            records.append(
-                {"Group": str(g), "Completeness": f}
-            )
+            records.append({"Group": str(g), "Completeness": f})
 
     long_df = pd.DataFrame(records)
 
     if print_stats:
         print("Global:")
-        print(_summary_stats(
-            long_df["Completeness"],
-        ).to_string(
-            index=False, float_format="%.4f",
-        ))
+        print(
+            _summary_stats(
+                long_df["Completeness"],
+            ).to_string(
+                index=False,
+                float_format="%.4f",
+            )
+        )
         per_group = (
             long_df.groupby("Group")["Completeness"]
-            .agg(["count", "mean", "median",
-                  "std", "min", "max"])
+            .agg(["count", "mean", "median", "std", "min", "max"])
             .reindex(
                 [str(g) for g in unique_groups],
             )
         )
         print(f"\nPer {group_by_partition}:")
-        print(per_group.to_string(
-            float_format="%.4f",
-        ))
+        print(
+            per_group.to_string(
+                float_format="%.4f",
+            )
+        )
         print()
 
     if ax is None:
@@ -307,8 +309,7 @@ def _plot_completeness_partition(
         ax=_ax,
     )
     _ax.set_title(
-        f"Completeness per {axis_labels[0]} "
-        f"by '{group_by_partition}'",
+        f"Completeness per {axis_labels[0]} " f"by '{group_by_partition}'",
     )
     _ax.set_xlabel(group_by_partition)
     _ax.set_ylabel(
@@ -352,9 +353,12 @@ def _plot_completeness_ungrouped(
 
     if print_stats:
         print("Global:")
-        print(_summary_stats(fractions).to_string(
-            index=False, float_format="%.4f",
-        ))
+        print(
+            _summary_stats(fractions).to_string(
+                index=False,
+                float_format="%.4f",
+            )
+        )
         print()
 
     if ax is None:
@@ -379,7 +383,8 @@ def _plot_completeness_ungrouped(
         )
         _ax.legend()
     plt.setp(
-        _ax.get_xticklabels(), rotation=xlabel_rotation,
+        _ax.get_xticklabels(),
+        rotation=xlabel_rotation,
     )
     return fig, _ax
 
@@ -409,15 +414,12 @@ def _plot_completeness_resolution(
         )
 
     group_series = grouping_frame[group_by_resolution]
-    unique_groups = list(
-        group_series.dropna().unique()
-    )
+    unique_groups = list(group_series.dropna().unique())
     n_groups = len(unique_groups)
 
     if n_groups == 0:
         raise ValueError(
-            "No groups found for the given "
-            "`group_by_resolution` column.",
+            "No groups found for the given " "`group_by_resolution` column.",
         )
 
     # Default threshold: min_count=1
@@ -431,13 +433,14 @@ def _plot_completeness_resolution(
     for g in unique_groups:
         g_mask = (group_series == g).values
         counts_g, group_size = _group_completeness_counts(
-            matrix, axis, g_mask, zero_to_na,
+            matrix,
+            axis,
+            g_mask,
+            zero_to_na,
         )
 
         if use_fraction:
-            detected = (
-                counts_g / group_size >= min_fraction
-            )
+            detected = counts_g / group_size >= min_fraction
         else:
             detected = counts_g >= min_count
 
@@ -447,11 +450,14 @@ def _plot_completeness_resolution(
 
     if print_stats:
         print("Global:")
-        print(_summary_stats(
-            detection_fractions,
-        ).to_string(
-            index=False, float_format="%.4f",
-        ))
+        print(
+            _summary_stats(
+                detection_fractions,
+            ).to_string(
+                index=False,
+                float_format="%.4f",
+            )
+        )
         print()
 
     if ax is None:
@@ -460,19 +466,18 @@ def _plot_completeness_resolution(
         _ax = ax
         fig = _ax.get_figure()
     sns.histplot(
-        detection_fractions, bins=bin_edges, ax=_ax,
+        detection_fractions,
+        bins=bin_edges,
+        ax=_ax,
     )
 
     if use_fraction:
-        threshold_label = (
-            f"min_fraction={min_fraction}"
-        )
+        threshold_label = f"min_fraction={min_fraction}"
     else:
         threshold_label = f"min_count={min_count}"
 
     _ax.set_title(
-        f"'{group_by_resolution}' completeness "
-        f"per {axis_labels[0]}",
+        f"'{group_by_resolution}' completeness " f"per {axis_labels[0]}",
     )
     _ax.set_xlabel(
         f"Fraction of '{group_by_resolution}' groups "
@@ -488,7 +493,8 @@ def _plot_completeness_resolution(
         )
         _ax.legend()
     plt.setp(
-        _ax.get_xticklabels(), rotation=xlabel_rotation,
+        _ax.get_xticklabels(),
+        rotation=xlabel_rotation,
     )
     return fig, _ax
 
@@ -583,9 +589,15 @@ def completeness(
         The Matplotlib Axes object used for plotting.
     """
     validated = _validate_completeness_args(
-        adata, axis, layer, order,
-        group_by_resolution, group_by_partition,
-        min_count, min_fraction, fraction_thresh,
+        adata,
+        axis,
+        layer,
+        order,
+        group_by_resolution,
+        group_by_partition,
+        min_count,
+        min_fraction,
+        fraction_thresh,
         bin_width,
     )
     matrix = validated[0]
@@ -597,7 +609,9 @@ def completeness(
     min_fraction = validated[6]
 
     bin_edges = np.arange(
-        0.0, 1.0 + bin_width * 2, bin_width,
+        0.0,
+        1.0 + bin_width * 2,
+        bin_width,
     )
 
     if group_by_partition is not None:
@@ -922,30 +936,37 @@ def _append_unique(seq, value) -> None:
 
 def _n_var_summary_stats(series):
     """Return a one-row DataFrame of count summary stats."""
-    return pd.DataFrame({
-        "mean_count": [series.mean()],
-        "std_count": [series.std()],
-        "median_count": [series.median()],
-        "min_count": [series.min()],
-        "max_count": [series.max()],
-    })
+    return pd.DataFrame(
+        {
+            "mean_count": [series.mean()],
+            "std_count": [series.std()],
+            "median_count": [series.median()],
+            "min_count": [series.min()],
+            "max_count": [series.max()],
+        }
+    )
 
 
 def _add_pct_cols(df, total):
     """Add percentage columns to *df* in place."""
     for col in [
-        "mean", "std", "median", "min", "max",
+        "mean",
+        "std",
+        "median",
+        "min",
+        "max",
     ]:
-        df[f"{col}_pct"] = (
-            df[f"{col}_count"] / total * 100
-        )
+        df[f"{col}_pct"] = df[f"{col}_count"] / total * 100
 
 
 def _print_stats_df(df):
     """Print a DataFrame with one-decimal formatting."""
-    print(df.to_string(
-        index=False, float_format="%.1f",
-    ))
+    print(
+        df.to_string(
+            index=False,
+            float_format="%.1f",
+        )
+    )
 
 
 _AGG_STATS = {
@@ -976,16 +997,12 @@ def _validate_n_var_per_sample_args(  # noqa: C901
             "'peptide', 'protein', or None."
         )
     if level == "peptide" and data_level == "protein":
-        raise ValueError(
-            "Cannot count peptides from "
-            "protein-level data."
-        )
+        raise ValueError("Cannot count peptides from " "protein-level data.")
 
     # -- Mutual exclusivity
     if group_by is not None and order_by is not None:
         raise ValueError(
-            "`group_by` and `order_by` cannot be "
-            "used together."
+            "`group_by` and `order_by` cannot be " "used together."
         )
 
     # -- Validate layer
@@ -993,55 +1010,37 @@ def _validate_n_var_per_sample_args(  # noqa: C901
         matrix = adata.X
     else:
         if layer not in adata.layers:
-            raise KeyError(
-                f"Layer '{layer}' not found in "
-                "adata.layers."
-            )
+            raise KeyError(f"Layer '{layer}' not found in " "adata.layers.")
         matrix = adata.layers[layer]
         if matrix is None:
             raise ValueError(
-                "Selected layer is empty; cannot "
-                "compute variable counts."
+                "Selected layer is empty; cannot " "compute variable counts."
             )
 
     # -- Validate group_by column
     if group_by is not None:
         if group_by not in adata.obs.columns:
-            raise KeyError(
-                f"Column '{group_by}' not found "
-                "in adata.obs."
-            )
+            raise KeyError(f"Column '{group_by}' not found " "in adata.obs.")
 
     # -- Validate order_by column
     if order_by is not None:
         if order_by not in adata.obs.columns:
-            raise KeyError(
-                f"Column '{order_by}' not found "
-                "in adata.obs."
-            )
+            raise KeyError(f"Column '{order_by}' not found " "in adata.obs.")
 
     # -- Validate order elements
     if order is not None:
         if group_by is not None:
-            valid = set(
-                adata.obs[group_by].dropna().unique()
-            )
+            valid = set(adata.obs[group_by].dropna().unique())
             source = f"adata.obs['{group_by}']"
         elif order_by is not None:
-            valid = set(
-                adata.obs[order_by].dropna().unique()
-            )
+            valid = set(adata.obs[order_by].dropna().unique())
             source = f"adata.obs['{order_by}']"
         else:
             valid = set(adata.obs_names)
             source = "adata.obs_names"
-        invalid = [
-            o for o in order if o not in valid
-        ]
+        invalid = [o for o in order if o not in valid]
         if invalid:
-            invalid_str = ", ".join(
-                map(str, invalid)
-            )
+            invalid_str = ", ".join(map(str, invalid))
             raise ValueError(
                 f"Unknown value(s) in `order`: "
                 f"{invalid_str}. Valid values "
@@ -1064,7 +1063,11 @@ def _valid_mask(matrix, zero_to_na):
 
 
 def _n_var_count_per_sample(
-    matrix, zero_to_na, level, data_level, adata,
+    matrix,
+    zero_to_na,
+    level,
+    data_level,
+    adata,
 ):
     """Count non-missing vars per sample.
 
@@ -1086,7 +1089,8 @@ def _n_var_count_per_sample(
         n_proteins = protein_codes.max() + 1
         # OR-reduce peptide columns into protein columns
         prot_detected = np.zeros(
-            (valid.shape[0], n_proteins), dtype=bool,
+            (valid.shape[0], n_proteins),
+            dtype=bool,
         )
         np.maximum.at(
             prot_detected,
@@ -1103,8 +1107,13 @@ def _n_var_count_per_sample(
 
 
 def _n_var_derive_totals(
-    counts_array, level, data_level,
-    percentage, ylabel, title, adata,
+    counts_array,
+    level,
+    data_level,
+    percentage,
+    ylabel,
+    title,
+    adata,
 ):
     """Derive totals, percentage, ylabel, and title."""
     if level == "protein" and data_level == "peptide":
@@ -1115,12 +1124,9 @@ def _n_var_derive_totals(
     if percentage:
         if total_vars == 0:
             raise ValueError(
-                "Cannot compute percentage: "
-                "no variables found."
+                "Cannot compute percentage: " "no variables found."
             )
-        counts_array = (
-            counts_array / total_vars
-        ) * 100
+        counts_array = (counts_array / total_vars) * 100
 
     # -- Resolve y-axis label
     if ylabel is None:
@@ -1128,15 +1134,9 @@ def _n_var_derive_totals(
 
     # -- Resolve title
     if title is None:
-        if level == "protein" or (
-            level is None
-            and data_level == "protein"
-        ):
+        if level == "protein" or (level is None and data_level == "protein"):
             entity = "proteins"
-        elif level == "peptide" or (
-            level is None
-            and data_level == "peptide"
-        ):
+        elif level == "peptide" or (level is None and data_level == "peptide"):
             entity = "peptides"
         else:
             entity = "variables"
@@ -1146,7 +1146,10 @@ def _n_var_derive_totals(
 
 
 def _n_var_print_group_stats(
-    counts, stats_df, group_by, total_vars,
+    counts,
+    stats_df,
+    group_by,
+    total_vars,
 ):
     """Print global and per-group statistics."""
     global_df = _n_var_summary_stats(counts["count"])
@@ -1160,27 +1163,38 @@ def _n_var_print_group_stats(
 
 
 def _n_var_resolve_bar_colors(
-    color_scheme, group_order, stats_df, group_by,
+    color_scheme,
+    group_order,
+    stats_df,
+    group_by,
 ):
     """Resolve bar colors from a color scheme."""
     if color_scheme is None:
         return None
     colors = _resolve_color_scheme(
-        color_scheme, group_order,
+        color_scheme,
+        group_order,
     )
     if colors is None:
         return None
-    return [
-        colors[group_order.index(grp)]
-        for grp in stats_df[group_by]
-    ]
+    return [colors[group_order.index(grp)] for grp in stats_df[group_by]]
 
 
 def _n_var_group_by_path(
-    counts, adata, group_by, order,
-    color_scheme, total_vars, ylabel, title,
-    print_stats, figsize, xlabel_rotation,
-    save, show, ax=None,
+    counts,
+    adata,
+    group_by,
+    order,
+    color_scheme,
+    total_vars,
+    ylabel,
+    title,
+    print_stats,
+    figsize,
+    xlabel_rotation,
+    save,
+    show,
+    ax=None,
 ):
     """Plot mean +/- std bar chart grouped by an obs column."""
     group_df = adata.obs[[group_by]].copy()
@@ -1188,23 +1202,23 @@ def _n_var_group_by_path(
         "obs",
     ).reset_index()
     counts = pd.merge(
-        counts, group_df, on="obs", how="left",
+        counts,
+        group_df,
+        on="obs",
+        how="left",
     )
     counts = counts.dropna(subset=[group_by])
     if counts.empty:
         raise ValueError(
-            "No observations remain after "
-            "aligning `group_by` labels.",
+            "No observations remain after " "aligning `group_by` labels.",
         )
 
     group_values = counts[group_by]
     if isinstance(
-        group_values.dtype, pd.CategoricalDtype,
+        group_values.dtype,
+        pd.CategoricalDtype,
     ):
-        group_values = (
-            group_values.cat
-            .remove_unused_categories()
-        )
+        group_values = group_values.cat.remove_unused_categories()
         counts[group_by] = group_values
 
     available_groups: list[Any] = []
@@ -1212,7 +1226,9 @@ def _n_var_group_by_path(
         _append_unique(available_groups, value)
 
     group_order = _n_var_resolve_group_order(
-        order, available_groups, group_values,
+        order,
+        available_groups,
+        group_values,
     )
 
     # Append any groups not yet in order
@@ -1221,29 +1237,30 @@ def _n_var_group_by_path(
 
     # -- Compute per-group statistics
     stats_df = (
-        counts.groupby(group_by, observed=True)[
-            "count"
-        ]
+        counts.groupby(group_by, observed=True)["count"]
         .agg(**_AGG_STATS)
         .reindex(group_order)
     )
     stats_df = stats_df.dropna(
         subset=["mean_count"],
     )
-    stats_df["std_count"] = (
-        stats_df["std_count"].fillna(0.0)
-    )
+    stats_df["std_count"] = stats_df["std_count"].fillna(0.0)
     stats_df = stats_df.reset_index()
 
     if print_stats:
         _n_var_print_group_stats(
-            counts, stats_df, group_by, total_vars,
+            counts,
+            stats_df,
+            group_by,
+            total_vars,
         )
 
     # -- Plot grouped bar chart
     bar_colors = _n_var_resolve_bar_colors(
-        color_scheme, group_order,
-        stats_df, group_by,
+        color_scheme,
+        group_order,
+        stats_df,
+        group_by,
     )
 
     if ax is not None:
@@ -1272,7 +1289,8 @@ def _n_var_group_by_path(
 
     if save is not None:
         fig.savefig(
-            save, dpi=300,
+            save,
+            dpi=300,
             bbox_inches="tight",
         )
     if show:
@@ -1281,7 +1299,9 @@ def _n_var_group_by_path(
 
 
 def _n_var_resolve_group_order(
-    order, available_groups, group_values,
+    order,
+    available_groups,
+    group_values,
 ):
     """Resolve group ordering from order arg or categories."""
     if order:
@@ -1289,7 +1309,8 @@ def _n_var_resolve_group_order(
         group_order: list[Any] = []
         for grp in order:
             if not _contains_value(
-                group_order, grp,
+                group_order,
+                grp,
             ):
                 group_order.append(grp)
         return group_order
@@ -1305,30 +1326,32 @@ def _n_var_resolve_group_order(
 
 
 def _n_var_resolve_obs_ordering(
-    counts, obs_df, group_key, order,
-    available_groups, ascending,
+    counts,
+    obs_df,
+    group_key,
+    order,
+    available_groups,
+    ascending,
 ):
     """Resolve observation ordering for the per-obs bar path."""
     has_grouping = group_key != "_group"
 
     if has_grouping:
         group_order = _n_var_resolve_group_order(
-            order, available_groups, obs_df[group_key],
+            order,
+            available_groups,
+            obs_df[group_key],
         )
         for grp in available_groups:
             _append_unique(group_order, grp)
 
         cat_index_map: dict[str, list[str]] = {}
         for grp in group_order:
-            obs_list = obs_df.loc[
-                obs_df[group_key] == grp, "obs"
-            ].tolist()
+            obs_list = obs_df.loc[obs_df[group_key] == grp, "obs"].tolist()
             if obs_list:
                 cat_index_map[str(grp)] = obs_list
         x_ordered = [
-            obs
-            for obs_list in cat_index_map.values()
-            for obs in obs_list
+            obs for obs_list in cat_index_map.values() for obs in obs_list
         ]
     else:
         if order:
@@ -1336,11 +1359,13 @@ def _n_var_resolve_obs_ordering(
             x_ordered: list[Any] = []
             for obs_name in order:
                 _append_unique(
-                    x_ordered, obs_name,
+                    x_ordered,
+                    obs_name,
                 )
             for obs_name in counts["obs"]:
                 _append_unique(
-                    x_ordered, obs_name,
+                    x_ordered,
+                    obs_name,
                 )
         else:
             if ascending is not None:
@@ -1349,24 +1374,30 @@ def _n_var_resolve_obs_ordering(
                     ascending=ascending,
                     kind="mergesort",
                 )
-                x_ordered = sorted_counts[
-                    "obs"
-                ].tolist()
+                x_ordered = sorted_counts["obs"].tolist()
             else:
-                x_ordered = counts[
-                    "obs"
-                ].tolist()
+                x_ordered = counts["obs"].tolist()
         cat_index_map = {"all": x_ordered}
 
     return x_ordered, cat_index_map
 
 
 def _n_var_plot_per_obs(
-    counts, x_ordered, cat_index_map,
-    group_key, order_by, total_vars,
-    color_scheme, ylabel, title,
-    print_stats, figsize, xlabel_rotation,
-    order_by_label_rotation, save, show,
+    counts,
+    x_ordered,
+    cat_index_map,
+    group_key,
+    order_by,
+    total_vars,
+    color_scheme,
+    ylabel,
+    title,
+    print_stats,
+    figsize,
+    xlabel_rotation,
+    order_by_label_rotation,
+    save,
+    show,
     ax=None,
 ):
     """Plot per-observation bars with group labels."""
@@ -1383,7 +1414,8 @@ def _n_var_plot_per_obs(
             _print_stats_df(global_df)
             print_df = (
                 counts.groupby(
-                    order_by, observed=True,
+                    order_by,
+                    observed=True,
                 )["count"]
                 .agg(**_AGG_STATS)
                 .reset_index()
@@ -1399,24 +1431,20 @@ def _n_var_plot_per_obs(
             _print_stats_df(print_df)
 
     # -- Resolve colors
-    counts[group_key] = (
-        counts[group_key].astype(str)
-    )
+    counts[group_key] = counts[group_key].astype(str)
 
     unique_groups = list(cat_index_map.keys())
     colors = _resolve_color_scheme(
-        color_scheme, unique_groups,
+        color_scheme,
+        unique_groups,
     )
     plot_kwargs = {}
 
     if colors is not None:
         color_map = {
-            str(grp): colors[i]
-            for i, grp in enumerate(unique_groups)
+            str(grp): colors[i] for i, grp in enumerate(unique_groups)
         }
-        plot_kwargs["color"] = (
-            counts[group_key].map(color_map).to_list()
-        )
+        plot_kwargs["color"] = counts[group_key].map(color_map).to_list()
 
     # -- Plot per-observation bars
     if ax is not None:
@@ -1442,10 +1470,8 @@ def _n_var_plot_per_obs(
     _ax.set_ylabel(ylabel)
 
     # -- Add group labels above bars
-    obs_idx_map = {
-        obs: i for i, obs in enumerate(x_ordered)
-    }
-    ymax = counts['count'].max()
+    obs_idx_map = {obs: i for i, obs in enumerate(x_ordered)}
+    ymax = counts["count"].max()
     for cat, obs_list in cat_index_map.items():
         if not obs_list:
             continue
@@ -1457,10 +1483,10 @@ def _n_var_plot_per_obs(
             x=mid_idx,
             y=ymax * 1.05,
             s=cat,
-            ha='center',
-            va='bottom',
+            ha="center",
+            va="bottom",
             fontsize=8,
-            fontweight='bold',
+            fontweight="bold",
             rotation=order_by_label_rotation,
         )
 
@@ -1469,7 +1495,9 @@ def _n_var_plot_per_obs(
 
     if save is not None:
         fig.savefig(
-            save, dpi=300, bbox_inches='tight',
+            save,
+            dpi=300,
+            bbox_inches="tight",
         )
     if show:
         plt.show()
@@ -1489,7 +1517,7 @@ def n_var_per_sample(
     group_by: str | None = None,
     print_stats: bool = False,
     figsize: tuple[float, float] = (6.0, 4.0),
-    color_scheme: str | dict | Sequence | Colormap | callable | None = None,
+    color_scheme: str | dict | Sequence | Colormap | Callable | None = None,
     title: str | None = None,
     ylabel: str | None = None,
     xlabel_rotation: float = 90,
@@ -1591,24 +1619,33 @@ def n_var_per_sample(
     ...     order=["LBaso", "Ortho"],
     ... )
     """
-    data_level, level, matrix = (
-        _validate_n_var_per_sample_args(
-            adata, level, group_by, order_by,
-            order, layer,
-        )
+    data_level, level, matrix = _validate_n_var_per_sample_args(
+        adata,
+        level,
+        group_by,
+        order_by,
+        order,
+        layer,
     )
 
     # -- Count non-missing vars per sample
     counts_array = _n_var_count_per_sample(
-        matrix, zero_to_na, level, data_level, adata,
+        matrix,
+        zero_to_na,
+        level,
+        data_level,
+        adata,
     )
 
     # -- Derive totals, percentage, ylabel, and title
-    total_vars, counts_array, ylabel, title = (
-        _n_var_derive_totals(
-            counts_array, level, data_level,
-            percentage, ylabel, title, adata,
-        )
+    total_vars, counts_array, ylabel, title = _n_var_derive_totals(
+        counts_array,
+        level,
+        data_level,
+        percentage,
+        ylabel,
+        title,
+        adata,
     )
 
     # -- Build counts DataFrame
@@ -1625,15 +1662,13 @@ def n_var_per_sample(
     if ascending is not None:
         if group_by is not None:
             warnings.warn(
-                "`ascending` is ignored when "
-                "`group_by` is set.",
+                "`ascending` is ignored when " "`group_by` is set.",
                 UserWarning,
                 stacklevel=2,
             )
         elif order is not None:
             warnings.warn(
-                "`ascending` is ignored when "
-                "`order` is set explicitly.",
+                "`ascending` is ignored when " "`order` is set explicitly.",
                 UserWarning,
                 stacklevel=2,
             )
@@ -1641,17 +1676,25 @@ def n_var_per_sample(
     # -- group_by path: mean +/- std bar plot per group
     if group_by is not None:
         return _n_var_group_by_path(
-            counts, adata, group_by, order,
-            color_scheme, total_vars, ylabel,
-            title, print_stats, figsize,
-            xlabel_rotation, save, show, ax,
+            counts,
+            adata,
+            group_by,
+            order,
+            color_scheme,
+            total_vars,
+            ylabel,
+            title,
+            print_stats,
+            figsize,
+            xlabel_rotation,
+            save,
+            show,
+            ax,
         )
 
     # -- Per-observation bar plot (with optional order_by)
     has_grouping = order_by is not None
-    group_key = (
-        order_by if has_grouping else "_group"
-    )
+    group_key = order_by if has_grouping else "_group"
 
     # Attach grouping column to counts
     if has_grouping:
@@ -1661,7 +1704,10 @@ def n_var_per_sample(
                 "obs",
             ).reset_index()
             counts = pd.merge(
-                counts, obs, on="obs", how="left",
+                counts,
+                obs,
+                on="obs",
+                how="left",
             )
         else:
             counts[group_key] = counts["obs"]
@@ -1678,20 +1724,20 @@ def n_var_per_sample(
         obs_df[group_key].dtype,
         pd.CategoricalDtype,
     ):
-        obs_df[group_key] = (
-            obs_df[group_key].astype("category")
-        )
+        obs_df[group_key] = obs_df[group_key].astype("category")
 
     available_groups: list[Any] = []
     for value in obs_df[group_key]:
         _append_unique(available_groups, value)
 
     # -- Resolve observation ordering
-    x_ordered, cat_index_map = (
-        _n_var_resolve_obs_ordering(
-            counts, obs_df, group_key, order,
-            available_groups, ascending,
-        )
+    x_ordered, cat_index_map = _n_var_resolve_obs_ordering(
+        counts,
+        obs_df,
+        group_key,
+        order,
+        available_groups,
+        ascending,
     )
 
     counts["obs"] = pd.Categorical(
@@ -1703,11 +1749,22 @@ def n_var_per_sample(
 
     # -- Plot per-observation bars
     return _n_var_plot_per_obs(
-        counts, x_ordered, cat_index_map,
-        group_key, order_by, total_vars,
-        color_scheme, ylabel, title,
-        print_stats, figsize, xlabel_rotation,
-        order_by_label_rotation, save, show, ax,
+        counts,
+        x_ordered,
+        cat_index_map,
+        group_key,
+        order_by,
+        total_vars,
+        color_scheme,
+        ylabel,
+        title,
+        print_stats,
+        figsize,
+        xlabel_rotation,
+        order_by_label_rotation,
+        save,
+        show,
+        ax,
     )
 
 
@@ -1887,14 +1944,18 @@ def n_samples_per_category(
 
     if selected_categories is not None:
         first_level_order = [
-            category for category in selected_categories if category in first_level_order
+            category
+            for category in selected_categories
+            if category in first_level_order
         ]
     if order is not None:
         if isinstance(order, str):
             specified = [order]
         else:
             specified = list(order)
-        unknown_specified = [cat for cat in specified if cat not in first_level_order]
+        unknown_specified = [
+            cat for cat in specified if cat not in first_level_order
+        ]
         if unknown_specified:
             raise ValueError(
                 "Order values not present in the first category column: "
@@ -1948,13 +2009,13 @@ def n_samples_per_category(
 
     _ax.yaxis.set_major_locator(MaxNLocator(integer=True))
     _ax.set_xlabel(first_cat_col)
-    _ax.set_ylabel('#')
+    _ax.set_ylabel("#")
 
     ha = (
-        'right' if xlabel_rotation > 0
-        else 'left' if xlabel_rotation < 0
-        else 'center'
-        )
+        "right"
+        if xlabel_rotation > 0
+        else "left" if xlabel_rotation < 0 else "center"
+    )
     plt.setp(_ax.get_xticklabels(), rotation=xlabel_rotation, ha=ha)
 
     fig.tight_layout()
@@ -2063,9 +2124,15 @@ def n_cat1_per_cat2_hist(
             )
         lower, upper = bin_range
         if lower >= upper:
-            raise ValueError("bin_range lower bound must be less than upper bound.")
+            raise ValueError(
+                "bin_range lower bound must be less than upper bound."
+            )
 
-    temp_col = "__proteopy_axis_index__" if first_category == "index" else first_category
+    temp_col = (
+        "__proteopy_axis_index__"
+        if first_category == "index"
+        else first_category
+    )
     data = frame[[second_category]].copy()
     if first_category == "index":
         index_values = adata.obs_names if axis == 0 else adata.var_names
@@ -2125,9 +2192,8 @@ def n_cat1_per_cat2_hist(
 
     return _ax
 
-docstr_header = (
-    "Plot the distribution of the number of first-category entries per second category."
-    )
+
+docstr_header = "Plot the distribution of the number of first-category entries per second category."
 n_peptides_per_protein = partial_with_docsig(
     n_cat1_per_cat2_hist,
     first_category="peptide_id",
@@ -2295,13 +2361,17 @@ def cv_by_group(
     if temp_key_name is not None:
         del adata.varm[temp_key_name]
 
-    df_melted = cv_df.melt(var_name="Group", value_name="CV", ignore_index=False)
+    df_melted = cv_df.melt(
+        var_name="Group", value_name="CV", ignore_index=False
+    )
     df_melted = df_melted.reset_index(drop=True)
 
     if order is None:
         order = unique_groups
     else:
-        missing = [grp for grp in order if grp not in df_melted["Group"].unique()]
+        missing = [
+            grp for grp in order if grp not in df_melted["Group"].unique()
+        ]
         if missing:
             raise ValueError(
                 "Requested ordering includes groups with no CV data: "
@@ -2316,14 +2386,16 @@ def cv_by_group(
 
     if print_stats:
         cv_values = df_melted["CV"].dropna()
-        global_summary = pd.DataFrame({
-            "Count": [cv_values.count()],
-            "Min": [round(cv_values.min(), 4)],
-            "Max": [round(cv_values.max(), 4)],
-            "Median": [round(cv_values.median(), 4)],
-            "Mean": [round(cv_values.mean(), 4)],
-            "Std": [round(cv_values.std(), 4)],
-        })
+        global_summary = pd.DataFrame(
+            {
+                "Count": [cv_values.count()],
+                "Min": [round(cv_values.min(), 4)],
+                "Max": [round(cv_values.max(), 4)],
+                "Median": [round(cv_values.median(), 4)],
+                "Mean": [round(cv_values.mean(), 4)],
+                "Std": [round(cv_values.std(), 4)],
+            }
+        )
         print("Global CV Summary:")
         print(global_summary.to_string(index=False))
         print()
@@ -2353,14 +2425,13 @@ def cv_by_group(
                 if total_count > 0
                 else 0.0
             )
-            global_thresh = pd.DataFrame({
-                "Count below": [int(below_count)],
-                "Percentage below": [pct],
-            })
-            print(
-                f"Global Threshold Summary "
-                f"(hline={hline}):"
+            global_thresh = pd.DataFrame(
+                {
+                    "Count below": [int(below_count)],
+                    "Percentage below": [pct],
+                }
             )
+            print(f"Global Threshold Summary " f"(hline={hline}):")
             print(global_thresh.to_string(index=False))
             print()
 
@@ -2368,14 +2439,14 @@ def cv_by_group(
                 n_below = (group_cv < hline).sum()
                 n_total = group_cv.count()
                 pct_below = (
-                    round(n_below / n_total * 100, 4)
-                    if n_total > 0
-                    else 0.0
+                    round(n_below / n_total * 100, 4) if n_total > 0 else 0.0
                 )
-                return pd.Series({
-                    "Count below": int(n_below),
-                    "Percentage below": pct_below,
-                })
+                return pd.Series(
+                    {
+                        "Count below": int(n_below),
+                        "Percentage below": pct_below,
+                    }
+                )
 
             per_group_thresh = (
                 df_melted.groupby("Group")["CV"]
@@ -2383,10 +2454,7 @@ def cv_by_group(
                 .unstack()
                 .reindex(order)
             )
-            print(
-                f"Per-Group Threshold Summary "
-                f"(hline={hline}):"
-            )
+            print(f"Per-Group Threshold Summary " f"(hline={hline}):")
             print(per_group_thresh.to_string())
             print()
 
@@ -2546,7 +2614,9 @@ def sample_correlation_matrix(
         matrix = adata.layers[layer]
 
     if matrix is None:
-        raise ValueError("Selected matrix is empty; cannot compute correlations.")
+        raise ValueError(
+            "Selected matrix is empty; cannot compute correlations."
+        )
 
     if matrix.shape != expected_shape:
         raise ValueError(
@@ -2555,7 +2625,9 @@ def sample_correlation_matrix(
         )
 
     if isinstance(matrix, pd.DataFrame):
-        vals = matrix.reindex(index=adata.obs_names, columns=adata.var_names).copy()
+        vals = matrix.reindex(
+            index=adata.obs_names, columns=adata.var_names
+        ).copy()
     else:
         if sparse.issparse(matrix):
             # correlation requires dense values; convert temporarily
@@ -2609,7 +2681,9 @@ def sample_correlation_matrix(
                 sns.color_palette(n_colors=len(cats)) if len(cats) > 0 else []
             )
 
-        palette = {str(cat): color for cat, color in zip(cats, resolved_colors)}
+        palette = {
+            str(cat): color for cat, color in zip(cats, resolved_colors)
+        }
 
         groups_str = groups.astype("string")
         row_color_series = groups_str.map(palette)
@@ -2623,7 +2697,9 @@ def sample_correlation_matrix(
             )
 
         legend_handles = [
-            Patch(facecolor=palette[str(cat)], edgecolor="none", label=str(cat))
+            Patch(
+                facecolor=palette[str(cat)], edgecolor="none", label=str(cat)
+            )
             for cat in cats
         ]
 
@@ -2636,7 +2712,9 @@ def sample_correlation_matrix(
             )
 
         row_colors = (
-            row_color_series.to_numpy() if row_color_series is not None else None
+            row_color_series.to_numpy()
+            if row_color_series is not None
+            else None
         )
 
     # ---- hierarchical clustering on (1 - r)
@@ -2648,30 +2726,29 @@ def sample_correlation_matrix(
     # ---- optional statistics printout
     if print_stats and n > 1:
         # 1) Overall off-diagonal summary
-        summary = pd.DataFrame({
-            "min": [np.nanmin(offdiag)],
-            "max": [np.nanmax(offdiag)],
-            "mean": [np.nanmean(offdiag)],
-            "median": [np.nanmedian(offdiag)],
-            "std": [np.nanstd(offdiag)],
-        })
-        print(
-            f"Sample correlation summary "
-            f"(off-diagonal, {method}):"
+        summary = pd.DataFrame(
+            {
+                "min": [np.nanmin(offdiag)],
+                "max": [np.nanmax(offdiag)],
+                "mean": [np.nanmean(offdiag)],
+                "median": [np.nanmedian(offdiag)],
+                "std": [np.nanstd(offdiag)],
+            }
         )
+        print(f"Sample correlation summary " f"(off-diagonal, {method}):")
         print(summary.to_string(index=False))
         print()
 
         # 2) Per-sample mean correlation (dendrogram order)
         mask = ~np.eye(n, dtype=bool)
-        per_sample_mean = np.nanmean(
-            np.where(mask, A, np.nan), axis=1
-        )
+        per_sample_mean = np.nanmean(np.where(mask, A, np.nan), axis=1)
         heatmap_order = leaves_list(Z)
-        per_sample_df = pd.DataFrame({
-            "sample_id": corr_df.index[heatmap_order],
-            "mean_corr": per_sample_mean[heatmap_order],
-        })
+        per_sample_df = pd.DataFrame(
+            {
+                "sample_id": corr_df.index[heatmap_order],
+                "mean_corr": per_sample_mean[heatmap_order],
+            }
+        )
         print("Per-sample mean correlation:")
         print(per_sample_df.to_string(index=False))
         print()
@@ -2680,44 +2757,35 @@ def sample_correlation_matrix(
         if margin_color is not None:
             if margin_color not in adata.obs.columns:
                 raise KeyError(
-                    f"Column '{margin_color}' not found "
-                    f"in adata.obs."
+                    f"Column '{margin_color}' not found " f"in adata.obs."
                 )
-            groups_ps = adata.obs.loc[
-                corr_df.index, margin_color
-            ]
+            groups_ps = adata.obs.loc[corr_df.index, margin_color]
             unique_groups = groups_ps.dropna().unique()
             group_rows = []
             for grp in sorted(unique_groups):
-                grp_idx = groups_ps[
-                    groups_ps == grp
-                ].index
+                grp_idx = groups_ps[groups_ps == grp].index
                 other_idx = groups_ps[
                     (groups_ps != grp) & groups_ps.notna()
                 ].index
                 within = corr_df.loc[grp_idx, grp_idx]
-                within_vals = within.values[
-                    ~np.eye(len(grp_idx), dtype=bool)
-                ]
+                within_vals = within.values[~np.eye(len(grp_idx), dtype=bool)]
                 mean_within = (
-                    np.nanmean(within_vals)
-                    if len(within_vals) > 0
-                    else np.nan
+                    np.nanmean(within_vals) if len(within_vals) > 0 else np.nan
                 )
                 if len(other_idx) > 0:
                     between_vals = corr_df.loc[
                         grp_idx, other_idx
                     ].values.ravel()
-                    mean_between = np.nanmean(
-                        between_vals
-                    )
+                    mean_between = np.nanmean(between_vals)
                 else:
                     mean_between = np.nan
-                group_rows.append({
-                    "group": grp,
-                    "mean_within": mean_within,
-                    "mean_between": mean_between,
-                })
+                group_rows.append(
+                    {
+                        "group": grp,
+                        "mean_within": mean_within,
+                        "mean_between": mean_between,
+                    }
+                )
             group_df = pd.DataFrame(group_rows)
             print("Per-group mean correlation:")
             print(group_df.to_string(index=False))
@@ -2731,7 +2799,7 @@ def sample_correlation_matrix(
         row_colors=row_colors,
         col_colors=row_colors if row_colors is not None else None,
         cmap=cmap,
-        center=center_val,          
+        center=center_val,
         figsize=figsize,
         xticklabels=xticklabels,
         yticklabels=yticklabels,
@@ -2744,8 +2812,8 @@ def sample_correlation_matrix(
             handles=legend_handles,
             title=margin_color,
             bbox_to_anchor=(1.05, 1),
-            loc='upper left',
-            borderaxespad=0.,
+            loc="upper left",
+            borderaxespad=0.0,
             frameon=False,
         )
 
@@ -2783,7 +2851,10 @@ def hclustv_profiles_heatmap(
     row_cluster: bool = True,
     col_cluster: bool = True,
     cbar_pos: tuple[float, float, float, float] | None = (
-        0.02, 0.8, 0.05, 0.18
+        0.02,
+        0.8,
+        0.05,
+        0.18,
     ),
     tree_kws: dict | None = None,
     xticklabels: bool = True,
@@ -2923,19 +2994,19 @@ def hclustv_profiles_heatmap(
             raise KeyError(f"Column '{order_by}' not found in adata.obs.")
         # order_by and col_cluster are mutually exclusive; disable clustering
         if col_cluster:
-            print((
+            print(
                 "`order_by` parameter is incompatible with `col_cluster=True`. "
                 "`col_cluster` has been overridden."
-            ))
+            )
             col_cluster = False
 
     # Validate order parameter
     if order is not None:
         if col_cluster:
-            print((
+            print(
                 "`order` parameter is incompatible with `col_cluster=True`. "
                 "`col_cluster` has been overridden."
-            ))
+            )
             col_cluster = False
         order = list(order)
         if order_by is None and group_by is None:
@@ -3061,8 +3132,9 @@ def hclustv_profiles_heatmap(
             )
             sorted_idx = (
                 pd.Series(order_col_values, index=filtered_cols)
-                .sort_values().index
-                )
+                .sort_values()
+                .index
+            )
         else:
             # Use categorical order if categorical, sorted order otherwise
             if isinstance(order_col_values.dtype, pd.CategoricalDtype):
@@ -3072,10 +3144,14 @@ def hclustv_profiles_heatmap(
                     categories=cat_order,
                     ordered=True,
                 )
-                sorted_idx = pd.Series(
-                    order_col_values,
-                    index=z_df_filled.columns,
-                ).sort_values().index
+                sorted_idx = (
+                    pd.Series(
+                        order_col_values,
+                        index=z_df_filled.columns,
+                    )
+                    .sort_values()
+                    .index
+                )
             else:
                 sorted_idx = order_col_values.sort_values().index
         z_df_filled = z_df_filled[sorted_idx]
@@ -3105,7 +3181,8 @@ def hclustv_profiles_heatmap(
         if resolved_colors is None:
             resolved_colors = (
                 sns.color_palette("husl", n_colors=len(unique_cats))
-                if len(unique_cats) > 0 else []
+                if len(unique_cats) > 0
+                else []
             )
         color_map = dict(zip(unique_cats, resolved_colors))
         col_colors = pd.Series(

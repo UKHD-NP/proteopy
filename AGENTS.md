@@ -171,14 +171,18 @@ this number. If None, use the internal function defaults.
         Controls ordering and subsetting of observations, variables, or
         categories on the plot axis. Values must be a subset of the
         unique values in the `order_by` column (duplicates not allowed).
-        - If `order_by` is None and `order` is None: use existing
-          .var_names or .obs_names order.
+        - If `order_by` is None and `order` is None: apply the default
+          order rule to the axis ID column (`sample_id`, `peptide_id`
+          or `protein_id`) — category order if categorical, else
+          lexicographic order of the `str`-coerced values. Never the
+          raw .var_names / .obs_names order.
         - If `order_by` is None and `order` is not None: `order`
           specifies the exact items to plot and their sequence. Items
           not listed are excluded (subsetting).
         - If `order_by` is not None and `order` is None: use the unique
           values in the `order_by` column. If categorical, use its
-          category order; if str/object, use sorted order.
+          category order; else the lexicographic order of its
+          `str`-coerced values.
         - If `order_by` is not None and `order` is not None: `order`
           defines which `order_by` groups to show and in what sequence.
           Groups absent from `order` are excluded (subsetting). Values
@@ -188,7 +192,9 @@ this number. If None, use the internal function defaults.
         If `order` is None, sort the function relevant axis by a function-relevant
         metric. For example, if the plotting function computes the average var across
         obs and plots this in a barplot, sort the obs bars by ascending var average if
-        True, if False sort the obs bars by descending var average.
+        True, if False sort the obs bars by descending var average. If None, no metric
+        order is imposed and the default order rule applies (categories, else
+        lexicographic).
         Default=None (do not include this line in docstrings)
 
 
@@ -388,14 +394,129 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 
 - `order: str | list | None`
   Controls ordering and subsetting of observations, variables, or categories on the plot axis. Values must be a subset of the unique values in the `order_by` column (duplicates not allowed).
-  - If `order_by is None` and `order is None`: use existing `.var_names` / `.obs_names` order.
+  - If `order_by is None` and `order is None`: apply the default order rule to the axis ID column (`.obs["sample_id"]`, `.var["peptide_id"]` / `.var["protein_id"]`) — category order if categorical, otherwise lexicographic order of the `str`-coerced values. Never the raw `.var_names` / `.obs_names` order. See *Deterministic Ordering in `pl`*.
   - If `order_by is None` and `order is not None`: `order` specifies the exact items to plot and their sequence. Items not listed are excluded (subsetting).
-  - If `order_by is not None` and `order is None`: order by the unique values in `order_by`. If `order_by` is categorical, use its category order; if object/string, use sorted order.
+  - If `order_by is not None` and `order is None`: order by the unique values in `order_by`. If `order_by` is categorical, use its category order; otherwise use the lexicographic order of its `str`-coerced values.
   - If `order_by is not None` and `order is not None`: `order` defines which `order_by` groups to show and in what sequence. Groups absent from `order` are excluded (subsetting). Values in `order` must be a subset of unique values in `order_by`.
 
 - `ascending: bool | None`
-  When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` preserves the derived order.
+  When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` imposes no metric order, so the default order rule applies (see *Deterministic Ordering in `pl`*).
 
+
+---
+
+### Deterministic Ordering in `pl` (MANDATORY)
+
+Every axis, group sequence, and legend in a `pl.*` function must have an
+order the user can predict and control. Three rules produce that; they
+apply to every plotting function without exception.
+
+#### 1) Default order: category order, else lexicographic
+
+Whenever a plotting function needs an order the caller has *not*
+specified — the sample sequence on the x axis of
+`pr.pl.n_peptides_per_sample()` / `pr.pl.n_proteins_per_sample()`, the
+group sequence of a boxplot, the entries of a legend — derive it from
+the annotation column supplying those labels:
+
+- **Categorical dtype** (`pd.CategoricalDtype`, ordered or unordered):
+  use `series.cat.categories`, in that order. Categories with no rows
+  present remain valid positions on the axis, so a subset still plots
+  against the full series; drop them only where the function documents
+  that it drops empty groups.
+- **Any other dtype** (object, str, numeric, bool): coerce the unique
+  values to `str` and sort lexicographically
+  (`sorted(map(str, uniques))`). The coercion is deliberate — it makes
+  the order identical across functions, calls, and dtypes.
+
+**Never** fall back to the order rows happen to occupy in the object:
+`.obs_names` / `.var_names`, or the order in which values first appear
+along the axis. That order is an artefact of how the object was built
+(`read.diann`'s pivot, a merge, a filter) and the user has no clean way
+to change it. The goal is not that lexicographic order is *right* —
+`F1, F10, F2` is plainly wrong for a fractionation — but that it is
+consistent across every plot and that the user has one documented way
+to override it.
+
+**How the user changes it.** By storing the annotation as an ordered
+Categorical, which is the single supported mechanism:
+
+```python
+adata.obs["fraction"] = pd.Categorical(
+    adata.obs["fraction"],
+    categories=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    ordered=True,
+)
+```
+
+Say so in the docstring of every function whose default order comes
+from this rule, and do not add per-function ordering parameters that
+duplicate it.
+
+#### 2) A parameter that imposes an order always wins
+
+Rule 1 applies only when no argument imposes an order. When one does,
+it overrides rule 1 entirely and the category order is not consulted:
+
+- `order` — the given sequence, verbatim (and it subsets).
+- `ascending` — sorts the relevant axis by the function's metric.
+  `ascending=None` means no metric order was requested, so rule 1
+  applies.
+- Any function-specific ordering: `sort_by`, a dendrogram leaf order,
+  a clustering result, and so on.
+
+Precedence, highest first: `order` → `ascending` / metric sort →
+rule 1 (categories, else lexicographic).
+
+#### 3) `group_by` and `order_by` follow the same rule
+
+The sequence of the groups produced by `group_by`, and the sequence
+produced by `order_by` when `order` is `None`, are rule 1 applied to
+that column: its category order if it is categorical, otherwise the
+lexicographic order of its `str`-coerced values. Not the order the
+groups appear in along the axis.
+
+#### 4) Testing
+
+A `pl` function whose order is derived rather than given needs two
+tests: one asserting the tick-label sequence follows `cat.categories`
+for a categorical annotation, and one asserting lexicographic order for
+that same annotation stored as plain strings.
+
+---
+
+### Axis Labels Come from ID Columns, Never from the Index (MANDATORY)
+
+Tick labels, group labels, legend entries, and any other text
+identifying a sample, protein, or peptide are read from the annotation
+columns:
+
+- observations → `adata.obs["sample_id"]`
+- variables → `adata.var["peptide_id"]` / `adata.var["protein_id"]`
+
+**Never** from `.obs_names`, `.var_names`, `.obs.index`, or
+`.var.index`.
+
+The drawn strings are the same either way — `check_proteodata()`
+enforces that `.obs["sample_id"]` is identical to `.obs_names` and that
+`.var["peptide_id"]` / `.var["protein_id"]` match `.var_names`, element
+for element — so this is not about which labels appear. It is about dtype: AnnData
+keeps `.obs_names` / `.var_names` as a plain string index, which cannot
+carry a `CategoricalDtype` and therefore cannot carry a user-defined
+category order. A function that labels from the index silently discards
+the order the user set with `categories=` and falls back to positional
+order. Reading the column keeps rule 1 above reachable; reading the
+index makes it unreachable.
+
+Corollaries:
+
+- Use the column for selection and grouping too, not only for the drawn
+  label, so ordering and labelling cannot disagree.
+- When a plot summarises a level other than the object's variables
+  (peptides aggregated into proteins), label from `.var["protein_id"]`.
+- Functions that still label from `.obs_names` / `.var_names` are
+  non-conforming; migrate them when the function is next touched, and
+  add the two ordering tests from rule 4 in the same commit.
 
 ---
 
@@ -745,13 +866,19 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 
 - `order: str | list | None`
   Controls ordering and subsetting of observations, variables, or categories on the plot axis. Values must be a subset of the unique values in the `order_by` column (duplicates not allowed).
-  - If `order_by is None` and `order is None`: use existing `.var_names` / `.obs_names` order.
+  - If `order_by is None` and `order is None`: apply the default order rule to the axis ID column (`.obs["sample_id"]`, `.var["peptide_id"]` / `.var["protein_id"]`) — category order if categorical, otherwise lexicographic order of the `str`-coerced values. Never the raw `.var_names` / `.obs_names` order. See *Deterministic Ordering in `pl`*.
   - If `order_by is None` and `order is not None`: `order` specifies the exact items to plot and their sequence. Items not listed are excluded (subsetting).
-  - If `order_by is not None` and `order is None`: order by the unique values in `order_by`. If `order_by` is categorical, use its category order; if object/string, use sorted order.
+  - If `order_by is not None` and `order is None`: order by the unique values in `order_by`. If `order_by` is categorical, use its category order; otherwise use the lexicographic order of its `str`-coerced values.
   - If `order_by is not None` and `order is not None`: `order` defines which `order_by` groups to show and in what sequence. Groups absent from `order` are excluded (subsetting). Values in `order` must be a subset of unique values in `order_by`.
 
 - `ascending: bool | None`
-  When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` preserves the derived order.
+  When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` imposes no metric order, so the default order rule applies.
+
+> The two mandatory `pl` sections above — **Deterministic Ordering in
+> `pl`** and **Axis Labels Come from ID Columns, Never from the Index**
+> — govern `order`, `order_by`, `group_by`, every default axis or group
+> sequence, and every drawn label. Read them before writing a `pl`
+> function.
 
 
 ---

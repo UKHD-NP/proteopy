@@ -9,6 +9,17 @@ and this project adheres to
 
 ### Added
 
+- **Plotting** (`pr.pl`): `peptide_intensities()` and
+  `proteoform_intensities()` gained a `facet_by` parameter that splits
+  the samples (`.obs`) across a grid of subplots. It takes a length-2
+  `[row, col]` sequence of `.obs` columns (a bare string is coerced to
+  `[str, None]`, and either element may be `None` to collapse that grid
+  axis). Each panel keeps the full `order_by` layout for its own sample
+  subset, and all panels share the y-axis and the peptide/proteoform
+  color mapping so they stay comparable. `facet_by` cannot be combined
+  with `ax`. With `facet_by`, `figsize` is the size of one panel and the
+  figure is scaled by the grid dimensions.
+
 - **Preprocessing** (`pr.pp`): `summarize_peptides_by_neighbourhood_union()`
   collapses peptides that overlap in the protein sequence, keeping the
   most abundant member of each group. Peptide positions are resolved

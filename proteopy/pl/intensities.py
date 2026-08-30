@@ -283,9 +283,9 @@ def peptide_intensities(
     figsize: tuple[float, float] = (15, 6),
     show: bool = True,
     save: str | os.PathLike[str] | None = None,
-    ax: bool = False,
+    ax: Axes | None = None,
     color_scheme: Any = None,
-) -> Axes | list[Axes] | None:
+) -> Axes | list[Axes]:
     """
     Plot peptide intensities across samples for the requested proteins.
 
@@ -312,7 +312,7 @@ def peptide_intensities(
         exactly two elements: the row annotation followed by the column
         annotation. Either element may be ``None`` to collapse that grid
         axis. Within each facet, ``order_by`` groups and orders only the
-        samples in that facet. Cannot be combined with ``ax=True``.
+        samples in that facet. Cannot be combined with ``ax``.
     color : str, optional
         ``adata.var`` column used for per-peptide coloring.
     group_by : str, optional
@@ -347,14 +347,15 @@ def peptide_intensities(
     save : str | os.PathLike, optional
         Path for saving the figure(s). Multi-protein selections are written to
         a PDF stack.
-    ax : bool, optional
-        When ``True``, return the underlying Axes objects instead of closing
-        them. Cannot be combined with ``facet_by``.
+    ax : matplotlib.axes.Axes, optional
+        Axes object to plot onto. If ``None``, create a new figure and axes.
+        Cannot be combined with ``facet_by`` or multiple ``protein_ids``.
 
     Returns
     -------
-    Axes | list[Axes] | None
-        Axes handle(s) when ``ax`` is ``True``; otherwise ``None``.
+    Axes | list[Axes]
+        The Axes object used for one plot, or a list of Axes objects when
+        multiple plots are created.
     """
 
     # Check input
@@ -397,11 +398,19 @@ def peptide_intensities(
                 )
             if facet_key is not None and facet_key not in adata.obs.columns:
                 raise KeyError(f"'{facet_key}' is not present in adata.obs")
-        if ax:
+        if ax is not None:
             raise ValueError(
-                "`facet_by` cannot be combined with `ax=True`; faceted "
+                "`facet_by` cannot be combined with `ax`; faceted "
                 "plots create their own subplot grid."
             )
+
+    if ax is not None and not isinstance(ax, Axes):
+        raise TypeError("`ax` must be a matplotlib.axes.Axes or None.")
+    if ax is not None and len(protein_ids) > 1:
+        raise ValueError(
+            "`ax` cannot be combined with multiple `protein_ids`; "
+            "provide one protein or let the function create the axes."
+        )
 
     if groups is None:
         group_levels = None
@@ -663,6 +672,7 @@ def peptide_intensities(
                 figsize=figsize,
                 prot_id=prot_id,
             )
+            axes.extend(fig.axes)
 
             if save:
                 if len(protein_ids) == 1:
@@ -671,19 +681,16 @@ def peptide_intensities(
                     pdf_pages.savefig(fig, bbox_inches="tight")
                 if show:
                     plt.show()
-                plt.close(fig)
             elif show:
                 plt.show()
-                plt.close(fig)
-            else:
-                print(
-                    "Warning: Plot created but not displayed, saved, "
-                    "or returned"
-                )
-                plt.close(fig)
             continue
 
-        fig, _ax = plt.subplots(figsize=figsize)
+        created_fig = ax is None
+        if created_fig:
+            fig, _ax = plt.subplots(figsize=figsize)
+        else:
+            _ax = ax
+            fig = _ax.figure
 
         if sub_df.empty:
             warnings.warn(f"No data found for protein: {prot_id}")
@@ -824,47 +831,31 @@ def peptide_intensities(
                         rotation_mode="anchor",
                     )
 
-        plt.xticks(rotation=xlab_rotation, ha="right")
+        plt.setp(
+            _ax.get_xticklabels(),
+            rotation=xlab_rotation,
+            ha="right",
+        )
         _ax.set_title(prot_id)
         _ax.set_xlabel("Sample")
         _ax.set_ylabel("Intensity")
 
-        plt.tight_layout()
+        if created_fig:
+            fig.tight_layout()
+        axes.append(_ax)
 
-        if ax:
-            axes.append(_ax)
-
-            if show:
-                plt.show()
-
-        elif save:
-
+        if save:
             if len(protein_ids) == 1:
                 fig.savefig(save, bbox_inches="tight", dpi=300)
-
             else:
                 pdf_pages.savefig(fig, bbox_inches="tight")
-
-            if show:
-                plt.show()
-
-            plt.close(fig)
-
-        elif show:
+        if show:
             plt.show()
-            plt.close(fig)
-
-        else:
-            print(
-                "Warning: Plot created but not displayed, saved, or returned"
-            )
-            plt.close(fig)
 
     if save and len(protein_ids) > 1:
         pdf_pages.close()
 
-    if ax:
-        return axes[0] if len(axes) == 1 else axes
+    return axes[0] if len(axes) == 1 else axes
 
 
 docstr_header = (

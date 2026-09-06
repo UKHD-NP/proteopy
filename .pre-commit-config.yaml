@@ -26,13 +26,22 @@ repos:
     rev: v5.0.0
     hooks:
       # -- Whitespace / EOL hygiene
+      #    tests/data/ is excluded, as it already is for black and
+      #    pyupgrade below. It holds reference output from other tools,
+      #    where trailing whitespace is *data*: an untested proteoform
+      #    group in traces_proteoform-location_rcopf.tsv is a row with
+      #    two empty trailing fields, so stripping them turns a 4-field
+      #    row into a 2-field one. Checksums are recorded in
+      #    tests/data/mouse_tissue/README.md.
       - id: trailing-whitespace
+        exclude: ^tests/data/
         stages: [pre-commit, pre-push]
       - id: end-of-file-fixer
+        exclude: ^tests/data/
         stages: [pre-commit, pre-push]
       - id: mixed-line-ending
         args: ["--fix=lf"]
-        exclude: '\.(bat|cmd|ps1)$'
+        exclude: '(^tests/data/|\.(bat|cmd|ps1)$)'
         stages: [pre-commit, pre-push]
 
       # -- Config-file syntax

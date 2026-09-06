@@ -21,6 +21,11 @@ and this project adheres to
   that overlap in the protein sequence, keeping the most abundant
   member of each group. Reimplements CCprofiler's
   `summarizeAlternativePeptideSequences(topN = 1)`
+- **Tools** (`pr.tl`): `peptide_proximity()` tests whether the peptides
+  of a proteoform cluster sit closer together in the protein sequence
+  than a random grouping of the same size. A reimplementation of
+  CCprofiler's `evaluateProteoformLocation`, which is the
+  characterisation COPF applies to the proteoform groups it detects.
 
 ### Fixed
 

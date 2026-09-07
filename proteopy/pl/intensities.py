@@ -27,12 +27,251 @@ from proteopy.utils.array import is_log_transformed
 from proteopy.utils.functools import partial_with_docsig
 
 
+def _facet_value_mask(series: pd.Series, value: Any) -> pd.Series:
+    if pd.isna(value):
+        return series.isna()
+    return series == value
+
+
+def _facet_levels(obs: pd.DataFrame, key: str | None) -> list:
+    if key is None:
+        return [None]
+    return list(pd.unique(obs[key]))
+
+
+def _add_peptide_intensity_legend(
+    ax: Axes,
+    panel_df: pd.DataFrame,
+    group_by: str | None,
+    color: str | None,
+) -> None:
+    handles, labels = ax.get_legend_handles_labels()
+    if group_by:
+        hue_values = panel_df[group_by].dropna().unique().astype(str)
+    elif color:
+        hue_values = panel_df[color].dropna().unique().astype(str)
+    else:
+        hue_values = panel_df["var_index"].dropna().unique().astype(str)
+    handles_labels = [
+        (handle, label)
+        for handle, label in zip(handles, labels)
+        if label in hue_values
+    ]
+    if handles_labels:
+        handles, labels = zip(*handles_labels)
+        legend_title = group_by if group_by else color if color else "Peptide"
+        ax.legend(
+            handles,
+            labels,
+            bbox_to_anchor=(1.01, 1),
+            loc="upper left",
+            title=legend_title,
+        )
+
+
+def _plot_peptide_intensity_facets(
+    adata: ad.AnnData,
+    sub_df: pd.DataFrame,
+    obs: pd.DataFrame,
+    facet_by: list[str | None],
+    order_by: str | None,
+    obs_index_ordered: list,
+    cats_ordered: list,
+    cat_index_map: dict,
+    group_by: str | None,
+    color: str | None,
+    palette_map: dict | None,
+    xlab_rotation: float,
+    order_by_label_rotation: float,
+    figsize: tuple[float, float],
+    prot_id: str,
+) -> mpl.figure.Figure:
+    row_key, col_key = facet_by
+    row_levels = _facet_levels(adata.obs, row_key)
+    col_levels = _facet_levels(adata.obs, col_key)
+    nrows = len(row_levels)
+    ncols = len(col_levels)
+    fig, facet_axes = plt.subplots(
+        nrows=nrows,
+        ncols=ncols,
+        figsize=(figsize[0] * ncols, figsize[1] * nrows),
+        sharey=True,
+        squeeze=False,
+    )
+
+    finite_intensities = sub_df.loc[
+        np.isfinite(sub_df["intensity"]), "intensity"
+    ]
+    y_limits = None
+    ymax = None
+    ypad_top = None
+    if not finite_intensities.empty:
+        ymin = finite_intensities.min()
+        ymax = finite_intensities.max()
+        intensity_range = ymax - ymin
+        if intensity_range == 0:
+            intensity_range = max(abs(ymax), 1.0)
+        ypad_top = intensity_range * 0.15
+        ypad_bottom = intensity_range * 0.10
+        y_limits = (ymin - ypad_bottom, ymax + ypad_top)
+
+    for row_idx, row_value in enumerate(row_levels):
+        for col_idx, col_value in enumerate(col_levels):
+            facet_ax = facet_axes[row_idx, col_idx]
+            panel_obs = obs
+            title_parts = []
+
+            if row_key is not None:
+                panel_obs = panel_obs[
+                    _facet_value_mask(panel_obs[row_key], row_value)
+                ]
+                title_parts.append(f"{row_key}={row_value}")
+            if col_key is not None:
+                panel_obs = panel_obs[
+                    _facet_value_mask(panel_obs[col_key], col_value)
+                ]
+                title_parts.append(f"{col_key}={col_value}")
+
+            panel_obs_ids = set(panel_obs["obs_index"])
+            panel_df = sub_df[sub_df["obs_index"].isin(panel_obs_ids)].copy()
+
+            if order_by:
+                panel_cat_index_map = {
+                    cat: [
+                        obs_id
+                        for obs_id in cat_index_map[cat]
+                        if obs_id in panel_obs_ids
+                    ]
+                    for cat in cats_ordered
+                }
+                panel_cats_ordered = [
+                    cat for cat in cats_ordered if panel_cat_index_map[cat]
+                ]
+                panel_obs_ordered = [
+                    obs_id
+                    for cat in panel_cats_ordered
+                    for obs_id in panel_cat_index_map[cat]
+                ]
+            else:
+                panel_cat_index_map = {}
+                panel_cats_ordered = []
+                panel_obs_ordered = [
+                    obs_id
+                    for obs_id in obs_index_ordered
+                    if obs_id in panel_obs_ids
+                ]
+
+            panel_df["obs_index"] = pd.Categorical(
+                panel_df["obs_index"],
+                categories=panel_obs_ordered,
+                ordered=True,
+            )
+
+            if panel_df.empty:
+                facet_ax.text(
+                    0.5,
+                    0.5,
+                    "No data for facet",
+                    ha="center",
+                    va="center",
+                    transform=facet_ax.transAxes,
+                    color="gray",
+                )
+                facet_ax.set_xlim(0, 1)
+                facet_ax.set_xticks([])
+            else:
+                lineplot_kwargs = dict(
+                    data=panel_df,
+                    x="obs_index",
+                    y="intensity",
+                    marker="o",
+                    dashes=False,
+                    legend="brief",
+                    ax=facet_ax,
+                )
+                if palette_map:
+                    lineplot_kwargs["palette"] = palette_map
+                if order_by:
+                    lineplot_kwargs["style"] = order_by
+                if group_by:
+                    lineplot_kwargs["hue"] = group_by
+                elif color:
+                    lineplot_kwargs.update(
+                        hue=color,
+                        units="var_index",
+                        estimator=None,
+                        errorbar=None,
+                    )
+                else:
+                    lineplot_kwargs["hue"] = "var_index"
+
+                sns.lineplot(**lineplot_kwargs)
+                _add_peptide_intensity_legend(
+                    ax=facet_ax,
+                    panel_df=panel_df,
+                    group_by=group_by,
+                    color=color,
+                )
+
+                obs_idxpos_map = {
+                    obs_id: idx for idx, obs_id in enumerate(panel_obs_ordered)
+                }
+                if order_by:
+                    for cat in panel_cats_ordered[:-1]:
+                        last_obs = panel_cat_index_map[cat][-1]
+                        facet_ax.axvline(
+                            x=obs_idxpos_map[last_obs] + 0.5,
+                            ymin=0.02,
+                            ymax=0.95,
+                            color="#D8D8D8",
+                            linestyle="--",
+                        )
+
+                    if y_limits is not None:
+                        for cat in panel_cats_ordered:
+                            group_obs = panel_cat_index_map[cat]
+                            start = obs_idxpos_map[group_obs[0]]
+                            end = obs_idxpos_map[group_obs[-1]]
+                            mid = (start + end) / 2
+                            rotation = order_by_label_rotation or 0
+                            horizontal_alignment = (
+                                "center" if rotation % 360 == 0 else "left"
+                            )
+                            facet_ax.text(
+                                x=mid,
+                                y=ymax + ypad_top * 0.4,
+                                s=cat,
+                                ha=horizontal_alignment,
+                                va="bottom",
+                                fontsize=12,
+                                fontweight="bold",
+                                rotation=rotation,
+                                rotation_mode="anchor",
+                            )
+
+            if y_limits is not None:
+                facet_ax.set_ylim(*y_limits)
+            facet_ax.set_title(" | ".join(title_parts))
+            facet_ax.set_xlabel("Sample")
+            facet_ax.set_ylabel("Intensity")
+            plt.setp(
+                facet_ax.get_xticklabels(),
+                rotation=xlab_rotation,
+                ha="right",
+            )
+
+    fig.suptitle(prot_id)
+    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    return fig
+
+
 def peptide_intensities(
     adata: ad.AnnData,
     protein_ids: str | Sequence[str] | None = None,
     order_by: str | None = None,
     order: Sequence[str] | None = None,
     groups: str | Sequence[str] | None = None,
+    facet_by: str | list[str | None] | None = None,
     color: str | None = None,
     group_by: str | None = None,
     log_transform: float | None = None,
@@ -44,9 +283,9 @@ def peptide_intensities(
     figsize: tuple[float, float] = (15, 6),
     show: bool = True,
     save: str | os.PathLike[str] | None = None,
-    ax: bool = False,
+    ax: Axes | None = None,
     color_scheme: Any = None,
-) -> Axes | list[Axes] | None:
+) -> Axes | list[Axes]:
     """
     Plot peptide intensities across samples for the requested proteins.
 
@@ -57,7 +296,8 @@ def peptide_intensities(
     protein_ids : str | Sequence[str]
         Show peptides mapping to this protein_id.
     order_by : str, optional
-        Column in ``adata.obs`` used to group and order observations on the x-axis.
+        Column in ``adata.obs`` used to group and order observations on the
+        x-axis.
         When ``None``, observations follow ``adata.obs_names``.
     order : Sequence[str], optional
         Explicit order of groups (when ``order_by`` is set) or observations
@@ -66,10 +306,18 @@ def peptide_intensities(
         Restrict ``order_by`` to selected categorical levels (requires
         ``order_by``). The provided order determines the plotting order unless
         ``order`` is supplied.
+    facet_by : str | list[str | None], optional
+        Columns in ``adata.obs`` used to split samples across a subplot grid.
+        A string is coerced to ``[facet_by, None]``. A list must contain
+        exactly two elements: the row annotation followed by the column
+        annotation. Either element may be ``None`` to collapse that grid
+        axis. Within each facet, ``order_by`` groups and orders only the
+        samples in that facet. Cannot be combined with ``ax``.
     color : str, optional
         ``adata.var`` column used for per-peptide coloring.
     group_by : str, optional
-        ``adata.var`` column whose categories are aggregated into a single line.
+        ``adata.var`` column whose categories are aggregated into a single
+        line.
         Mutually exclusive with ``color``; each group is colored via
         ``color_scheme``.
     log_transform : float, optional
@@ -78,7 +326,8 @@ def peptide_intensities(
     fill_na : float, optional
         Replace missing intensities before zero/log/z transformations when set.
     z_transform : bool, optional
-        Standardize each peptide across observations after optional log transform.
+        Standardize each peptide across observations after optional log
+        transform.
         Skips NA.
     show_zeros : bool, optional
         Display zero intensities when ``True``; otherwise zeros become ``NaN``.
@@ -87,7 +336,8 @@ def peptide_intensities(
     order_by_label_rotation : float, optional
         Rotation angle for the group labels drawn above grouped sections.
     figsize : tuple[float, float], optional
-        Size of each generated figure passed to :func:`matplotlib.pyplot.subplots`.
+        Size of each panel. Faceted figures scale this size by the number of
+        subplot columns and rows.
     color_scheme : Any, optional
         Palette specification forwarded to
         :func:`proteopy.utils.matplotlib._resolve_color_scheme` for either the
@@ -95,15 +345,17 @@ def peptide_intensities(
     show : bool, optional
         Display the generated figure(s) with :func:`matplotlib.pyplot.show`.
     save : str | os.PathLike, optional
-        Path for saving the figure(s). Multi-protein selections are written to a
-        PDF stack.
-    ax : bool, optional
-        When ``True``, return the underlying Axes objects instead of closing them.
+        Path for saving the figure(s). Multi-protein selections are written to
+        a PDF stack.
+    ax : matplotlib.axes.Axes, optional
+        Axes object to plot onto. If ``None``, create a new figure and axes.
+        Cannot be combined with ``facet_by`` or multiple ``protein_ids``.
 
     Returns
     -------
-    Axes | list[Axes] | None
-        Axes handle(s) when ``ax`` is ``True``; otherwise ``None``.
+    Axes | list[Axes]
+        The Axes object used for one plot, or a list of Axes objects when
+        multiple plots are created.
     """
 
     # Check input
@@ -127,6 +379,37 @@ def peptide_intensities(
     if groups is not None and order_by is None:
         raise ValueError(
             "`groups` can only be used when `order_by` is provided."
+        )
+
+    if isinstance(facet_by, str):
+        facet_by = [facet_by, None]
+    elif facet_by is not None:
+        if not isinstance(facet_by, list) or len(facet_by) != 2:
+            raise ValueError(
+                "`facet_by` must be a string or a list of exactly two "
+                "elements: [row_annotation, column_annotation]."
+            )
+
+    if facet_by is not None:
+        for facet_key in facet_by:
+            if facet_key is not None and not isinstance(facet_key, str):
+                raise TypeError(
+                    "Each `facet_by` element must be a string or None."
+                )
+            if facet_key is not None and facet_key not in adata.obs.columns:
+                raise KeyError(f"'{facet_key}' is not present in adata.obs")
+        if ax is not None:
+            raise ValueError(
+                "`facet_by` cannot be combined with `ax`; faceted "
+                "plots create their own subplot grid."
+            )
+
+    if ax is not None and not isinstance(ax, Axes):
+        raise TypeError("`ax` must be a matplotlib.axes.Axes or None.")
+    if ax is not None and len(protein_ids) > 1:
+        raise ValueError(
+            "`ax` cannot be combined with multiple `protein_ids`; "
+            "provide one protein or let the function create the axes."
         )
 
     if groups is None:
@@ -206,6 +489,13 @@ def peptide_intensities(
             palette_map = dict(zip(hue_labels, palette_values))
 
     obs = adata.obs.reset_index(names="obs_index")
+    obs_cols = ["obs_index"]
+    if facet_by is not None:
+        obs_cols.extend(
+            facet_key
+            for facet_key in facet_by
+            if facet_key is not None and facet_key not in obs_cols
+        )
 
     if order_by:
         if order_by not in obs.columns:
@@ -214,7 +504,9 @@ def peptide_intensities(
         if not is_categorical_dtype(obs[order_by]):
             obs[order_by] = obs[order_by].astype("category")
 
-        obs = obs[["obs_index", order_by]]
+        if order_by not in obs_cols:
+            obs_cols.append(order_by)
+        obs = obs[obs_cols]
 
         if group_levels is not None:
             available_groups = set(obs[order_by].dropna().unique())
@@ -234,7 +526,7 @@ def peptide_intensities(
             if is_categorical_dtype(obs[order_by]):
                 obs[order_by] = obs[order_by].cat.remove_unused_categories()
     else:
-        obs = obs[["obs_index"]]
+        obs = obs[obs_cols]
 
     if selected_vars:
         adata_subset = adata[:, selected_vars]
@@ -357,7 +649,48 @@ def peptide_intensities(
 
     for prot_id in protein_ids:
         sub_df = df[df["protein_id"] == prot_id]
-        fig, _ax = plt.subplots(figsize=figsize)
+
+        if facet_by is not None:
+            allowed_obs_ids = set(obs["obs_index"])
+            facet_sub_df = sub_df[sub_df["obs_index"].isin(allowed_obs_ids)]
+            if facet_sub_df.empty:
+                warnings.warn(f"No data found for protein: {prot_id}")
+            fig = _plot_peptide_intensity_facets(
+                adata=adata,
+                sub_df=facet_sub_df,
+                obs=obs,
+                facet_by=facet_by,
+                order_by=order_by,
+                obs_index_ordered=obs_index_ordered,
+                cats_ordered=cats_ordered,
+                cat_index_map=cat_index_map,
+                group_by=group_by,
+                color=color,
+                palette_map=palette_map,
+                xlab_rotation=xlab_rotation,
+                order_by_label_rotation=order_by_label_rotation,
+                figsize=figsize,
+                prot_id=prot_id,
+            )
+            axes.extend(fig.axes)
+
+            if save:
+                if len(protein_ids) == 1:
+                    fig.savefig(save, bbox_inches="tight", dpi=300)
+                else:
+                    pdf_pages.savefig(fig, bbox_inches="tight")
+                if show:
+                    plt.show()
+            elif show:
+                plt.show()
+            continue
+
+        created_fig = ax is None
+        if created_fig:
+            fig, _ax = plt.subplots(figsize=figsize)
+        else:
+            _ax = ax
+            fig = _ax.figure
 
         if sub_df.empty:
             warnings.warn(f"No data found for protein: {prot_id}")
@@ -498,47 +831,31 @@ def peptide_intensities(
                         rotation_mode="anchor",
                     )
 
-        plt.xticks(rotation=xlab_rotation, ha="right")
+        plt.setp(
+            _ax.get_xticklabels(),
+            rotation=xlab_rotation,
+            ha="right",
+        )
         _ax.set_title(prot_id)
         _ax.set_xlabel("Sample")
         _ax.set_ylabel("Intensity")
 
-        plt.tight_layout()
+        if created_fig:
+            fig.tight_layout()
+        axes.append(_ax)
 
-        if ax:
-            axes.append(_ax)
-
-            if show:
-                plt.show()
-
-        elif save:
-
+        if save:
             if len(protein_ids) == 1:
                 fig.savefig(save, bbox_inches="tight", dpi=300)
-
             else:
                 pdf_pages.savefig(fig, bbox_inches="tight")
-
-            if show:
-                plt.show()
-
-            plt.close(fig)
-
-        elif show:
+        if show:
             plt.show()
-            plt.close(fig)
-
-        else:
-            print(
-                "Warning: Plot created but not displayed, saved, or returned"
-            )
-            plt.close(fig)
 
     if save and len(protein_ids) > 1:
         pdf_pages.close()
 
-    if ax:
-        return axes[0] if len(axes) == 1 else axes
+    return axes[0] if len(axes) == 1 else axes
 
 
 docstr_header = (
@@ -548,6 +865,7 @@ docstr_header = (
 proteoform_intensities = partial_with_docsig(
     peptide_intensities,
     color="proteoform_id",
+    docstr_header=docstr_header,
 )
 
 

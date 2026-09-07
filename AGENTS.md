@@ -68,22 +68,18 @@ check_proteodata(adata, *, layers=None)
     -> tuple[bool, str | None]   # raises ValueError on failure
 ```
 
-If the function uses the AnnData.X matrix, always check if it is a
-scipy.sparse matrix. As a general practice, the matrix will be made
-non-sparse for its algorithm but if possible sparse operations on the
-sparse matrix will be used to obtain the same result. If the function
-modifies the AnnData.X matrix inplace or returns a transformed AnnData
-matrix and the input was a sparse matrix, it is ensured that the output
-AnnData.X matrix is also sparse.
+If a function uses `AnnData.X` or a selected layer, always detect whether
+that matrix is `scipy.sparse`. Sparse input is supported by warning the
+user with `warnings.warn(..., UserWarning, stacklevel=2)`, converting the
+selected matrix with `.toarray()`, and running the algorithm on a dense
+array. Computed or transformed output remains dense; do not reject sparse
+input and do not convert the output back to sparse.
 
 
 General argument guidelines:
  - essential arguments which should be found in all functions unless it does not make sense:
     adata : AnnData
         Input AnnData with .X (obs x vars) and .var annotations.
-        Default=None (do not include this line in docstrings)
-    layer : str | None
-        Optional key in `adata.layers`; when set, quantification uses that layer
         Default=None (do not include this line in docstrings)
     zero_to_na : bool
         If True zeros in the AnnData X matrix will be replaced with np.nan prior to function execution.
@@ -92,6 +88,12 @@ General argument guidelines:
         If True, NAs in the AnnData X matrix will be replaced with the argument.
         Default=None (do not include this line in docstrings)
  - selectively relevant arguments:
+    layer : str | None
+        Add this parameter only when the function explicitly needs or supports
+        reading from an `adata.layers` matrix. Functions normally operate on
+        `adata.X` and should not expose `layer` by default. When present,
+        `None` selects `adata.X` and a string selects that layer.
+        Default=None (do not include this line in docstrings)
     metadata_key : str
         When the function requires a metadata (.obs or .var) key by definition, this argument supplies the column. For example the function batch_correct would require the argument batch_key found in .obs. Replace metadata in metadata_key with the expected type of metadata.
         Default=Depends on the function and convention (do not include this line in docstrings)
@@ -132,9 +134,10 @@ this number. If None, use the internal function defaults.
         If str/Path, save to that path. If False, do not save.
         Default=None (do not include this line in docstrings)
     ax : matplotlib.axes.Axes | None
-        Matplotlib Axes object to plot onto. If `None`, a new figure and axes are
-        created. Useful for embedding plots into subplot grids or further customization.
-        The function always returns the Axes object used for plotting.
+        Matplotlib Axes object to plot onto. If provided, draw on that exact
+        object without replacing it. If `None`, create a new figure and axes.
+        Always return the Axes object used, including when `show=True` or the
+        figure is saved.
         Default=None (do not include this line in docstrings)
     print_stats : bool
         If True, print the statistics underlying the plot as a pandas
@@ -263,17 +266,22 @@ Use `is_proteodata()` when you need to detect whether the data
 conforms and at which level; it returns `(True, "peptide")`,
 `(True, "protein")`, or `(False, None)`.
 
-#### 2) Handle sparse `.X` consistently
-If a function uses `AnnData.X`:
-- Detect sparsity via `scipy.sparse.issparse(adata.X)`.
-- Prefer sparse-preserving operations when they can yield identical results.
-- If an algorithm requires dense operations, temporarily convert to dense, but:
-  - If the input was sparse and the function modifies `AnnData.X` in-place or
-    returns a transformed `AnnData`, ensure the output remains sparse (same format
-    or CSR by default), unless there is a documented reason not to.
+#### 2) Handle sparse matrices consistently
+If a function uses `AnnData.X` or a selected layer:
+- Detect sparsity via `scipy.sparse.issparse(Xsrc)`.
+- If sparse, emit `UserWarning` with `stacklevel=2` explaining that the
+  selected matrix is being densified.
+- Convert with `Xsrc.toarray()` and perform the algorithm on a dense matrix.
+- Keep computed or transformed output dense. Do not reject sparse input and
+  do not convert output back to a sparse format.
+- Test that sparse input warns and produces the same dense values as the
+  equivalent dense input.
 
 Skeleton pattern:
 ```python
+import warnings
+
+import numpy as np
 from scipy import sparse
 
 def example_fn(adata, *, inplace=True, **kwargs):
@@ -281,28 +289,26 @@ def example_fn(adata, *, inplace=True, **kwargs):
     from proteopy.utils.anndata import check_proteodata
     check_proteodata(adata)
 
-    X = adata.X
-    was_sparse = sparse.issparse(X)
-
-    # Use sparse ops when possible; otherwise densify temporarily
-    if was_sparse:
-        # try sparse-safe path
-        pass
+    Xsrc = adata.X
+    if sparse.issparse(Xsrc):
+        warnings.warn(
+            "Sparse input is being densified for computation.",
+            UserWarning,
+            stacklevel=2,
+        )
+        X = Xsrc.toarray()
     else:
-        pass
+        X = np.asarray(Xsrc)
 
     # ... compute, optionally producing X_new ...
 
     if inplace:
-        if was_sparse and not sparse.issparse(adata.X):
-            adata.X = sparse.csr_matrix(adata.X)
+        adata.X = np.asarray(X_new)
         check_proteodata(adata)  # validate before returning
         return None
     else:
         adata_out = adata.copy()
-        # assign X_new to adata_out.X
-        if was_sparse and not sparse.issparse(adata_out.X):
-            adata_out.X = sparse.csr_matrix(adata_out.X)
+        adata_out.X = np.asarray(X_new)
         check_proteodata(adata_out)  # validate before returning
         return adata_out
 ```
@@ -339,10 +345,13 @@ their data appropriately.
 |-----------|--------------|
 | `adata` | AnnData object with `.X`, `.obs`, and `.var` annotations |
 | `group_by` | Column in `adata.var` or `adata.obs` used for grouping |
-| `layer` | Optional key in `adata.layers` specifying quantification data |
 | `zero_to_na` | Convert zeros in `.X` to `np.nan` |
 | `fill_na` | Replace missing values in `.X` with a specified constant |
 | `verbose` | Print status messages about input data and output destinations (default: `False`) |
+
+Functions operate on `adata.X` by default. Add a `layer` parameter only when
+the function explicitly needs or supports choosing an alternate matrix from
+`adata.layers`; do not include it as a routine parameter otherwise.
 
 ### Additional Argument Conventions
 
@@ -364,7 +373,31 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
   Save the figure: str/Path for a specific path, None to skip saving (default=None).
 
 - `ax: matplotlib.axes.Axes | None`
-  Matplotlib Axes object to plot onto. If `None`, a new figure and axes are created. The function always returns the Axes object used for plotting (default=None).
+  Matplotlib Axes object to plot onto. If supplied, plot on that exact object;
+  do not create, replace, or clear it. If `None`, create a new figure and axes.
+  Always return the Axes object used, so `returned_ax is ax` when one was
+  supplied. Showing or saving the figure does not change the return value
+  (default=None).
+
+Required implementation pattern:
+```python
+def example_plot(..., ax=None, show=True, save=None):
+    if ax is None:
+        _, ax = plt.subplots()
+
+    ax.plot(x, y)
+
+    if save is not None:
+        ax.figure.savefig(save)
+    if show:
+        plt.show()
+    return ax
+
+
+fig, supplied_ax = plt.subplots()
+returned_ax = example_plot(..., ax=supplied_ax, show=False)
+assert returned_ax is supplied_ax
+```
 
 - `print_stats: bool`
   If True, print the statistics underlying the plot as a pandas
@@ -755,17 +788,22 @@ Use `is_proteodata()` when you need to detect whether the data
 conforms and at which level; it returns `(True, "peptide")`,
 `(True, "protein")`, or `(False, None)`.
 
-#### 2) Handle sparse `.X` consistently
-If a function uses `AnnData.X`:
-- Detect sparsity via `scipy.sparse.issparse(adata.X)`.
-- Prefer sparse-preserving operations when they can yield identical results.
-- If an algorithm requires dense operations, temporarily convert to dense, but:
-  - If the input was sparse and the function modifies `AnnData.X` in-place or
-    returns a transformed `AnnData`, ensure the output remains sparse (same format
-    or CSR by default), unless there is a documented reason not to.
+#### 2) Handle sparse matrices consistently
+If a function uses `AnnData.X` or a selected layer:
+- Detect sparsity via `scipy.sparse.issparse(Xsrc)`.
+- If sparse, emit `UserWarning` with `stacklevel=2` explaining that the
+  selected matrix is being densified.
+- Convert with `Xsrc.toarray()` and perform the algorithm on a dense matrix.
+- Keep computed or transformed output dense. Do not reject sparse input and
+  do not convert output back to a sparse format.
+- Test that sparse input warns and produces the same dense values as the
+  equivalent dense input.
 
 Skeleton pattern:
 ```python
+import warnings
+
+import numpy as np
 from scipy import sparse
 
 def example_fn(adata, *, inplace=True, **kwargs):
@@ -773,28 +811,26 @@ def example_fn(adata, *, inplace=True, **kwargs):
     from proteopy.utils.anndata import check_proteodata
     check_proteodata(adata)
 
-    X = adata.X
-    was_sparse = sparse.issparse(X)
-
-    # Use sparse ops when possible; otherwise densify temporarily
-    if was_sparse:
-        # try sparse-safe path
-        pass
+    Xsrc = adata.X
+    if sparse.issparse(Xsrc):
+        warnings.warn(
+            "Sparse input is being densified for computation.",
+            UserWarning,
+            stacklevel=2,
+        )
+        X = Xsrc.toarray()
     else:
-        pass
+        X = np.asarray(Xsrc)
 
     # ... compute, optionally producing X_new ...
 
     if inplace:
-        if was_sparse and not sparse.issparse(adata.X):
-            adata.X = sparse.csr_matrix(adata.X)
+        adata.X = np.asarray(X_new)
         check_proteodata(adata)  # validate before returning
         return None
     else:
         adata_out = adata.copy()
-        # assign X_new to adata_out.X
-        if was_sparse and not sparse.issparse(adata_out.X):
-            adata_out.X = sparse.csr_matrix(adata_out.X)
+        adata_out.X = np.asarray(X_new)
         check_proteodata(adata_out)  # validate before returning
         return adata_out
 ```
@@ -808,10 +844,13 @@ def example_fn(adata, *, inplace=True, **kwargs):
 |-----------|--------------|
 | `adata` | AnnData object with `.X`, `.obs`, and `.var` annotations |
 | `group_by` | Column in `adata.var` or `adata.obs` used for grouping |
-| `layer` | Optional key in `adata.layers` specifying quantification data |
 | `zero_to_na` | Convert zeros in `.X` to `np.nan` |
 | `fill_na` | Replace missing values in `.X` with a specified constant |
 | `verbose` | Print status messages about input data and output destinations (default: `False`) |
+
+Functions operate on `adata.X` by default. Add a `layer` parameter only when
+the function explicitly needs or supports choosing an alternate matrix from
+`adata.layers`; do not include it as a routine parameter otherwise.
 
 ### Additional Argument Conventions
 
@@ -836,7 +875,11 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
   Save the figure: str/Path for a specific path, None to skip saving (default=None).
 
 - `ax: matplotlib.axes.Axes | None`
-  Matplotlib Axes object to plot onto. If `None`, a new figure and axes are created. The function always returns the Axes object used for plotting (default=None).
+  Matplotlib Axes object to plot onto. If supplied, plot on that exact object;
+  do not create, replace, or clear it. If `None`, create a new figure and axes.
+  Always return the Axes object used, so `returned_ax is ax` when one was
+  supplied. Showing or saving the figure does not change the return value
+  (default=None).
 
 - `print_stats: bool`
   If True, print the statistics underlying the plot as a pandas

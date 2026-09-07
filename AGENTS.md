@@ -457,10 +457,14 @@ the annotation column supplying those labels:
   present remain valid positions on the axis, so a subset still plots
   against the full series; drop them only where the function documents
   that it drops empty groups.
-- **Any other dtype** (object, str, numeric, bool): coerce the unique
-  values to `str` and sort lexicographically
-  (`sorted(map(str, uniques))`). The coercion is deliberate — it makes
-  the order identical across functions, calls, and dtypes.
+- **Any other dtype** (object, str, numeric, bool): sort the unique
+  values lexicographically on their string representation
+  (`sorted(uniques, key=str)` — sort by the string, return the original
+  values so they still match the data). The coercion is deliberate: it
+  makes the order identical across functions, calls, and dtypes.
+
+`proteopy/pl/_utils.py: resolve_default_order()` is the shared
+implementation. Call it rather than re-deriving the rule.
 
 **Never** fall back to the order rows happen to occupy in the object:
 `.obs_names` / `.var_names`, or the order in which values first appear

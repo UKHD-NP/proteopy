@@ -9,6 +9,7 @@ def reconstruct_symmetric_matrix_from_long(
     value_col=2,
     *,
     diagonal=1.0,
+    allow_missing=False,
 ):
     """Reconstruct a square symmetric matrix from a long DataFrame.
 
@@ -32,6 +33,9 @@ def reconstruct_symmetric_matrix_from_long(
     diagonal : float
         Value written on the matrix diagonal (``1.0`` by default, the
         correlation convention).
+    allow_missing : bool
+        If ``True``, a label pair without a value in either triangle
+        (absent or ``NaN``) is left as ``NaN`` instead of raising.
 
     Returns
     -------
@@ -42,7 +46,8 @@ def reconstruct_symmetric_matrix_from_long(
     Raises
     ------
     ValueError
-        If a label pair is absent from both triangles, or if a pair is
+        If a label pair is absent from both triangles (and
+        ``allow_missing`` is ``False``), or if a pair is
         present in both triangles with conflicting values.
     """
     if isinstance(var_a_col, int):
@@ -84,6 +89,8 @@ def reconstruct_symmetric_matrix_from_long(
             elif lower_nan and not upper_nan:
                 matrix[j, i] = matrix[i, j]
             elif upper_nan and lower_nan:
+                if allow_missing:
+                    continue
                 raise ValueError(
                     "No value found for the combination of labels: "
                     f"{idx_to_label[i]} and {idx_to_label[j]}."

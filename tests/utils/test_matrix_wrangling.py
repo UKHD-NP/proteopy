@@ -141,3 +141,19 @@ def test_conflicting_values_raise():
     )
     with pytest.raises(ValueError, match="Conflicting values"):
         reconstruct_symmetric_matrix_from_long(df, "a", "b", "v")
+
+
+def test_allow_missing_leaves_nan():
+    df = pd.DataFrame(
+        {
+            "a": ["a", "a", "b"],
+            "b": ["b", "c", "c"],
+            "v": [0.1, 0.2, np.nan],
+        }
+    )
+    result = reconstruct_symmetric_matrix_from_long(
+        df, "a", "b", "v", allow_missing=True
+    )
+    assert np.isnan(result.loc["b", "c"])
+    assert np.isnan(result.loc["c", "b"])
+    assert result.loc["a", "b"] == 0.1

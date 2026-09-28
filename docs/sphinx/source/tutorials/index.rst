@@ -10,3 +10,4 @@ workflows.
    karayel-2020_proteome-remodeling-during-human-erythropoiesis
    bludau-2021_tissue-specific-proteoform-inference-across-five-mouse-organs
    The proteodata format <proteodata_basics>
+   Plotting tutorial <plotting>

@@ -29,6 +29,7 @@ control, exploratory analysis, and statistical results.
    proteopy.pl.binary_heatmap
    proteopy.pl.completeness_per_sample
    proteopy.pl.completeness_per_var
+   proteopy.pl.var_detected_by_cat_upset
 
 .. rubric:: Metadata exploration
 

@@ -390,16 +390,13 @@ def _matrix_labels(axes):
     return sorted(text for text in texts if text)
 
 
-def _legend_texts(axes):
+def _legends(axes):
     figure = axes["matrix"].figure
-    texts = []
-    for legend in figure.legends:
-        texts += [entry.get_text() for entry in legend.get_texts()]
-    for axis in axes.values():
-        legend = axis.get_legend()
-        if legend is not None:
-            texts += [entry.get_text() for entry in legend.get_texts()]
-    return texts
+    legends = list(figure.legends)
+    for axis in figure.axes:
+        if axis.get_legend() is not None:
+            legends.append(axis.get_legend())
+    return legends
 
 
 def _bar_heights(axes):
@@ -917,12 +914,9 @@ class TestVarDetectedByCatUpset:
         assert call["show_counts"] is True
         assert call["include_empty_subsets"] is False
 
-    def test_T28_no_category_styling(self, spy):
+    def test_T28_no_subset_styling(self, spy):
         var_detected_by_cat_upset(_h6(), "batch", show=False)
-        assert spy.style
-        call = spy.style[0]
-        assert set(call["absent"]) == {"zeta", "beta", "alpha", "mid"}
-        assert call["label"] == "No category"
+        assert spy.style == []
 
     def test_T29_returns_plot_result(self, spy):
         axes = var_detected_by_cat_upset(_h1(), "organ", show=False)
@@ -951,9 +945,9 @@ class TestVarDetectedByCatUpset:
         )
         assert _bar_widths(axes) == [5, 5, 6]
 
-    def test_T33_no_category_legend_entry(self):
+    def test_T33_no_legend(self):
         axes = var_detected_by_cat_upset(_h3(), "site", show=False)
-        assert "No category" in _legend_texts(axes)
+        assert _legends(axes) == []
 
     # -- print_stats output
 
@@ -1801,12 +1795,9 @@ class TestVarDetectedByCatUpsetIMP:
         assert call["show_counts"] is True
         assert call["include_empty_subsets"] is False
 
-    def test_T28_no_category_styling_IMP(self, spy):
+    def test_T28_no_subset_styling_IMP(self, spy):
         var_detected_by_cat_upset(_f1(), "tissue", show=False)
-        assert spy.style
-        call = spy.style[0]
-        assert set(call["absent"]) == {"A", "B", "C"}
-        assert call["label"] == "No category"
+        assert spy.style == []
 
     def test_T29_returns_plot_result_IMP(self, spy):
         axes = var_detected_by_cat_upset(_f1(), "tissue", show=False)
@@ -1835,9 +1826,9 @@ class TestVarDetectedByCatUpsetIMP:
         )
         assert _bar_widths(axes) == [4, 4, 4]
 
-    def test_T33_no_category_legend_entry_IMP(self):
+    def test_T33_no_legend_IMP(self):
         axes = var_detected_by_cat_upset(_f1(), "tissue", show=False)
-        assert "No category" in _legend_texts(axes)
+        assert _legends(axes) == []
 
     # -- print_stats output
 

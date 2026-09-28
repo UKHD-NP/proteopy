@@ -529,10 +529,7 @@ def _print_verbose_report(
     )
 
 
-def _plot_upset(
-    counts: pd.Series,
-    names: list[str],
-) -> dict[str, Axes]:
+def _plot_upset(counts: pd.Series) -> dict[str, Axes]:
     """Render the UpSet plot of the intersection counts."""
     upset = UpSet(
         counts,
@@ -542,7 +539,6 @@ def _plot_upset(
         show_counts=True,
         include_empty_subsets=False,
     )
-    upset.style_subsets(absent=names, label=_NO_CATEGORY_LABEL)
     return upset.plot()
 
 
@@ -566,8 +562,9 @@ def var_detected_by_cat_upset(
     category. Detection is read from ``adata.X`` only: a value counts
     as detected when it is not NaN, and -- with ``zero_to_na=True`` --
     not zero. The plot shows how many features share each combination
-    of category memberships; features that are a member of no category
-    are shown as ``"No category"``.
+    of category memberships. Features that are a member of no category
+    form their own intersection, shown with no filled matrix dots and
+    labelled ``"No category"`` in the ``print_stats`` tables.
 
     Category order follows the default ProteoPy rule: the category
     order of ``adata.obs[cat_key]`` when it is a Categorical (store it
@@ -735,7 +732,7 @@ def var_detected_by_cat_upset(
         )
 
     # -- Plot
-    axes = _plot_upset(counts, names)
+    axes = _plot_upset(counts)
 
     if save is not None:
         axes["matrix"].figure.savefig(save)

@@ -589,15 +589,36 @@ pytest -v tests/
 ---
 
 ## Commit and Pull Request Guidelines
+
+### Commits
 - Write concise, capitalized commit subjects (e.g., `Feature: pl.intensity_distribution_per_obs()`).
 - Keep changes logically grouped.
-- Pull requests should include:
-  - Purpose and motivation
-  - Key changes
-  - New data or notebooks
-  - Test/lint outputs
-  - Before/after visuals (if applicable)
-  - Linked issues or related discussions
+
+### Pull Requests
+Write the PR description with
+`.github/pull_request_template.md`. Keep the sections that apply
+(feature, bug fix, docs, tests, refactor/style, CI/CD, breaking
+changes/dependencies), delete the rest, and fill in or answer every
+checklist item that remains.
+
+When writing a PR description:
+- **Correctness**: describe what the code actually does, checked
+  against the diff. Do not claim tests, notebook re-runs or
+  validations that were not performed; say what was skipped and why.
+- **Conciseness**: state the purpose and the key changes, not a
+  commit-by-commit account. Leave out what the diff already shows.
+- **Readability**: write for a reviewer who has not seen the work.
+  Lead with why the change is needed, refer to functions by their
+  public path (e.g. `pr.pp.normalize_median()`), and point out where
+  review attention is most needed.
+- **Scope**: one logical change per PR. Split unrelated changes, and
+  move incidental refactors into their own PR when they make the main
+  change harder to review.
+- **Impact**: flag changes to public signatures, defaults or
+  numerical results explicitly, even when they look minor.
+- Add a usage example for new functionality and before/after
+  visuals for changes to plots.
+- Link related issues and discussions.
 
 ---
 
@@ -959,15 +980,36 @@ pytest -v tests/
 ---
 
 ## Commit and Pull Request Guidelines
+
+### Commits
 - Write concise, capitalized commit subjects (e.g., `Feature: pl.intensity_distribution_per_obs()`).
 - Keep changes logically grouped.
-- Pull requests should include:
-  - Purpose and motivation
-  - Key changes
-  - New data or notebooks
-  - Test/lint outputs
-  - Before/after visuals (if applicable)
-  - Linked issues or related discussions
+
+### Pull Requests
+Write the PR description with
+`.github/pull_request_template.md`. Keep the sections that apply
+(feature, bug fix, docs, tests, refactor/style, CI/CD, breaking
+changes/dependencies), delete the rest, and fill in or answer every
+checklist item that remains.
+
+When writing a PR description:
+- **Correctness**: describe what the code actually does, checked
+  against the diff. Do not claim tests, notebook re-runs or
+  validations that were not performed; say what was skipped and why.
+- **Conciseness**: state the purpose and the key changes, not a
+  commit-by-commit account. Leave out what the diff already shows.
+- **Readability**: write for a reviewer who has not seen the work.
+  Lead with why the change is needed, refer to functions by their
+  public path (e.g. `pr.pp.normalize_median()`), and point out where
+  review attention is most needed.
+- **Scope**: one logical change per PR. Split unrelated changes, and
+  move incidental refactors into their own PR when they make the main
+  change harder to review.
+- **Impact**: flag changes to public signatures, defaults or
+  numerical results explicitly, even when they look minor.
+- Add a usage example for new functionality and before/after
+  visuals for changes to plots.
+- Link related issues and discussions.
 
 ---
 

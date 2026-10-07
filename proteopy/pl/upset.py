@@ -553,23 +553,12 @@ def var_detected_by_cat_upset(
     show: bool = True,
     save: str | Path | None = None,
 ) -> dict[str, Axes]:
-    """
-    UpSet plot of feature membership across categories of an .obs
-    column.
+    """Plot feature detection overlaps across observation categories.
 
-    A feature (a variable, i.e. a peptide or a protein) is a *member*
-    of a category when it is detected in enough observations of that
-    category. Detection is read from ``adata.X`` only: a value counts
-    as detected when it is not NaN, and -- with ``zero_to_na=True`` --
-    not zero. The plot shows how many features share each combination
-    of category memberships. Features that are a member of no category
-    form their own intersection, shown with no filled matrix dots and
-    labelled ``"No category"`` in the ``print_stats`` tables.
-
-    Category order follows the default ProteoPy rule: the category
-    order of ``adata.obs[cat_key]`` when it is a Categorical (store it
-    as an ordered Categorical to control the order), otherwise the
-    lexicographic order of the ``str``-coerced unique values.
+    A feature belongs to a category when it meets ``min_count`` or
+    ``min_fraction``. Missing values do not count as detections; zeros
+    count unless ``zero_to_na=True``. Features belonging to no category
+    form the ``"No category"`` intersection.
 
     Parameters
     ----------
@@ -578,20 +567,21 @@ def var_detected_by_cat_upset(
         read from ``adata.X`` only.
     cat_key : str
         Column in ``adata.obs`` defining the categories.
+        Categories follow categorical order, otherwise lexicographic
+        order after conversion to strings. Use an ordered
+        :class:`pandas.Categorical` to customize the order.
     min_count : int | None
-        Minimum number of detected observations within a category for
-        a feature to be a member of it. Non-boolean int >= 0. If
-        both ``min_count`` and ``min_fraction`` are None, a
-        threshold of ``min_count=1`` is used.
+        Minimum detections per category, as a nonnegative integer.
+        If neither threshold is supplied, one detection suffices.
     min_fraction : float | None
-        Minimum fraction of a category's observations in which a
-        feature must be detected to be a member of it. Finite,
-        non-boolean number in [0, 1]. Set at most one of ``min_count``
-        and ``min_fraction``; setting both raises ``ValueError``.
+        Minimum fraction of observations with a detection per category,
+        between 0 and 1. Supply at most one of ``min_count`` and
+        ``min_fraction``.
     zero_to_na : bool
         If True, zeros in ``.X`` count as missing.
     print_stats : bool
-        If True, print the statistics underlying the plot.
+        If True, print global, intersection, and per-category
+        statistics.
     verbose : bool
         If True, print status messages about the input.
     show : bool
@@ -609,85 +599,55 @@ def var_detected_by_cat_upset(
     Raises
     ------
     TypeError
-        When an argument has the wrong type: ``save`` not a str, Path
-        or None; a flag not a bool; ``cat_key`` not a str;
-        ``min_count`` not a non-boolean int; ``min_fraction`` not a
-        non-boolean number.
+        If an argument has the wrong type.
     KeyError
-        When ``cat_key`` is not a column of ``adata.obs``.
+        If ``cat_key`` is not a column of ``adata.obs``.
     ValueError
-        When both ``min_count`` and ``min_fraction`` are not None;
-        when a value is invalid:
-        ``cat_key == ""``; ``min_count < 0``;
-        ``min_fraction`` non-finite or outside [0, 1]; missing values
-        in ``adata.obs[cat_key]``; category values that collide after
-        ``str`` coercion; an empty observation or variable axis.
+        If thresholds are invalid or both supplied, ``cat_key`` is
+        empty, either data axis is empty, or category labels are
+        missing or collide after conversion to strings.
 
     Warns
     -----
     UserWarning
-        When ``adata.X`` is sparse and is densified.
+        If ``adata.X`` is sparse and is densified.
 
     Examples
     --------
-    Build a protein-level AnnData with six samples from three tissues.
-    P4 is never measured; P3 is measured in only one lung sample.
+    P2 is measured in one liver sample; P3 is never measured.
 
     >>> import numpy as np
     >>> import pandas as pd
     >>> import anndata as ad
     >>> import proteopy as pr
-    >>> samples = ["S1", "S2", "S3", "S4", "S5", "S6"]
-    >>> proteins = ["P1", "P2", "P3", "P4"]
-    >>> obs = pd.DataFrame(
-    ...     {
-    ...         "sample_id": samples,
-    ...         "tissue": [
-    ...             "liver", "liver", "lung", "lung", "brain", "brain",
-    ...         ],
-    ...     },
-    ...     index=samples,
+    >>> samples = ["S1", "S2", "S3", "S4"]
+    >>> proteins = ["P1", "P2", "P3"]
+    >>> adata = ad.AnnData(
+    ...     X=np.array([
+    ...         [5.0, 2.0, np.nan], [4.0, np.nan, np.nan],
+    ...         [6.0, np.nan, np.nan], [5.0, np.nan, np.nan],
+    ...     ]),
+    ...     obs=pd.DataFrame(
+    ...         {"sample_id": samples,
+    ...          "tissue": ["liver", "liver", "lung", "lung"]},
+    ...         index=samples,
+    ...     ),
+    ...     var=pd.DataFrame({"protein_id": proteins}, index=proteins),
     ... )
-    >>> var = pd.DataFrame({"protein_id": proteins}, index=proteins)
-    >>> nan = np.nan
-    >>> X = np.array([
-    ...     [5.0, 2.0, 1.0, nan],
-    ...     [4.0, 3.0, 2.0, nan],
-    ...     [6.0, nan, 1.5, nan],
-    ...     [5.5, nan, nan, nan],
-    ...     [4.5, nan, nan, nan],
-    ...     [5.0, nan, nan, nan],
-    ... ])
-    >>> adata = ad.AnnData(X=X, obs=obs, var=var)
-
-    By default, one detection makes a protein a member of a tissue.
-
-    >>> axes = pr.pl.var_detected_by_cat_upset(adata, cat_key="tissue")
+    >>> axes = pr.pl.var_detected_by_cat_upset(
+    ...     adata, cat_key="tissue", show=False,
+    ... )
     >>> sorted(axes)
     ['intersections', 'matrix', 'shading', 'totals']
 
-    Require detection in every sample of a tissue and print the counts
-    behind the plot.
+    Require detection in every sample of a tissue:
 
     >>> axes = pr.pl.var_detected_by_cat_upset(
     ...     adata,
     ...     cat_key="tissue",
     ...     min_fraction=1.0,
-    ...     print_stats=True,
+    ...     show=False,
     ... )
-    Global:
-     count  mean  median  std  min  max
-         3   1.3     1.0  0.6    1    2
-    Intersections:
-     brain  liver  lung  n_features                label
-     False   True False           2                liver
-     False  False False           1          No category
-      True   True  True           1 brain & liver & lung
-    Per tissue:
-    tissue  n_features  percent
-     brain           1     25.0
-     liver           3     75.0
-      lung           1     25.0
     """
     # -- Validate inputs
     threshold_name, threshold_value = _validate_upset_args(

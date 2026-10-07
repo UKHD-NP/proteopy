@@ -740,6 +740,12 @@ def test_all_na_peptide_is_omitted_without_warning():
     _recorrelate(adata)
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
+        warnings.filterwarnings(
+            "ignore",
+            message=r"The set_bad function will be deprecated\b",
+            category=PendingDeprecationWarning,
+            module=r"seaborn\.matrix$",
+        )
         axm = _plot_heatmap(adata, protein="P1", show=False)
     assert not record
     rows, cols, values = _rendered(axm)
@@ -757,6 +763,12 @@ def test_peptide_removed_from_correlations_stays_omitted():
     assert "pep0" in adata.var["peptide_id"].values
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
+        warnings.filterwarnings(
+            "ignore",
+            message=r"The set_bad function will be deprecated\b",
+            category=PendingDeprecationWarning,
+            module=r"seaborn\.matrix$",
+        )
         axm = _plot_heatmap(adata, protein="P1", show=False)
     assert not record
     rows, cols, values = _rendered(axm)

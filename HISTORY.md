@@ -14,10 +14,7 @@ and this project adheres to
 
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
-- `var_detected_by_cat_upset()`: UpSet plot of which features (`.var`)
-  are detected in which categories of an `.obs` column, with
-  per-category `min_count` / `min_fraction` detection thresholds and a
-  `No category` set for features detected in none of them
+- `var_detected_by_cat_upset()`: new feature
 
 **Preprocessing** (`pr.pp`)
 

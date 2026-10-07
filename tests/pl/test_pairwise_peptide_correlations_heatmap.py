@@ -13,7 +13,6 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
 from scipy.spatial.distance import squareform
 from scipy.cluster.hierarchy import linkage as scipy_linkage
 import pytest
@@ -33,6 +32,16 @@ def close_test_figures():
 
 def _function():
     return getattr(pr.pl, "pairwise_peptide_correlations_heatmap")
+
+
+def _plot_heatmap(*args, **kwargs):
+    """Draw the plot and find its heatmap axes in the generated figure."""
+    assert _function()(*args, **kwargs) is None
+    return next(
+        ax
+        for ax in plt.gcf().axes
+        if ax.get_xlabel() == "Peptides" and ax.get_ylabel() == "Peptides"
+    )
 
 
 def _copf_adata(seed=0):
@@ -147,8 +156,6 @@ def test_signature_locked():
         "yticklabels",
         "figsize",
         "show",
-        "ax",
-        "print_stats",
         "save",
     ]
     # protein is required (no default)
@@ -163,24 +170,20 @@ def test_signature_locked():
     assert defaults["xticklabels"].default == "auto"
     assert defaults["yticklabels"].default == "auto"
     assert defaults["show"].default is True
-    assert defaults["ax"].default is False
-    assert defaults["print_stats"].default is False
     assert defaults["save"].default is None
 
 
 # -- Return-value semantics ----------------------------------------------
 
 
-def test_returns_axes_when_ax_true():
+@pytest.mark.parametrize("show", [True, False])
+@pytest.mark.parametrize("cluster", [True, False])
+def test_always_returns_none(show, cluster, monkeypatch):
     adata = _copf_adata()
-    out = _function()(adata, protein="P1", show=False, ax=True)
-    assert isinstance(out, Axes)
-
-
-def test_returns_none_when_ax_false():
-    adata = _copf_adata()
-    out = _function()(adata, protein="P1", show=False, ax=False)
-    assert out is None
+    shown = []
+    monkeypatch.setattr(plt, "show", lambda: shown.append(True))
+    assert _function()(adata, protein="P1", show=show, cluster=cluster) is None
+    assert shown == ([True] if show else [])
 
 
 # -- Clustering: symmetry, linkage pass-through, toggle -------------------
@@ -188,7 +191,7 @@ def test_returns_none_when_ax_false():
 
 def test_default_clustering_is_symmetric():
     adata = _copf_adata()
-    axm = _function()(adata, protein="P1", show=False, ax=True)
+    axm = _plot_heatmap(adata, protein="P1", show=False)
     x = [t.get_text() for t in axm.get_xticklabels()]
     y = [t.get_text() for t in axm.get_yticklabels()]
     assert x == y
@@ -196,7 +199,7 @@ def test_default_clustering_is_symmetric():
 
 def test_cluster_false_orders_plain_ids_lexicographically():
     adata = _copf_adata()
-    axm = _function()(adata, protein="P1", cluster=False, show=False, ax=True)
+    axm = _plot_heatmap(adata, protein="P1", cluster=False, show=False)
     y = [t.get_text() for t in axm.get_yticklabels()]
     assert y == _protein_peptides(adata, "P1")
 
@@ -207,7 +210,7 @@ def test_cluster_false_follows_peptide_id_categories():
     adata.var["peptide_id"] = pd.Categorical(
         adata.var["peptide_id"], categories=categories, ordered=True
     )
-    axm = _function()(adata, protein="P1", cluster=False, show=False, ax=True)
+    axm = _plot_heatmap(adata, protein="P1", cluster=False, show=False)
     y = [t.get_text() for t in axm.get_yticklabels()]
     assert y == ["pep4", "pep3", "pep2", "pep1", "pep0"]
 
@@ -231,7 +234,7 @@ def test_supplied_linkage_shadows_both_axes(monkeypatch):
         squareform(np.clip(dist, 0, 2), checks=False), method="complete"
     )
 
-    _function()(adata, protein="P1", linkage=Z, show=False, ax=True)
+    _function()(adata, protein="P1", linkage=Z, show=False)
     kwargs = captured["kwargs"]
     assert kwargs["row_linkage"] is Z
     assert kwargs["col_linkage"] is Z
@@ -243,9 +246,7 @@ def test_supplied_linkage_shadows_both_axes(monkeypatch):
 def test_margin_color_string_single_strip(monkeypatch):
     adata = _copf_adata()
     captured = _spy_clustermap(monkeypatch)
-    _function()(
-        adata, protein="P1", margin_color="cluster_id", show=False, ax=False
-    )
+    _function()(adata, protein="P1", margin_color="cluster_id", show=False)
     row_colors = captured["kwargs"]["row_colors"]
     assert list(row_colors.columns) == ["cluster_id"]
 
@@ -258,7 +259,6 @@ def test_margin_color_list_multiple_strips(monkeypatch):
         protein="P1",
         margin_color=["cluster_id", "proteoform_id"],
         show=False,
-        ax=False,
     )
     row_colors = captured["kwargs"]["row_colors"]
     assert list(row_colors.columns) == ["cluster_id", "proteoform_id"]
@@ -269,9 +269,7 @@ def test_margin_color_list_multiple_strips(monkeypatch):
 def test_annotation_distinct_colors_match_categories(monkeypatch):
     adata = _copf_adata()
     captured = _spy_clustermap(monkeypatch)
-    _function()(
-        adata, protein="P1", margin_color="cluster_id", show=False, ax=False
-    )
+    _function()(adata, protein="P1", margin_color="cluster_id", show=False)
     strip = captured["kwargs"]["row_colors"]["cluster_id"]
     n_colors = len({tuple(np.atleast_1d(c)) for c in strip})
     n_cats = adata.var.loc[
@@ -285,7 +283,7 @@ def test_annotation_distinct_colors_match_categories(monkeypatch):
 
 def test_tick_labels_from_peptide_id():
     adata = _copf_adata()
-    axm = _function()(adata, protein="P1", show=False, ax=True)
+    axm = _plot_heatmap(adata, protein="P1", show=False)
     y = [t.get_text() for t in axm.get_yticklabels()]
     assert sorted(y) == _protein_peptides(adata, "P1")
 
@@ -326,7 +324,7 @@ def test_bad_margin_color_type_raises():
 def test_save_writes_png(tmp_path):
     adata = _copf_adata()
     out = tmp_path / "heatmap.png"
-    _function()(adata, protein="P1", show=False, save=out)
+    assert _function()(adata, protein="P1", show=False, save=out) is None
     assert out.exists() and out.stat().st_size > 0
 
 
@@ -355,14 +353,8 @@ def _with_nan_correlation(adata):
 def test_nan_correlations_are_clustered_as_zero_with_warning():
     adata = _with_nan_correlation(_copf_adata())
     with pytest.warns(UserWarning, match="treated as r = 0"):
-        axm = _function()(adata, protein="P1", show=False, ax=True)
+        axm = _plot_heatmap(adata, protein="P1", show=False)
     assert tick_labels(axm, "x") == tick_labels(axm)
-
-
-def test_nan_correlations_cluster_false_draws():
-    adata = _with_nan_correlation(_copf_adata())
-    out = _function()(adata, protein="P1", cluster=False, show=False, ax=True)
-    assert isinstance(out, Axes)
 
 
 def test_margin_color_with_missing_values(monkeypatch):
@@ -395,19 +387,174 @@ def test_color_scheme_dict_keyed_by_raw_values(monkeypatch):
     assert set(strip) == {"black"}
 
 
-def test_print_stats_per_margin_color(capsys):
+def _color_scheme_adata():
     adata = _copf_adata()
-    adata.var = adata.var.drop(columns=["cluster_id"])
+    adata.var["region"] = ["b", "a", "b", "a", "b", "a", "b", "a"]
+    adata.var["phase"] = [2, 10, 2, 10, 2, 10, 2, 10]
+    return adata
+
+
+def _spy_color_resolver(monkeypatch):
+    import proteopy.pl.copf as copf_mod
+
+    calls = []
+    original = copf_mod._resolve_color_scheme
+
+    def spy(scheme, labels):
+        calls.append((scheme, list(labels)))
+        return original(scheme, labels)
+
+    monkeypatch.setattr(copf_mod, "_resolve_color_scheme", spy)
+    return calls
+
+
+def _assert_strip_colors(strip, groups, palette):
+    actual = [plt.matplotlib.colors.to_rgba(color) for color in strip]
+    expected = [
+        plt.matplotlib.colors.to_rgba(palette[group]) for group in groups
+    ]
+    np.testing.assert_allclose(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "schemes, expected",
+    [
+        (
+            ["Blues", "Reds"],
+            [
+                {
+                    "a": plt.get_cmap("Blues")(0.0),
+                    "b": plt.get_cmap("Blues")(1.0),
+                },
+                {10: plt.get_cmap("Reds")(0.0), 2: plt.get_cmap("Reds")(1.0)},
+            ],
+        ),
+        (
+            [["red", "blue"], ["green", "orange"]],
+            [{"a": "red", "b": "blue"}, {10: "green", 2: "orange"}],
+        ),
+        (
+            [{"a": "blue", "b": "red"}, {2: "green", 10: "orange"}],
+            [{"a": "blue", "b": "red"}, {10: "orange", 2: "green"}],
+        ),
+        (
+            [plt.get_cmap("Blues"), plt.get_cmap("Reds")],
+            [
+                {
+                    "a": plt.get_cmap("Blues")(0.0),
+                    "b": plt.get_cmap("Blues")(1.0),
+                },
+                {10: plt.get_cmap("Reds")(0.0), 2: plt.get_cmap("Reds")(1.0)},
+            ],
+        ),
+        (
+            [lambda position: "red", lambda position: "blue"],
+            [{"a": "red", "b": "red"}, {10: "blue", 2: "blue"}],
+        ),
+    ],
+    ids=["named", "color_lists", "dicts", "colormaps", "callables"],
+)
+def test_per_strip_palettes_resolve_separately(schemes, expected, monkeypatch):
+    adata = _color_scheme_adata()
+    captured = _spy_clustermap(monkeypatch)
+    calls = _spy_color_resolver(monkeypatch)
+    margins = ["region", "phase"]
     _function()(
         adata,
         protein="P1",
-        margin_color="proteoform_id",
-        print_stats=True,
+        margin_color=margins,
+        color_scheme=schemes,
         show=False,
     )
-    out = capsys.readouterr().out
-    assert "Peptide correlation summary" in out
-    assert "Per proteoform_id" in out
+    assert len(calls) == 2
+    assert calls[0][0] is schemes[0]
+    assert calls[1][0] is schemes[1]
+    assert calls[0][1] == ["a", "b"]
+    assert calls[1][1] == [10, 2]
+    strips = captured["kwargs"]["row_colors"]
+    assert list(strips.columns) == margins
+    assert captured["kwargs"]["col_colors"] is strips
+    for col, palette in zip(margins, expected):
+        _assert_strip_colors(
+            strips[col], adata.var.loc[strips.index, col], palette
+        )
+
+
+@pytest.mark.parametrize(
+    "scheme, expected",
+    [
+        (
+            "viridis",
+            [plt.get_cmap("viridis")(p) for p in [0.0, 1 / 3, 2 / 3, 1.0]],
+        ),
+        (
+            ["red", "blue", "green", "orange"],
+            ["red", "blue", "green", "orange"],
+        ),
+        (
+            {"a": "red", "b": "blue", 10: "green", 2: "orange"},
+            ["red", "blue", "green", "orange"],
+        ),
+    ],
+    ids=["named", "flat_color_list", "dict"],
+)
+def test_shared_palette_resolves_all_strips_together(
+    scheme, expected, monkeypatch
+):
+    adata = _color_scheme_adata()
+    captured = _spy_clustermap(monkeypatch)
+    calls = _spy_color_resolver(monkeypatch)
+    _function()(
+        adata,
+        protein="P1",
+        margin_color=["region", "phase"],
+        color_scheme=scheme,
+        show=False,
+    )
+    assert len(calls) == 1
+    assert calls[0][0] is scheme
+    assert calls[0][1] == ["a", "b", 10, 2]
+    strips = captured["kwargs"]["row_colors"]
+    palettes = {
+        "region": {"a": expected[0], "b": expected[1]},
+        "phase": {10: expected[2], 2: expected[3]},
+    }
+    for col, palette in palettes.items():
+        _assert_strip_colors(
+            strips[col], adata.var.loc[strips.index, col], palette
+        )
+
+
+@pytest.mark.parametrize("margin", ["region", ["region"]])
+def test_single_strip_accepts_flat_color_list(margin, monkeypatch):
+    adata = _color_scheme_adata()
+    captured = _spy_clustermap(monkeypatch)
+    _function()(
+        adata,
+        protein="P1",
+        margin_color=margin,
+        color_scheme=["red", "blue"],
+        show=False,
+    )
+    strip = captured["kwargs"]["row_colors"]["region"]
+    _assert_strip_colors(
+        strip, adata.var.loc[strip.index, "region"], {"a": "red", "b": "blue"}
+    )
+
+
+@pytest.mark.parametrize("schemes", [["Blues"], ["Blues", "Reds", "Greens"]])
+def test_per_strip_palette_count_must_match_margins(schemes):
+    adata = _color_scheme_adata()
+    before = set(plt.get_fignums())
+    with pytest.raises(ValueError, match="same length as `margin_color`"):
+        _function()(
+            adata,
+            protein="P1",
+            margin_color=["region", "phase"],
+            color_scheme=schemes,
+            show=False,
+        )
+    assert set(plt.get_fignums()) == before
 
 
 # -- Margin annotations: default, colours, legends ----------------------
@@ -442,21 +589,18 @@ def test_multiple_margins_use_disjoint_colours(monkeypatch):
 def test_one_legend_per_margin_column():
     adata = _copf_adata()
     margins = ["cluster_id", "proteoform_id"]
-    axm = _function()(
-        adata, protein="P1", margin_color=margins, show=False, ax=True
-    )
+    axm = _plot_heatmap(adata, protein="P1", margin_color=margins, show=False)
     titles = [leg.get_title().get_text() for leg in axm.figure.legends]
     assert titles == margins
 
 
 def test_legends_clear_of_all_axes_text_and_inside_figure():
     adata = _copf_adata()
-    axm = _function()(
+    axm = _plot_heatmap(
         adata,
         protein="P1",
         margin_color=["cluster_id", "proteoform_id", "protein_id"],
         show=False,
-        ax=True,
     )
     fig = axm.figure
     renderer = fig.canvas.get_renderer()
@@ -484,7 +628,7 @@ def test_peptides_filtered_after_correlations_warn_and_are_dropped():
     adata = _copf_adata()
     sub = adata[:, adata.var_names != "pep0"].copy()
     with pytest.warns(UserWarning, match="no longer in adata.var"):
-        axm = _function()(sub, protein="P1", show=False, ax=True)
+        axm = _plot_heatmap(sub, protein="P1", show=False)
     assert "pep0" not in tick_labels(axm)
     assert len(tick_labels(axm)) == 4
 
@@ -528,24 +672,6 @@ def test_linkage_of_wrong_size_raises():
         _function()(adata, protein="P1", linkage=Z, show=False)
 
 
-def test_print_stats_groups_follow_legend_order(capsys):
-    adata = _copf_adata()
-    adata.var["grp"] = [2, 10, 2, 10, 2, 2, 10, 2]
-    axm = _function()(
-        adata,
-        protein="P1",
-        margin_color="grp",
-        print_stats=True,
-        show=False,
-        ax=True,
-    )
-    legend = [t.get_text() for t in axm.figure.legends[0].get_texts()]
-    table = capsys.readouterr().out.split("Per grp")[1].splitlines()[2:]
-    stats = [line.split()[0] for line in table if line.strip()]
-    assert legend == ["10", "2"]
-    assert stats == legend
-
-
 def test_all_nan_correlations_draw_without_runtime_warnings():
     adata = _copf_adata()
     corrs = adata.uns["pairwise_peptide_correlations"].copy()
@@ -558,7 +684,6 @@ def test_all_nan_correlations_draw_without_runtime_warnings():
             protein="P1",
             margin_color="protein_id",
             cluster=False,
-            print_stats=True,
             show=False,
         )
     assert not [w for w in caught if issubclass(w.category, RuntimeWarning)]
@@ -589,13 +714,12 @@ def test_vector_backends(backend, tmp_path):
 def test_tall_legends_stay_inside_figure():
     adata = _copf_adata()
     adata.var["per_peptide"] = adata.var["peptide_id"].astype(str)
-    axm = _function()(
+    axm = _plot_heatmap(
         adata,
         protein="P1",
         margin_color=["per_peptide", "proteoform_id", "protein_id"],
         figsize=(2.5, 1.2),
         show=False,
-        ax=True,
     )
     fig = axm.figure
     renderer = fig.canvas.get_renderer()
@@ -608,29 +732,49 @@ def test_tall_legends_stay_inside_figure():
 # -- Checklist scenarios: missing data, degenerate inputs, rendering -----
 
 
-def test_all_na_peptide_shown_as_empty_row_and_column():
+def test_all_na_peptide_is_omitted_without_warning():
     adata = _copf_adata()
-    adata.X[:, 0] = np.nan  # pep0 never measured
+    X = np.asarray(adata.X).copy()
+    X[:, 0] = np.nan  # pep0 never measured
+    adata.X = X
     _recorrelate(adata)
-    with pytest.warns(UserWarning) as record:
-        axm = _function()(adata, protein="P1", show=False, ax=True)
-    messages = " | ".join(str(w.message) for w in record)
-    assert "no correlations" in messages
-    assert "treated as r = 0" in messages
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        axm = _plot_heatmap(adata, protein="P1", show=False)
+    assert not record
     rows, cols, values = _rendered(axm)
-    assert "pep0" in rows
-    assert np.isnan(values[rows.index("pep0")]).all()
-    assert np.isnan(values[:, cols.index("pep0")]).all()
+    assert "pep0" not in rows
+    assert "pep0" not in cols
+    assert values.shape == (4, 4)
+    assert not np.isnan(values).any()
+
+
+def test_peptide_removed_from_correlations_stays_omitted():
+    adata = _copf_adata()
+    corrs = adata.uns["pairwise_peptide_correlations"]
+    keep = (corrs["pepA"] != "pep0") & (corrs["pepB"] != "pep0")
+    adata.uns["pairwise_peptide_correlations"] = corrs.loc[keep].copy()
+    assert "pep0" in adata.var["peptide_id"].values
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        axm = _plot_heatmap(adata, protein="P1", show=False)
+    assert not record
+    rows, cols, values = _rendered(axm)
+    assert "pep0" not in rows
+    assert "pep0" not in cols
+    assert values.shape == (4, 4)
 
 
 def test_constant_peptide_draws_with_default_clustering():
     adata = _copf_adata()
-    adata.X[:, 1] = 5.0  # zero variance -> NaN PCC
+    X = np.asarray(adata.X).copy()
+    X[:, 1] = 5.0  # zero variance -> NaN PCC
+    adata.X = X
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")  # scipy ConstantInputWarning
         _recorrelate(adata)
     with pytest.warns(UserWarning, match="NaN"):
-        axm = _function()(adata, protein="P1", show=False, ax=True)
+        axm = _plot_heatmap(adata, protein="P1", show=False)
     rows, _, values = _rendered(axm)
     assert np.isnan(values[rows.index("pep1")]).sum() == len(rows) - 1
 
@@ -638,14 +782,14 @@ def test_constant_peptide_draws_with_default_clustering():
 def test_nan_cells_hatched_and_in_legend():
     adata = _with_nan_correlation(_copf_adata())
     with pytest.warns(UserWarning):
-        axm = _function()(adata, protein="P1", show=False, ax=True)
+        axm = _plot_heatmap(adata, protein="P1", show=False)
     assert axm.patch.get_hatch()
     titles = [leg.get_title().get_text() for leg in axm.figure.legends]
     assert "correlation" in titles
 
 
 def test_complete_matrix_has_no_nan_legend():
-    axm = _function()(_copf_adata(), protein="P1", show=False, ax=True)
+    axm = _plot_heatmap(_copf_adata(), protein="P1", show=False)
     titles = [leg.get_title().get_text() for leg in axm.figure.legends]
     assert "correlation" not in titles
     assert not axm.patch.get_hatch()
@@ -660,7 +804,7 @@ def test_fewer_than_three_samples_warn():
 def test_two_peptide_protein_renders_2x2():
     adata = _copf_adata()
     adata = _recorrelate(adata[:, ["pep0", "pep1", "pep5", "pep6"]].copy())
-    axm = _function()(adata, protein="P1", show=False, ax=True)
+    axm = _plot_heatmap(adata, protein="P1", show=False)
     rows, cols, values = _rendered(axm)
     assert values.shape == (2, 2)
     assert np.allclose(np.diag(values), 1.0)
@@ -669,10 +813,12 @@ def test_two_peptide_protein_renders_2x2():
 
 def test_identical_peptides_render_r_of_one():
     adata = _copf_adata()
-    adata.X[:, 1] = adata.X[:, 0]
+    X = np.asarray(adata.X).copy()
+    X[:, 1] = X[:, 0]
+    adata.X = X
     _recorrelate(adata)
     rows, cols, values = _rendered(
-        _function()(adata, protein="P1", show=False, ax=True)
+        _plot_heatmap(adata, protein="P1", show=False)
     )
     assert values[rows.index("pep0"), cols.index("pep1")] == pytest.approx(1)
 
@@ -684,9 +830,7 @@ def test_rendered_cells_match_correlations(cluster):
     truth = {}
     for a, b, r in long[["pepA", "pepB", "PCC"]].itertuples(index=False):
         truth[(a, b)] = truth[(b, a)] = r
-    axm = _function()(
-        adata, protein="P1", cluster=cluster, show=False, ax=True
-    )
+    axm = _plot_heatmap(adata, protein="P1", cluster=cluster, show=False)
     rows, cols, values = _rendered(axm)
     assert rows == cols
     assert np.allclose(np.diag(values), 1.0)
@@ -709,8 +853,8 @@ def test_default_labels_do_not_overlap_for_many_peptides():
         ),
     )
     _recorrelate(adata)
-    axm = _function()(
-        adata, protein="P9", margin_color="protein_id", show=False, ax=True
+    axm = _plot_heatmap(
+        adata, protein="P9", margin_color="protein_id", show=False
     )
     renderer = axm.figure.canvas.get_renderer()
     boxes = sorted(

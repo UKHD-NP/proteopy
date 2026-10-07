@@ -12,10 +12,7 @@ and this project adheres to
 
 **Plotting** (`pr.pl`)
 
-- `pairwise_peptide_correlations_heatmap()`: per-protein clustered
-  peptide-correlation heatmap with proteoform (`cluster_id` /
-  `proteoform_id`) annotation strips, symmetric row/column linkage
-  (`method`, `linkage`, `cluster`) and multiple `margin_color` columns
+- `pairwise_peptide_correlations_heatmap()`: new feature
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
 

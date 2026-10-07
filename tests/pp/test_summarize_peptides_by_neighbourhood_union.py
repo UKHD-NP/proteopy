@@ -50,7 +50,6 @@ from proteopy.pp import (
 )
 from proteopy.utils.anndata import check_proteodata
 
-
 # -- Synthetic reference protein --------------------------------------
 #
 # Twenty distinct residues, so every substring occurs exactly once and
@@ -1887,6 +1886,23 @@ class TestSummarizePeptidesByNeighbourhoodUnion:
         obs = pd.DataFrame({"sample_id": ["s1"]}, index=["s1"])
         adata = AnnData(X=np.array([[1.0]]), obs=obs, var=var)
         with pytest.raises(ValueError, match="mapping to exactly one protein"):
+            summarize(adata, _FASTA, inplace=False)
+
+    def test_multi_mapped_peptide_with_duplicate_names_raises(self):
+        """Duplicate peptide rows fail index uniqueness validation first."""
+        var = pd.DataFrame(
+            {
+                "peptide_id": ["ACDEF", "ACDEF"],
+                "protein_id": ["P1", "P2"],
+            },
+            index=["ACDEF", "ACDEF"],
+        )
+        obs = pd.DataFrame({"sample_id": ["s1"]}, index=["s1"])
+        with pytest.warns(UserWarning, match="Variable names are not unique"):
+            adata = AnnData(X=np.array([[1.0, 2.0]]), obs=obs, var=var)
+        with pytest.raises(
+            ValueError, match="Duplicate names detected in var"
+        ):
             summarize(adata, _FASTA, inplace=False)
 
     def test_obs_is_preserved(self):

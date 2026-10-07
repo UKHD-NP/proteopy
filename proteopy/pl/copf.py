@@ -407,63 +407,57 @@ def pairwise_peptide_correlations_heatmap(
     yticklabels: bool | str = "auto",
     figsize: tuple[float, float] = (8.0, 8.0),
     show: bool = True,
-    ax: bool = False,
-    print_stats: bool = False,
     save: str | Path | None = None,
-) -> Axes | None:
-    """Clustered peptide-correlation heatmap for a single protein.
+) -> None:
+    """Peptide-correlation heatmap for a single protein.
 
-    Draw the peptide x peptide Pearson-correlation matrix of one protein
-    as a clustered heatmap, so that peptides of the same proteoform (COPF
-    cluster) group into visible blocks. One or more categorical
-    annotation strips (``margin_color``) are drawn alongside the heatmap,
-    by default the per-protein ``cluster_id`` assignment.
-
-    The correlations are read from
-    ``adata.uns[corr_key]`` (produced by
-    :func:`proteopy.tl.pairwise_peptide_correlations`) and reconstructed
-    into a full symmetric matrix for the selected protein. The clustering
-    is symmetric: the same tree is used for rows and columns.
+    Draw a protein's peptide Pearson correlations as a heatmap,
+    optionally with hierarchical clustering. Correlations are read
+    from ``adata.uns[corr_key]``, computed by
+    :func:`proteopy.tl.pairwise_peptide_correlations`. By default,
+    margin annotations show COPF proteoform assignments from
+    ``adata.var["proteoform_id"]``.
 
     Parameters
     ----------
     adata : AnnData
-        :class:`~anndata.AnnData` carrying COPF annotations.
+        Peptide-level :class:`~anndata.AnnData` with pairwise peptide
+        correlations in ``.uns[corr_key]`` and margin annotations
+        in ``.var``.
     protein : str
         ``protein_id`` of the protein to plot.
     corr_key : str
         Key in ``adata.uns`` holding the long-form pairwise correlations
-        (columns ``pepA``, ``pepB``, ``PCC``; indexed by ``protein_id``).
+        (columns ``pepA``, ``pepB``, ``PCC``; indexed by
+        ``protein_id``).
     margin_color : str | list[str]
-        Column(s) in ``adata.var`` used for the annotation strip(s). A
-        string is treated as a single-item list; a list draws one strip
-        per entry, in the given order. The default shows the COPF
-        proteoform labels (``<protein_id>_<cluster_id>``) written by
-        :func:`proteopy.tl.peptide_clusters_from_dendograms`. Colours
-        are assigned across all columns together, so strips never share
-        a colour, and each column gets its own legend, placed right of
-        all heatmap labels. Legend entries follow the column's category
-        order if it is categorical, otherwise the lexicographic order of
-        the ``str``-coerced values; store the column as an ordered
-        :class:`pandas.Categorical` to change it. Missing values are
-        drawn in light gray.
+        Columns in ``adata.var`` shown as annotation strips, in the
+        given order. The default uses ``proteoform_id`` written by
+        :func:`proteopy.tl.peptide_clusters_from_dendograms`.
+        Legends follow category order, otherwise lexicographic order;
+        use an ordered :class:`pandas.Categorical` to customize it.
+        Missing annotations appear in light gray.
     method : str
         Linkage method handed to :func:`scipy.cluster.hierarchy.linkage`
         when the tree is recomputed from ``1 - correlation``.
     cluster : bool
-        Cluster and draw dendrograms on both axes. When ``False``,
-        peptides follow the category order of ``adata.var["peptide_id"]``
-        if it is categorical, otherwise lexicographic order. ``NaN``
-        correlations (e.g. from constant peptides) are drawn hatched and
-        treated as ``r = 0`` when building the tree.
+        Cluster peptides and draw dendrograms on both axes. When
+        ``False``, order peptides lexicographically unless
+        ``adata.var["peptide_id"]`` is categorical, in which case
+        its category order is used.
     linkage : numpy.ndarray | None
-        Precomputed SciPy linkage matrix of shape ``(n_peptides - 1, 4)``.
+        Precomputed SciPy linkage matrix of shape
+        ``(n_peptides - 1, 4)``.
         When provided it is used for both axes, shadowing the default
         ``1 - correlation`` computation. Leaf indices refer to the
         peptides in the default order described under ``cluster``.
     color_scheme : Any
-        Color palette specification understood by
-        :func:`proteopy.utils.matplotlib._resolve_color_scheme`.
+        Palette for margin annotations: a colormap name or object,
+        color, color list, category-to-color dict, or callable. A single
+        palette is shared across strips. For multiple strips, a list
+        of palettes must match ``margin_color`` in length and order;
+        nest color lists to supply one per strip. ``None`` assigns
+        colors that do not overlap between strips.
     cmap : str
         Continuous colormap for the heatmap body.
     xticklabels, yticklabels : bool | str
@@ -475,17 +469,13 @@ def pairwise_peptide_correlations_heatmap(
         Matplotlib figure size in inches.
     show : bool
         Display the figure with :func:`matplotlib.pyplot.show`.
-    ax : bool
-        Return the heatmap :class:`matplotlib.axes.Axes` when ``True``.
-    print_stats : bool
-        Print correlation summary statistics before drawing.
     save : str | Path | None
         File path to save the figure. ``None`` skips saving.
 
     Returns
     -------
-    Axes or None
-        Heatmap axes when ``ax`` is ``True``; otherwise ``None``.
+    None
+        Creates its own figure with :func:`seaborn.clustermap`.
 
     Raises
     ------
@@ -494,8 +484,9 @@ def pairwise_peptide_correlations_heatmap(
         has no pairwise correlations, the table holds several
         correlations per peptide pair (e.g. per-batch results),
         ``margin_color`` is empty or repeats a column, ``linkage`` does
-        not match the number of peptides, or clustering is requested on
-        a matrix containing missing values.
+        not match the number of peptides, a per-strip ``color_scheme``
+        list has the wrong length, or clustering is requested on a
+        matrix containing missing values.
     KeyError
         If a ``margin_color`` column is not present in ``adata.var``.
     TypeError
@@ -507,101 +498,61 @@ def pairwise_peptide_correlations_heatmap(
     UserWarning
         If peptides in ``adata.uns[corr_key]`` are no longer in
         ``adata.var`` (filtered after the correlations were computed;
-        they are left out), if peptides of ``protein`` have no
-        correlations (shown as empty rows and columns), if NaN
-        correlations are treated as ``r = 0`` for clustering, or if
+        they are left out), if NaN correlations are treated as
+        ``r = 0`` for clustering, or if
         ``adata`` has fewer than 3 samples.
-
-    Notes
-    -----
-    The heatmap only displays correlations; it does not transform
-    intensities. They are computed by
-    :func:`proteopy.tl.pairwise_peptide_correlations` on ``adata.X`` as
-    stored, so their scale is the scale of ``.X``: Pearson correlations
-    of raw and log-transformed intensities differ, and a single extreme
-    sample can dominate raw-scale correlations. Log-transform (and
-    aggregate precursors to peptides) before computing correlations.
-    ``scipy.stats.pearsonr`` is not NaN-aware, so a pair is ``NaN`` as
-    soon as either peptide is missing in any sample, and there is no
-    minimum-overlap cutoff.
 
     Examples
     --------
+    >>> import anndata as ad
+    >>> import numpy as np
+    >>> import pandas as pd
     >>> import proteopy as pr
-    >>> adata = pr.read.long(...)
-    >>> pr.tl.pairwise_peptide_correlations(adata)
-    >>> pr.tl.peptide_dendograms_by_correlation(
-    ...     adata,
-    ...     method='agglomerative-hierarchical-clustering',
+    >>> samples = ["s1", "s2", "s3", "s4"]
+    >>> peptides = ["pep1", "pep2", "pep3", "pep4"]
+    >>> adata = ad.AnnData(
+    ...     X=np.array(
+    ...         [[1, 2, 4, 5], [2, 3, 3, 4],
+    ...          [3, 4, 2, 3], [4, 5, 1, 2]],
+    ...         dtype=float,
+    ...     ),
+    ...     obs=pd.DataFrame({"sample_id": samples}, index=samples),
+    ...     var=pd.DataFrame(
+    ...         {"peptide_id": peptides, "protein_id": "P1"},
+    ...         index=peptides,
+    ...     ),
     ... )
+    >>> pr.tl.pairwise_peptide_correlations(adata)
+    >>> pr.tl.peptide_dendograms_by_correlation(adata)
     >>> pr.tl.peptide_clusters_from_dendograms(
     ...     adata,
     ...     n_clusters=2,
     ...     min_peptides_per_cluster=2,
     ... )
-    >>> pr.pl.pairwise_peptide_correlations_heatmap(adata, protein="P12345")
+    >>> pr.pl.pairwise_peptide_correlations_heatmap(
+    ...     adata, protein="P1", show=False,
+    ... )
 
     Annotate by proteoform and draw two strips:
 
     >>> pr.pl.pairwise_peptide_correlations_heatmap(
     ...     adata,
-    ...     protein="P12345",
+    ...     protein="P1",
     ...     margin_color=["cluster_id", "proteoform_id"],
+    ...     show=False,
     ... )
     """
     check_proteodata(adata)
 
-    # -- Validate arguments up front
-    if not isinstance(method, str):
-        raise TypeError("`method` must be a string.")
-    if not isinstance(cluster, bool):
-        raise TypeError("`cluster` must be a bool.")
-
-    if isinstance(margin_color, str):
-        margin_cols = [margin_color]
-    elif isinstance(margin_color, list) and all(
-        isinstance(c, str) for c in margin_color
-    ):
-        margin_cols = list(margin_color)
-    else:
-        raise TypeError("`margin_color` must be a string or list of strings.")
-    if not margin_cols:
-        raise ValueError("`margin_color` must name at least one column.")
-    duplicated_cols = sorted(
-        {c for c in margin_cols if margin_cols.count(c) > 1}
+    margin_cols = _validate_heatmap_inputs(
+        adata=adata,
+        protein=protein,
+        corr_key=corr_key,
+        margin_color=margin_color,
+        method=method,
+        cluster=cluster,
+        save=save,
     )
-    if duplicated_cols:
-        raise ValueError(
-            "Duplicate columns in `margin_color`: "
-            f"{', '.join(duplicated_cols)}."
-        )
-    if save is not None and not isinstance(save, (str, Path)):
-        raise TypeError("`save` must be a path-like object or None.")
-
-    if protein not in set(adata.var["protein_id"]):
-        raise ValueError(
-            f"protein '{protein}' not found in adata.var['protein_id']."
-        )
-
-    if corr_key not in adata.uns:
-        raise ValueError(
-            f"'{corr_key}' not found in adata.uns; run "
-            "pr.tl.pairwise_peptide_correlations() first."
-        )
-
-    missing_cols = [c for c in margin_cols if c not in adata.var.columns]
-    if missing_cols:
-        hint = ""
-        if {"cluster_id", "proteoform_id"} & set(missing_cols):
-            hint = (
-                " These columns are written by "
-                "pr.tl.peptide_clusters_from_dendograms(); run it first or "
-                "pass another .var column."
-            )
-        raise KeyError(
-            "margin_color column(s) not found in adata.var: "
-            f"{', '.join(missing_cols)}.{hint}"
-        )
 
     if adata.n_obs < 3:
         warnings.warn(
@@ -659,20 +610,6 @@ def pairwise_peptide_correlations_heatmap(
             )
         corr_df = corr_df.loc[kept, kept]
 
-    protein_peptides = adata.var.index[adata.var["protein_id"] == protein]
-    without_corr = [p for p in protein_peptides if p not in corr_df.index]
-    if without_corr:
-        warnings.warn(
-            f"{len(without_corr)} peptide(s) of protein '{protein}' have "
-            f"no correlations in adata.uns['{corr_key}'] (e.g. all "
-            "intensities missing); they are shown as empty rows and "
-            "columns.",
-            UserWarning,
-            stacklevel=2,
-        )
-        full = list(corr_df.index) + without_corr
-        corr_df = corr_df.reindex(index=full, columns=full)
-
     peptides = list(corr_df.index)
 
     # -- Labels come from the peptide_id column, never the index
@@ -689,24 +626,13 @@ def pairwise_peptide_correlations_heatmap(
             cats = sorted(groups.dropna().unique(), key=str)
         col_groups[col], col_cats[col] = groups, cats
 
-    # -- Colours are resolved across all columns at once, so several
-    # strips never reuse the same colour
-    all_cats = [cat for col in margin_cols for cat in col_cats[col]]
-    cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
-    if color_scheme is None and len(all_cats) > len(cycle):
-        resolved = sns.color_palette("husl", len(all_cats))
-    else:
-        resolved = _resolve_color_scheme(color_scheme, all_cats)
-        if resolved is None:
-            resolved = sns.color_palette(n_colors=len(all_cats))
-
+    # -- Resolve shared or per-strip palettes
+    margin_palettes = _resolve_margin_palettes(color_scheme, col_cats)
     annot_colors = pd.DataFrame(index=peptides)
-    legend_groups: dict[str, list[Patch]] = {}
-    offset = 0
+    legend_groups = {}
     for col in margin_cols:
         groups, cats = col_groups[col], col_cats[col]
-        colors = resolved[offset : offset + len(cats)]
-        offset += len(cats)
+        colors = margin_palettes[col]
         palette = {str(cat): color for cat, color in zip(cats, colors)}
 
         color_series = groups.astype("string").map(palette)
@@ -794,36 +720,6 @@ def pairwise_peptide_correlations_heatmap(
             Z = scipy_linkage(squareform(dist, checks=False), method=method)
             row_linkage = col_linkage = Z
 
-    # -- Optional statistics printout
-    if print_stats and n > 1:
-        values = finite if finite.size else np.array([np.nan])
-        summary = pd.DataFrame(
-            {
-                "min": [values.min()],
-                "max": [values.max()],
-                "mean": [values.mean()],
-                "median": [np.median(values)],
-                "std": [values.std()],
-            }
-        )
-        print(f"Peptide correlation summary (off-diagonal, {protein}):")
-        print(summary.to_string(index=False))
-        print()
-
-        for col in margin_cols:
-            groups = pd.Series(col_groups[col].to_numpy(), index=pep_ids)
-            rows = []
-            for gid in col_cats[col]:
-                members = groups.index[groups == gid]
-                block = corr_df.loc[members, members].to_numpy()
-                within = block[~np.eye(len(members), dtype=bool)]
-                within = within[~np.isnan(within)]
-                mean_within = within.mean() if within.size else np.nan
-                rows.append({col: gid, "mean_within": mean_within})
-            print(f"Per {col} (within-group mean correlation):")
-            print(pd.DataFrame(rows).to_string(index=False))
-            print()
-
     # -- Draw the clustered heatmap
     clustermap_kwargs = dict(
         row_colors=annot_colors,
@@ -869,17 +765,114 @@ def pairwise_peptide_correlations_heatmap(
     if show:
         plt.show()
 
-    if ax:
-        return g.ax_heatmap
     return None
 
 
-def _place_margin_legends(g, legend_groups):
-    """Stack one legend per annotation column right of all heatmap text.
+def _validate_heatmap_inputs(
+    adata: ad.AnnData,
+    protein: str,
+    *,
+    corr_key: str,
+    margin_color: str | list[str],
+    method: str,
+    cluster: bool,
+    save: str | Path | None,
+) -> list[str]:
+    """Check heatmap arguments and annotations; return margin columns."""
+    if not isinstance(method, str):
+        raise TypeError("`method` must be a string.")
+    if not isinstance(cluster, bool):
+        raise TypeError("`cluster` must be a bool.")
 
-    The figure is widened when the legends would extend past its right
-    edge; every axes keeps its size in inches, so nothing overlaps and
-    nothing is cut off on screen or when saved.
+    if isinstance(margin_color, str):
+        margin_cols = [margin_color]
+    elif isinstance(margin_color, list) and all(
+        isinstance(c, str) for c in margin_color
+    ):
+        margin_cols = list(margin_color)
+    else:
+        raise TypeError("`margin_color` must be a string or list of strings.")
+    if not margin_cols:
+        raise ValueError("`margin_color` must name at least one column.")
+    duplicated_cols = sorted(
+        {c for c in margin_cols if margin_cols.count(c) > 1}
+    )
+    if duplicated_cols:
+        raise ValueError(
+            "Duplicate columns in `margin_color`: "
+            f"{', '.join(duplicated_cols)}."
+        )
+    if save is not None and not isinstance(save, (str, Path)):
+        raise TypeError("`save` must be a path-like object or None.")
+
+    if protein not in set(adata.var["protein_id"]):
+        raise ValueError(
+            f"protein '{protein}' not found in adata.var['protein_id']."
+        )
+
+    if corr_key not in adata.uns:
+        raise ValueError(
+            f"'{corr_key}' not found in adata.uns; run "
+            "pr.tl.pairwise_peptide_correlations() first."
+        )
+
+    missing_cols = [c for c in margin_cols if c not in adata.var.columns]
+    if missing_cols:
+        hint = ""
+        if {"cluster_id", "proteoform_id"} & set(missing_cols):
+            hint = (
+                " These columns are written by "
+                "pr.tl.peptide_clusters_from_dendograms(); run it first or "
+                "pass another .var column."
+            )
+        raise KeyError(
+            "margin_color column(s) not found in adata.var: "
+            f"{', '.join(missing_cols)}.{hint}"
+        )
+
+    return margin_cols
+
+
+def _resolve_margin_palettes(color_scheme, col_cats):
+    """Resolve annotation colors, sharing a palette unless given several."""
+    per_strip = (
+        len(col_cats) > 1
+        and isinstance(color_scheme, list)
+        and bool(color_scheme)
+        and not all(mpl.colors.is_color_like(c) for c in color_scheme)
+    )
+    if per_strip:
+        if len(color_scheme) != len(col_cats):
+            raise ValueError(
+                "A per-strip `color_scheme` list must have the same "
+                "length as `margin_color`."
+            )
+        return {
+            col: _resolve_color_scheme(scheme, cats) or []
+            for (col, cats), scheme in zip(col_cats.items(), color_scheme)
+        }
+
+    all_cats = [cat for cats in col_cats.values() for cat in cats]
+    cycle = plt.rcParams["axes.prop_cycle"].by_key().get("color", [])
+    if color_scheme is None and len(all_cats) > len(cycle):
+        color_scheme = sns.color_palette("husl", len(all_cats))
+    resolved = _resolve_color_scheme(color_scheme, all_cats)
+    if resolved is None:
+        resolved = sns.color_palette(n_colors=len(all_cats))
+
+    palettes = {}
+    offset = 0
+    for col, cats in col_cats.items():
+        palettes[col] = resolved[offset : offset + len(cats)]
+        offset += len(cats)
+    return palettes
+
+
+def _place_margin_legends(g, legend_groups):
+    """Place annotation legends to the right of the heatmap and its labels.
+
+    Stack legends vertically and expand the figure as needed to keep
+    them inside its bounds without shrinking the existing axes.
     """
     fig = g.figure
     if hasattr(fig.canvas, "get_renderer"):

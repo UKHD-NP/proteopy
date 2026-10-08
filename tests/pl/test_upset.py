@@ -321,6 +321,74 @@ def show_calls(monkeypatch):
 
 
 @pytest.fixture
+def sorting_adata():
+    """Return a builder for specified intersection counts."""
+
+    def build(counts: dict, categories=None) -> ad.AnnData:
+        columns = {}
+        for members, count in counts.items():
+            for _ in range(count):
+                columns[f"p{len(columns)}"] = [
+                    1.0 if category in members else np.nan
+                    for category in ["C", "A", "B"]
+                ]
+        samples = ["s1", "s2", "s3"]
+        proteins = list(columns)
+        obs = pd.DataFrame(
+            {"sample_id": samples, "group": ["C", "A", "B"]},
+            index=samples,
+        )
+        if categories is not None:
+            obs["group"] = pd.Categorical(
+                obs["group"], categories=categories, ordered=True
+            )
+        return ad.AnnData(
+            X=np.asarray(list(columns.values()), dtype=float).T,
+            obs=obs,
+            var=pd.DataFrame({"protein_id": proteins}, index=proteins),
+        )
+
+    return build
+
+
+@pytest.fixture
+def rendered_intersections():
+    """Return a reader of memberships and counts from drawn artists."""
+
+    def read(axes: dict) -> list:
+        matrix = axes["matrix"]
+        matrix.figure.canvas.draw()
+        labels = {
+            int(tick): label.get_text()
+            for tick, label in zip(
+                matrix.get_yticks(), matrix.get_yticklabels()
+            )
+        }
+        bars = sorted(
+            axes["intersections"].patches,
+            key=lambda patch: patch.get_x(),
+        )
+        dots = matrix.collections[0]
+        offsets = dots.get_offsets()
+        colors = dots.get_facecolors()
+        assert offsets.shape == (len(bars) * len(labels), 2)
+        assert colors.shape == (len(offsets), 4)
+        rows = []
+        for bar in bars:
+            center = bar.get_x() + bar.get_width() / 2
+            members = [
+                labels[int(y)]
+                for (x, y), color in zip(offsets, colors)
+                if np.isclose(x, center)
+                and np.allclose(color, bar.get_facecolor())
+            ]
+            rows.append((tuple(sorted(members)), bar.get_height()))
+        return rows
+
+    return read
+
+
+@pytest.fixture
 def spy(monkeypatch):
     recorder = _Spy()
     original_init = UpSet.__init__
@@ -575,6 +643,122 @@ def _dose_imp():
 
 
 class TestVarDetectedByCatUpset:
+    # ── Intersection sorting ────────────────────────────────────────
+
+    @pytest.mark.parametrize(
+        "sort_by, expected",
+        [
+            ("degree", [1, 4, 2, 3]),
+            ("-degree", [3, 2, 4, 1]),
+            ("cardinality", [4, 3, 2, 1]),
+            ("-cardinality", [1, 2, 3, 4]),
+        ],
+    )
+    def test_T77_sort_by_orders_rendered_intersections(
+        self, sorting_adata, rendered_intersections, sort_by, expected
+    ):
+        counts = {(): 1, ("A",): 4, ("A", "B"): 2, ("A", "B", "C"): 3}
+        axes = var_detected_by_cat_upset(
+            sorting_adata(counts), "group", sort_by=sort_by, show=False
+        )
+        rows = rendered_intersections(axes)
+        assert len(rows) == len(counts)
+        np.testing.assert_array_equal([count for _, count in rows], expected)
+        assert dict(rows) == counts
+
+    def test_T78_sort_by_default_matches_explicit_degree(
+        self, sorting_adata, rendered_intersections
+    ):
+        adata = sorting_adata({(): 1, ("B",): 4, ("A",): 2, ("A", "B"): 3})
+        default = var_detected_by_cat_upset(adata, "group", show=False)
+        explicit = var_detected_by_cat_upset(
+            adata, "group", sort_by="degree", show=False
+        )
+        assert rendered_intersections(default) == rendered_intersections(
+            explicit
+        )
+
+    @pytest.mark.parametrize(
+        "sort_by", ["degree", "-degree", "cardinality", "-cardinality"]
+    )
+    @pytest.mark.parametrize(
+        "categories, expected",
+        [(None, ["A", "B", "C"]), (["C", "A", "B"], ["C", "A", "B"])],
+        ids=["lexicographic", "categorical"],
+    )
+    def test_T79_sort_by_preserves_category_order(
+        self, sorting_adata, sort_by, categories, expected
+    ):
+        adata = sorting_adata({(): 1, ("A",): 2, ("B", "C"): 3}, categories)
+        axes = var_detected_by_cat_upset(
+            adata, "group", sort_by=sort_by, show=False
+        )
+        labels = [t.get_text() for t in axes["matrix"].get_yticklabels()]
+        assert labels == expected
+
+    @pytest.mark.parametrize(
+        "sort_by", ["degree", "-degree", "cardinality", "-cardinality"]
+    )
+    @pytest.mark.parametrize(
+        "counts",
+        [
+            {(): 1, ("A",): 3, ("A", "B"): 3, ("A", "B", "C"): 2},
+            {(): 1, ("A",): 2, ("B",): 4, ("C",): 3, ("A", "B"): 5},
+            {
+                (): 1,
+                ("A",): 2,
+                ("B",): 2,
+                ("A", "B"): 4,
+                ("A", "C"): 4,
+                ("A", "B", "C"): 3,
+            },
+            {(): 2, ("A",): 2, ("B",): 2, ("A", "B"): 2},
+        ],
+        ids=["equal-counts", "equal-degrees", "equal-both", "all-equal"],
+    )
+    def test_T80_sort_by_ties_preserve_order_alignment_and_repeatability(
+        self, sorting_adata, rendered_intersections, counts, sort_by
+    ):
+        adata = sorting_adata(counts)
+        first = var_detected_by_cat_upset(
+            adata, "group", sort_by=sort_by, show=False
+        )
+        rows = rendered_intersections(first)
+        assert len(rows) == len(counts)
+        assert dict(rows) == counts
+        if "degree" in sort_by:
+            metric = [len(members) for members, _ in rows]
+            descending = sort_by.startswith("-")
+        else:
+            metric = [count for _, count in rows]
+            descending = not sort_by.startswith("-")
+        assert metric == sorted(metric, reverse=descending)
+        second = var_detected_by_cat_upset(
+            adata, "group", sort_by=sort_by, show=False
+        )
+        assert rows == rendered_intersections(second)
+
+    @pytest.mark.parametrize("sort_by", [None, True, 1, [], {}])
+    def test_T81_sort_by_rejects_non_strings_before_plotting(self, sort_by):
+        before = set(plt.get_fignums())
+        with pytest.raises(TypeError, match="`sort_by` must be a str"):
+            var_detected_by_cat_upset(
+                _h1(), "organ", sort_by=sort_by, show=False
+            )
+        assert set(plt.get_fignums()) == before
+
+    @pytest.mark.parametrize("sort_by", ["", "size", "input", "Degree"])
+    def test_T82_sort_by_rejects_unknown_modes_before_plotting(self, sort_by):
+        before = set(plt.get_fignums())
+        with pytest.raises(
+            ValueError,
+            match="`sort_by` must be one of .*degree.*cardinality",
+        ):
+            var_detected_by_cat_upset(
+                _h1(), "organ", sort_by=sort_by, show=False
+            )
+        assert set(plt.get_fignums()) == before
+
     # -- Core intersection counts and thresholds
 
     def test_T1_full_detection_membership(self, spy):
@@ -1487,6 +1671,131 @@ class TestVarDetectedByCatUpset:
 
 
 class TestVarDetectedByCatUpsetIMP:
+    # ── Intersection sorting ────────────────────────────────────────
+
+    @pytest.mark.parametrize(
+        "sort_by, expected",
+        [
+            ("degree", [8, 11, 9, 10]),
+            ("-degree", [10, 9, 11, 8]),
+            ("cardinality", [11, 10, 9, 8]),
+            ("-cardinality", [8, 9, 10, 11]),
+        ],
+    )
+    def test_T77_sort_by_orders_rendered_intersections_IMP(
+        self, sorting_adata, rendered_intersections, sort_by, expected
+    ):
+        counts = {(): 8, ("A",): 11, ("A", "B"): 9, ("A", "B", "C"): 10}
+        axes = var_detected_by_cat_upset(
+            sorting_adata(counts), "group", sort_by=sort_by, show=False
+        )
+        rows = rendered_intersections(axes)
+        assert len(rows) == len(counts)
+        np.testing.assert_array_equal([count for _, count in rows], expected)
+        assert dict(rows) == counts
+
+    def test_T78_sort_by_default_matches_explicit_degree_IMP(
+        self, sorting_adata, rendered_intersections
+    ):
+        adata = sorting_adata({(): 5, ("B",): 8, ("A",): 6, ("A", "B"): 7})
+        default = var_detected_by_cat_upset(adata, "group", show=False)
+        explicit = var_detected_by_cat_upset(
+            adata, "group", sort_by="degree", show=False
+        )
+        assert rendered_intersections(default) == rendered_intersections(
+            explicit
+        )
+
+    @pytest.mark.parametrize(
+        "sort_by", ["degree", "-degree", "cardinality", "-cardinality"]
+    )
+    @pytest.mark.parametrize(
+        "categories, expected",
+        [(None, ["A", "B", "C"]), (["C", "A", "B"], ["C", "A", "B"])],
+        ids=["lexicographic", "categorical"],
+    )
+    def test_T79_sort_by_preserves_category_order_IMP(
+        self, sorting_adata, sort_by, categories, expected
+    ):
+        adata = sorting_adata({(): 4, ("A",): 5, ("B", "C"): 6}, categories)
+        axes = var_detected_by_cat_upset(
+            adata, "group", sort_by=sort_by, show=False
+        )
+        labels = [t.get_text() for t in axes["matrix"].get_yticklabels()]
+        assert labels == expected
+
+    @pytest.mark.parametrize(
+        "sort_by", ["degree", "-degree", "cardinality", "-cardinality"]
+    )
+    @pytest.mark.parametrize(
+        "counts",
+        [
+            {(): 1, ("A",): 3, ("A", "B"): 3, ("A", "B", "C"): 2},
+            {(): 1, ("A",): 2, ("B",): 4, ("C",): 3, ("A", "B"): 5},
+            {
+                (): 1,
+                ("A",): 2,
+                ("B",): 2,
+                ("A", "B"): 4,
+                ("A", "C"): 4,
+                ("A", "B", "C"): 3,
+            },
+            {(): 2, ("A",): 2, ("B",): 2, ("A", "B"): 2},
+        ],
+        ids=["equal-counts", "equal-degrees", "equal-both", "all-equal"],
+    )
+    def test_T80_sort_by_ties_preserve_order_alignment_and_repeatability_IMP(
+        self, sorting_adata, rendered_intersections, counts, sort_by
+    ):
+        counts = {members: count + 7 for members, count in counts.items()}
+        adata = sorting_adata(counts)
+        first = var_detected_by_cat_upset(
+            adata, "group", sort_by=sort_by, show=False
+        )
+        rows = rendered_intersections(first)
+        assert len(rows) == len(counts)
+        assert dict(rows) == counts
+        if "degree" in sort_by:
+            metric = [len(members) for members, _ in rows]
+            descending = sort_by.startswith("-")
+        else:
+            metric = [count for _, count in rows]
+            descending = not sort_by.startswith("-")
+        assert metric == sorted(metric, reverse=descending)
+        second = var_detected_by_cat_upset(
+            adata, "group", sort_by=sort_by, show=False
+        )
+        assert rows == rendered_intersections(second)
+
+    @pytest.mark.parametrize(
+        "sort_by", [False, 2.5, (), np.array([1]), object()]
+    )
+    def test_T81_sort_by_rejects_non_strings_before_plotting_IMP(
+        self, sort_by
+    ):
+        before = set(plt.get_fignums())
+        with pytest.raises(TypeError, match="`sort_by` must be a str"):
+            var_detected_by_cat_upset(
+                _f1(), "tissue", sort_by=sort_by, show=False
+            )
+        assert set(plt.get_fignums()) == before
+
+    @pytest.mark.parametrize(
+        "sort_by", ["count", "-input", "degree ", "CARDINALITY"]
+    )
+    def test_T82_sort_by_rejects_unknown_modes_before_plotting_IMP(
+        self, sort_by
+    ):
+        before = set(plt.get_fignums())
+        with pytest.raises(
+            ValueError,
+            match="`sort_by` must be one of .*degree.*cardinality",
+        ):
+            var_detected_by_cat_upset(
+                _f1(), "tissue", sort_by=sort_by, show=False
+            )
+        assert set(plt.get_fignums()) == before
+
     # -- Core intersection counts and thresholds
 
     def test_T1_full_detection_membership_IMP(self, spy):

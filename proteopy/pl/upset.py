@@ -279,9 +279,20 @@ def _validate_upset_args(
     verbose,
     show,
     save,
+    sort_by,
 ) -> tuple[str, int | float]:
     """Validate all inputs and return the active threshold."""
     check_proteodata(adata)
+
+    if not isinstance(sort_by, str):
+        raise TypeError(
+            f"`sort_by` must be a str, got {type(sort_by).__name__}."
+        )
+    if sort_by not in ("degree", "cardinality", "-degree", "-cardinality"):
+        raise ValueError(
+            "`sort_by` must be one of 'degree', 'cardinality', "
+            "'-degree', '-cardinality'."
+        )
 
     for value, name in (
         (zero_to_na, "zero_to_na"),
@@ -529,12 +540,12 @@ def _print_verbose_report(
     )
 
 
-def _plot_upset(counts: pd.Series) -> dict[str, Axes]:
+def _plot_upset(counts: pd.Series, sort_by: str) -> dict[str, Axes]:
     """Render the UpSet plot of the intersection counts."""
     upset = UpSet(
         counts,
         subset_size="sum",
-        sort_by="degree",
+        sort_by=sort_by,
         sort_categories_by="input",
         show_counts=True,
         include_empty_subsets=False,
@@ -552,6 +563,8 @@ def var_detected_by_cat_upset(
     verbose: bool = False,
     show: bool = True,
     save: str | Path | None = None,
+    *,
+    sort_by: str = "degree",
 ) -> dict[str, Axes]:
     """Plot feature detection overlaps across observation categories.
 
@@ -588,6 +601,11 @@ def var_detected_by_cat_upset(
         Call ``plt.show()`` at the end.
     save : str | Path | None
         Path to save the figure to; None skips saving.
+    sort_by : str
+        Order intersection bars by ``"degree"`` (fewest overlapping
+        categories first) or ``"cardinality"`` (largest feature counts
+        first). ``"-degree"`` and ``"-cardinality"`` reverse these
+        orders. Ties follow the plotting library's ordering.
 
     Returns
     -------
@@ -605,7 +623,8 @@ def var_detected_by_cat_upset(
     ValueError
         If thresholds are invalid or both supplied, ``cat_key`` is
         empty, either data axis is empty, or category labels are
-        missing or collide after conversion to strings.
+        missing or collide after conversion to strings, or ``sort_by``
+        is unsupported.
 
     Warns
     -----
@@ -648,6 +667,12 @@ def var_detected_by_cat_upset(
     ...     min_fraction=1.0,
     ...     show=False,
     ... )
+
+    Show the largest intersections first:
+
+    >>> axes = pr.pl.var_detected_by_cat_upset(
+    ...     adata, cat_key="tissue", sort_by="cardinality", show=False,
+    ... )
     """
     # -- Validate inputs
     threshold_name, threshold_value = _validate_upset_args(
@@ -660,6 +685,7 @@ def var_detected_by_cat_upset(
         verbose,
         show,
         save,
+        sort_by,
     )
 
     # -- Derive categories and feature memberships
@@ -692,7 +718,7 @@ def var_detected_by_cat_upset(
         )
 
     # -- Plot
-    axes = _plot_upset(counts)
+    axes = _plot_upset(counts, sort_by)
 
     if save is not None:
         axes["matrix"].figure.savefig(save)

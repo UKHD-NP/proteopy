@@ -739,6 +739,8 @@ def pairwise_peptide_correlations_heatmap(
         clustermap_kwargs["col_cluster"] = False
 
     g = sns.clustermap(corr_df, **clustermap_kwargs)
+    _space_heatmap_margins(g, n)
+    g.ax_row_colors.set_xticks([])
 
     # NaN cells are masked by seaborn; a hatched background keeps them
     # distinct from every colour on the correlation scale
@@ -766,6 +768,25 @@ def pairwise_peptide_correlations_heatmap(
         plt.show()
 
     return None
+
+
+def _space_heatmap_margins(g, n_peptides: int) -> None:
+    """Reserve half a cell between the heatmap and annotation strips."""
+    pos = g.ax_heatmap.get_position()
+    row_pos = g.ax_row_colors.get_position()
+    col_pos = g.ax_col_colors.get_position()
+    width = (pos.x1 - row_pos.x1) / (1 + 0.5 / n_peptides)
+    height = (col_pos.y0 - pos.y0) / (1 + 0.5 / n_peptides)
+    left = pos.x1 - width
+    g.ax_heatmap.set_position([left, pos.y0, width, height])
+
+    # Keep annotation cells and dendrogram leaves aligned with peptides.
+    for ax in (g.ax_col_colors, g.ax_col_dendrogram):
+        annot_pos = ax.get_position()
+        ax.set_position([left, annot_pos.y0, width, annot_pos.height])
+    for ax in (g.ax_row_colors, g.ax_row_dendrogram):
+        annot_pos = ax.get_position()
+        ax.set_position([annot_pos.x0, pos.y0, annot_pos.width, height])
 
 
 def _validate_heatmap_inputs(

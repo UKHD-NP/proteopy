@@ -15,6 +15,7 @@ and this project adheres to
 - `pairwise_peptide_correlations_heatmap()`: new feature
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
+- `var_detected_by_cat_upset()`: new feature
 
 **Preprocessing** (`pr.pp`)
 

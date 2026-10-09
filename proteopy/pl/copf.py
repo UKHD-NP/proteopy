@@ -533,12 +533,20 @@ def pairwise_peptide_correlations_heatmap(
     ...     adata, protein="P1", show=False,
     ... )
 
-    Annotate by proteoform and draw two strips:
+    Compare proteoforms with illustrative peptide membrane positions.
+    The categorical annotation controls the membrane-position legend
+    order; each strip uses its own palette:
 
+    >>> adata.var["membrano_pos"] = pd.Categorical(
+    ...     ["trans", "cytosol", "extra", "trans"],
+    ...     categories=["trans", "cytosol", "extra"],
+    ...     ordered=True,
+    ... )
     >>> pr.pl.pairwise_peptide_correlations_heatmap(
     ...     adata,
     ...     protein="P1",
-    ...     margin_color=["cluster_id", "proteoform_id"],
+    ...     margin_color=["proteoform_id", "membrano_pos"],
+    ...     color_scheme=["Set2", "Dark2"],
     ...     show=False,
     ... )
     """

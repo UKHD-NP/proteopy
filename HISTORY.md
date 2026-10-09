@@ -12,6 +12,7 @@ and this project adheres to
 
 **Plotting** (`pr.pl`)
 
+- `pairwise_peptide_correlations_heatmap()`: new feature
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
 
@@ -49,6 +50,13 @@ and this project adheres to
   summation defects above
 
 ### Changed
+
+**Internal**
+
+- Moved and renamed the private matrix helper
+  `utils.copf.reconstruct_corrs_df_symmetric_from_long_df` to
+  `utils._matrix_wrangling.reconstruct_symmetric_matrix_from_long`
+  (generic labels/values, `raise` instead of `assert` on conflicts)
 
 **Preprocessing** (`pr.pp`)
 

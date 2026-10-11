@@ -13,6 +13,12 @@ and this project adheres to
 **Plotting** (`pr.pl`)
 
 - `pairwise_peptide_correlations_heatmap()`: new feature
+- `ann_hist()`: histogram of `.obs`/`.var` annotations (numeric, str or
+  categorical), a thin wrapper around `seaborn.histplot`. `level_key`
+  plots one value per higher-level group (e.g. one `protein_q_value`
+  per `protein_id` in peptide-level data) and checks the value is
+  constant within each group. `vline` / `hline` add labelled
+  reference lines
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
 

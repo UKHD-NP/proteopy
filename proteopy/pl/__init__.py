@@ -38,6 +38,8 @@ from .clustering import (
     hclustv_profile_intensities,
 )
 
+from .ann_hist import ann_hist
+
 from .sequence import (
     peptides_on_sequence,
     peptides_on_prot_sequence,

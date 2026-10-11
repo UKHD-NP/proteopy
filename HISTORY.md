@@ -10,6 +10,10 @@ and this project adheres to
 
 ### Added
 
+**Documentation**
+
+- Add the plotting tutorial.
+
 **Plotting** (`pr.pl`)
 
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`

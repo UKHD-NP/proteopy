@@ -38,6 +38,10 @@ from .clustering import (
     hclustv_profile_intensities,
 )
 
+from .upset import (
+    var_detected_by_cat_upset,
+)
+
 from .sequence import (
     peptides_on_sequence,
     peptides_on_prot_sequence,

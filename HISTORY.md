@@ -10,6 +10,10 @@ and this project adheres to
 
 ### Added
 
+**Documentation**
+
+- Add the plotting tutorial.
+
 **Plotting** (`pr.pl`)
 
 - `pairwise_peptide_correlations_heatmap()`: new feature

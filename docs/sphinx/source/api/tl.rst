@@ -35,6 +35,7 @@ detection of functional proteoform groups from peptide-level quantitative data
    :toctree: generated/
    :nosignatures:
 
+   proteopy.tl.infer_proteoform_groups
    proteopy.tl.pairwise_peptide_correlations
    proteopy.tl.peptide_dendograms_by_correlation
    proteopy.tl.peptide_clusters_from_dendograms

@@ -34,7 +34,15 @@ and this project adheres to
   in `.var`; per-pair values in `.varm`
 - `filter_by_var_consistency()`: keeps variables whose consistency
   score (e.g. `replicate_corr_min`) reaches a threshold.
-- **Tools** (`pr.tl`): `peptide_proximity()` tests whether the peptides
+
+**Tools** (`pr.tl`)
+
+- `infer_proteoform_groups()` wraps the
+  currently recommended proteoform inference approach behind one call.
+  `method` defaults to `"copf"` (correlations, dendrograms, clusters,
+  scores), but the default may change in future releases; pass it
+  explicitly for reproducibility
+- `peptide_proximity()` tests whether the peptides
   of a proteoform cluster sit closer together in the protein sequence
   than a random grouping of the same size. A reimplementation of
   CCprofiler's `evaluateProteoformLocation`, which is the

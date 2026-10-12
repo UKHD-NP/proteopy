@@ -28,6 +28,11 @@ and this project adheres to
   that overlap in the protein sequence, keeping the most abundant
   member of each group. Reimplements CCprofiler's
   `summarizeAlternativePeptideSequences(topN = 1)`
+- **Tools** (`pr.tl`): `infer_proteoform_groups()` wraps the
+  currently recommended proteoform inference approach behind one call.
+  `method` defaults to `"copf"` (correlations, dendrograms, clusters,
+  scores), but the default may change in future releases; pass it
+  explicitly for reproducibility
 - **Tools** (`pr.tl`): `peptide_proximity()` tests whether the peptides
   of a proteoform cluster sit closer together in the protein sequence
   than a random grouping of the same size. A reimplementation of

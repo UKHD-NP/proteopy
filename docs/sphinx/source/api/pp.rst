@@ -21,6 +21,7 @@ filtering, normalization, and imputation of proteomics data.
    proteopy.pp.filter_samples_by_category_count
    proteopy.pp.remove_zero_variance_vars
    proteopy.pp.remove_contaminants
+   proteopy.pp.filter_by_var_consistency
 
 .. rubric:: Normalization
 
@@ -58,3 +59,4 @@ filtering, normalization, and imputation of proteomics data.
    :nosignatures:
 
    proteopy.pp.calculate_cv
+   proteopy.pp.var_consistency

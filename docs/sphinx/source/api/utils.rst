@@ -4,9 +4,6 @@
 .. module:: proteopy.utils
    :synopsis: Utility functions
 
-The ``proteopy.utils`` module provides utility functions for data validation and
-common operations.
-
 .. note::
 
    Only the functions listed below are part of the public API and
@@ -29,6 +26,18 @@ common operations.
    :nosignatures:
 
    proteopy.utils.is_log_transformed
+
+.. rubric:: Proteoform Group Simulation
+
+Simulate proteoform groups to evaluate how well a proteoform inference
+method recovers them in a dataset.
+
+.. autosummary::
+   :toctree: generated/
+   :nosignatures:
+
+   proteopy.utils.proteoform_group_simulator
+   proteopy.utils.proteoform_simulation_metrics
 
 .. rubric:: Plotting
 

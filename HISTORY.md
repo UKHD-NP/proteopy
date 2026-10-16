@@ -48,6 +48,15 @@ and this project adheres to
   CCprofiler's `evaluateProteoformLocation`, which is the
   characterisation COPF applies to the proteoform groups it detects.
 
+**Utilities** (`pr.utils`)
+
+- `proteoform_group_simulator()`: generator yielding
+  peptide-level datasets with planted proteoform groups (peptides of
+  two real proteins merged under one ID) next to unmixed proteins.
+- `proteoform_simulation_metrics()`: after running proteoform
+  inference on a simulated dataset, returns one record of metrics
+  plus the per-protein results table.
+
 ### Fixed
 
 **Datasets** (`pr.datasets`) and **Download** (`pr.download`)

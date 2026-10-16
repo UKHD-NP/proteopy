@@ -17,12 +17,12 @@ def _make_adata_filter_obs_base() -> AnnData:
     n = np.nan
     X = np.array(
         [
-            [1, 1, 2, 2, 3],                 # obs0: complete
-            [n, 1, 2, 2, 3],                 # obs1: 4/5 complete
-            [n, n, 2, 2, 3],                 # obs2: 3/5 complete
-            [n, n, n, 2, 3],                 # obs3: 2/5 complete
-            [0, 1, 2, 2, 3],                 # obs4: complete and a zero
-            [0, n, 2, 2, 3],                 # obs5: 4/5 complete and a zero
+            [1, 1, 2, 2, 3],  # obs0: complete
+            [n, 1, 2, 2, 3],  # obs1: 4/5 complete
+            [n, n, 2, 2, 3],  # obs2: 3/5 complete
+            [n, n, n, 2, 3],  # obs3: 2/5 complete
+            [0, 1, 2, 2, 3],  # obs4: complete and a zero
+            [0, n, 2, 2, 3],  # obs5: 4/5 complete and a zero
         ],
         dtype=float,
     )
@@ -38,9 +38,9 @@ def _make_adata_filter_obs_groupby_singletons() -> AnnData:
     n = np.nan
     X = np.array(
         [
-            [n, n],                 # obs0
-            [1, n],                 # obs1
-            [1, 1],                 # obs2
+            [n, n],  # obs0
+            [1, n],  # obs1
+            [1, 1],  # obs2
         ],
         dtype=float,
     )
@@ -62,11 +62,11 @@ def _make_adata_filter_obs_groupby() -> AnnData:
     n = np.nan
     X = np.array(
         [
-            [1, 1, 2, 2, 3],         # obs0: both groups complete
-            [1, n, 2, 2, 3],         # obs1: group 0 -> 1/2 complete
-            [1, 1, 2, 2, n],         # obs2: group 1 -> 2/3 incomplete
-            [1, n, 2, 2, n],         # obs3: g0 1/2, g1 2/3
-            [1, n, 2, n, n],         # obs4: g0 1/2, g1 1/3
+            [1, 1, 2, 2, 3],  # obs0: both groups complete
+            [1, n, 2, 2, 3],  # obs1: group 0 -> 1/2 complete
+            [1, 1, 2, 2, n],  # obs2: group 1 -> 2/3 incomplete
+            [1, n, 2, 2, n],  # obs3: g0 1/2, g1 2/3
+            [1, n, 2, n, n],  # obs4: g0 1/2, g1 1/3
         ],
         dtype=float,
     )
@@ -106,8 +106,15 @@ def _make_adata_filter_obs_groupby_na() -> AnnData:
         {
             "protein_id": var_names,
             "group": [
-                "g1", "g1", "g2", "g2", "g2",
-                np.nan, np.nan, np.nan, np.nan,
+                "g1",
+                "g1",
+                "g2",
+                "g2",
+                "g2",
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
             ],
         },
         index=var_names,
@@ -213,8 +220,15 @@ def _make_adata_filter_var_groupby_na() -> AnnData:
         {
             "sample_id": obs_names,
             "group": [
-                "g1", "g1", "g2", "g2", "g2",
-                np.nan, np.nan, np.nan, np.nan,
+                "g1",
+                "g1",
+                "g2",
+                "g2",
+                "g2",
+                np.nan,
+                np.nan,
+                np.nan,
+                np.nan,
             ],
         },
         index=obs_names,
@@ -224,12 +238,17 @@ def _make_adata_filter_var_groupby_na() -> AnnData:
         {
             "protein_id": var_names,
             "group": [
-                "g1", "g1", "g2", "g2", np.nan,
+                "g1",
+                "g1",
+                "g2",
+                "g2",
+                np.nan,
             ],
         },
         index=var_names,
     )
     return AnnData(X=X, obs=obs, var=var)
+
 
 # ── helpers: remove_zero_variance_vars ──────────────────────────────
 
@@ -313,9 +332,7 @@ def _make_adata_rzv_all_vary() -> AnnData:
     Expected kept (atol=1e-8): [p0, p1, p2] (nothing removed).
     """
     X = np.array(
-        [[1.0, 10.0, 100.0],
-         [2.0, 20.0, 200.0],
-         [3.0, 30.0, 300.0]],
+        [[1.0, 10.0, 100.0], [2.0, 20.0, 200.0], [3.0, 30.0, 300.0]],
     )
     obs_names = ["s0", "s1", "s2"]
     var_names = ["p0", "p1", "p2"]
@@ -414,8 +431,7 @@ def _make_adata_rzv_groupby() -> AnnData:
     )
     obs_names = [f"s{i}" for i in range(5)]
     obs = pd.DataFrame(
-        {"sample_id": obs_names,
-         "group": ["g1", "g1", "g2", "g2", "g2"]},
+        {"sample_id": obs_names, "group": ["g1", "g1", "g2", "g2", "g2"]},
         index=obs_names,
     )
     var_names = [f"p{i}" for i in range(5)]
@@ -442,8 +458,7 @@ def _make_adata_rzv_groupby_singletons() -> AnnData:
     )
     obs_names = [f"s{i}" for i in range(5)]
     obs = pd.DataFrame(
-        {"sample_id": obs_names,
-         "group": ["g1", "g2", "g3", "g4", "g5"]},
+        {"sample_id": obs_names, "group": ["g1", "g2", "g3", "g4", "g5"]},
         index=obs_names,
     )
     var_names = ["p0", "p1", "p2"]
@@ -470,8 +485,7 @@ def _make_adata_rzv_groupby_allnan_one_group() -> AnnData:
     )
     obs_names = ["s0", "s1", "s2", "s3"]
     obs = pd.DataFrame(
-        {"sample_id": obs_names,
-         "group": ["A", "A", "B", "B"]},
+        {"sample_id": obs_names, "group": ["A", "A", "B", "B"]},
         index=obs_names,
     )
     var_names = ["p0", "p1"]
@@ -495,8 +509,7 @@ def _make_adata_rzv_groupby_single_group() -> AnnData:
     )
     obs_names = ["s0", "s1", "s2", "s3"]
     obs = pd.DataFrame(
-        {"sample_id": obs_names,
-         "group": ["A", "A", "A", "A"]},
+        {"sample_id": obs_names, "group": ["A", "A", "A", "A"]},
         index=obs_names,
     )
     var_names = ["p0", "p1", "p2"]
@@ -548,9 +561,7 @@ def _make_adata_remove_contaminants_base() -> AnnData:
     obs_names = [f"obs{i}" for i in range(5)]
     obs = pd.DataFrame({"sample_id": obs_names}, index=obs_names)
     var_names = [f"protein_{i}" for i in range(5)]
-    var = pd.DataFrame({
-        "protein_id": var_names
-    }, index=var_names)
+    var = pd.DataFrame({"protein_id": var_names}, index=var_names)
     return AnnData(X=X, obs=obs, var=var)
 
 
@@ -918,8 +929,11 @@ def test_filter_axis_var_min_fraction_and_min_count():
 
     cases = {
         (0.4, 3): [
-            "protein_0", "protein_1", "protein_2",
-            "protein_4", "protein_5",
+            "protein_0",
+            "protein_1",
+            "protein_2",
+            "protein_4",
+            "protein_5",
         ],
         (1.0, 5): ["protein_0", "protein_4"],
         (0.0, 0): list(adata.var_names),
@@ -968,7 +982,9 @@ def test_filter_axis_var_zero_to_na():
     )
     assert returned is None
     assert list(adata_inplace.var_names) == [
-        "protein_0", "protein_1", "protein_4",
+        "protein_0",
+        "protein_1",
+        "protein_4",
     ]
 
 
@@ -1410,7 +1426,9 @@ class TestRemoveZeroVarianceVars:
             ],
         )
         obs = pd.DataFrame({"sample_id": ["s0", "s1"]}, index=["s0", "s1"])
-        var = pd.DataFrame({"protein_id": ["p0", "p1", "p2"]}, index=["p0", "p1", "p2"])
+        var = pd.DataFrame(
+            {"protein_id": ["p0", "p1", "p2"]}, index=["p0", "p1", "p2"]
+        )
         adata = AnnData(X=X, obs=obs, var=var)
 
         filtered = remove_zero_variance_vars(adata, atol=1.0, inplace=False)
@@ -1423,7 +1441,9 @@ class TestRemoveZeroVarianceVars:
         # p1: var≈3.3e-17 (> atol) → kept
         # p2: var≈0.667 (> atol) → kept
         filtered = remove_zero_variance_vars(
-            adata, atol=0.0, inplace=False,
+            adata,
+            atol=0.0,
+            inplace=False,
         )
         assert filtered is not None
         assert list(filtered.var_names) == ["p1", "p2"]
@@ -1432,7 +1452,9 @@ class TestRemoveZeroVarianceVars:
         adata = _make_adata_rzv_all_vary()
         # all vars have variance < 1e10 → all removed
         filtered = remove_zero_variance_vars(
-            adata, atol=1e10, inplace=False,
+            adata,
+            atol=1e10,
+            inplace=False,
         )
         assert filtered is not None
         assert list(filtered.var_names) == []
@@ -1441,7 +1463,8 @@ class TestRemoveZeroVarianceVars:
     def test_negative_atol_raises(self):
         adata = _make_adata_rzv_base()
         with pytest.raises(
-            ValueError, match=r"`atol` must be non-negative.",
+            ValueError,
+            match=r"`atol` must be non-negative.",
         ):
             remove_zero_variance_vars(adata, atol=-2)
 
@@ -1451,7 +1474,9 @@ class TestRemoveZeroVarianceVars:
     def test_groupby_removes_zero_in_any_group(self, inplace):
         adata = _make_adata_rzv_groupby()
         result = remove_zero_variance_vars(
-            adata, group_by="group", inplace=inplace,
+            adata,
+            group_by="group",
+            inplace=inplace,
         )
         target = adata if inplace else result
         if inplace:
@@ -1469,7 +1494,9 @@ class TestRemoveZeroVarianceVars:
             match=r"at least one group",
         ):
             result = remove_zero_variance_vars(
-                adata, group_by="group", inplace=inplace,
+                adata,
+                group_by="group",
+                inplace=inplace,
             )
         target = adata if inplace else result
         if inplace:
@@ -1482,21 +1509,28 @@ class TestRemoveZeroVarianceVars:
     def test_groupby_all_nan_in_one_group_warns(self):
         adata = _make_adata_rzv_groupby_allnan_one_group()
         with pytest.warns(
-            UserWarning, match=r"at least one group",
+            UserWarning,
+            match=r"at least one group",
         ):
             filtered = remove_zero_variance_vars(
-                adata, group_by="group", inplace=False,
+                adata,
+                group_by="group",
+                inplace=False,
             )
         assert list(filtered.var_names) == ["p1"]
 
     def test_groupby_single_group_matches_global(self):
         adata = _make_adata_rzv_groupby_single_group()
         filtered_grouped = remove_zero_variance_vars(
-            adata, group_by="group", inplace=False,
+            adata,
+            group_by="group",
+            inplace=False,
         )
         adata2 = _make_adata_rzv_groupby_single_group()
         filtered_global = remove_zero_variance_vars(
-            adata2, group_by=None, inplace=False,
+            adata2,
+            group_by=None,
+            inplace=False,
         )
         assert (
             list(filtered_grouped.var_names)
@@ -1508,7 +1542,9 @@ class TestRemoveZeroVarianceVars:
         adata = _make_adata_rzv_groupby()
         adata.obs["group"] = pd.Categorical(adata.obs["group"])
         filtered = remove_zero_variance_vars(
-            adata, group_by="group", inplace=False,
+            adata,
+            group_by="group",
+            inplace=False,
         )
         assert list(filtered.var_names) == ["p0"]
 
@@ -1534,7 +1570,8 @@ class TestRemoveZeroVarianceVars:
     @pytest.mark.parametrize("bad_adata", ["not-anndata", 42, None])
     def test_invalid_adata_type(self, bad_adata):
         with pytest.raises(
-            TypeError, match=r"`adata` must be an AnnData object",
+            TypeError,
+            match=r"`adata` must be an AnnData object",
         ):
             remove_zero_variance_vars(adata=bad_adata)
 
@@ -1542,7 +1579,8 @@ class TestRemoveZeroVarianceVars:
     def test_invalid_group_by_type(self, bad_group_by):
         adata = _make_adata_rzv_base()
         with pytest.raises(
-            TypeError, match=r"`group_by` must be a string or None",
+            TypeError,
+            match=r"`group_by` must be a string or None",
         ):
             remove_zero_variance_vars(adata, group_by=bad_group_by)
 
@@ -1550,7 +1588,8 @@ class TestRemoveZeroVarianceVars:
     def test_invalid_atol_type(self, bad_atol):
         adata = _make_adata_rzv_base()
         with pytest.raises(
-            TypeError, match=r"`atol` must be a numeric value",
+            TypeError,
+            match=r"`atol` must be a numeric value",
         ):
             remove_zero_variance_vars(adata, atol=bad_atol)
 
@@ -1558,7 +1597,8 @@ class TestRemoveZeroVarianceVars:
     def test_invalid_inplace_type(self, bad_inplace):
         adata = _make_adata_rzv_base()
         with pytest.raises(
-            TypeError, match=r"`inplace` must be a bool",
+            TypeError,
+            match=r"`inplace` must be a bool",
         ):
             remove_zero_variance_vars(adata, inplace=bad_inplace)
 
@@ -1566,7 +1606,8 @@ class TestRemoveZeroVarianceVars:
     def test_invalid_verbose_type(self, bad_verbose):
         adata = _make_adata_rzv_base()
         with pytest.raises(
-            TypeError, match=r"`verbose` must be a bool",
+            TypeError,
+            match=r"`verbose` must be a bool",
         ):
             remove_zero_variance_vars(adata, verbose=bad_verbose)
 
@@ -1575,7 +1616,9 @@ class TestRemoveZeroVarianceVars:
     def test_verbose_reports_correct_counts(self, capsys):
         adata = _make_adata_rzv_base()
         remove_zero_variance_vars(
-            adata, inplace=True, verbose=True,
+            adata,
+            inplace=True,
+            verbose=True,
         )
         captured = capsys.readouterr()
         assert "5 variables present" in captured.out
@@ -1585,7 +1628,9 @@ class TestRemoveZeroVarianceVars:
     def test_verbose_false_prints_nothing(self, capsys):
         adata = _make_adata_rzv_base()
         remove_zero_variance_vars(
-            adata, inplace=True, verbose=False,
+            adata,
+            inplace=True,
+            verbose=False,
         )
         captured = capsys.readouterr()
         assert captured.out == ""
@@ -1615,17 +1660,15 @@ class TestRemoveZeroVarianceVars:
         second = remove_zero_variance_vars(first, inplace=False)
         assert list(first.var_names) == list(second.var_names)
         np.testing.assert_array_equal(
-            np.asarray(first.X), np.asarray(second.X),
+            np.asarray(first.X),
+            np.asarray(second.X),
         )
 
     def test_kept_var_values_unchanged(self):
         adata = _make_adata_rzv_base()
         original_X = adata.X.copy()
         filtered = remove_zero_variance_vars(adata, inplace=False)
-        kept_idx = [
-            list(adata.var_names).index(v)
-            for v in filtered.var_names
-        ]
+        kept_idx = [list(adata.var_names).index(v) for v in filtered.var_names]
         np.testing.assert_array_equal(
             np.asarray(filtered.X),
             original_X[:, kept_idx],
@@ -1638,7 +1681,8 @@ class TestRemoveZeroVarianceVars:
         adata = _make_adata_rzv_peptide_level()
         with pytest.warns(UserWarning, match=r"1 variable\(s\)"):
             result = remove_zero_variance_vars(
-                adata, inplace=inplace,
+                adata,
+                inplace=inplace,
             )
         target = adata if inplace else result
         if inplace:
@@ -1658,7 +1702,9 @@ class TestRemoveZeroVarianceVars:
         # pep3: all-NaN in both groups → removed (warning)
         with pytest.warns(UserWarning, match=r"at least one group"):
             filtered = remove_zero_variance_vars(
-                adata, group_by="group", inplace=False,
+                adata,
+                group_by="group",
+                inplace=False,
             )
         assert filtered is not None
         assert list(filtered.var_names) == ["pep0", "pep2"]
@@ -1669,12 +1715,7 @@ class TestRemoveZeroVarianceVars:
 class TestRemoveContaminants:
     @pytest.fixture
     def fasta(self, tmp_path):
-        fasta_content = (
-            ">sp|protein_1\n"
-            "AAAA\n"
-            ">sp|protein_2\n"
-            "CCCC\n"
-        )
+        fasta_content = ">sp|protein_1\n" "AAAA\n" ">sp|protein_2\n" "CCCC\n"
         fasta_path = tmp_path / "test.fasta"
         fasta_path.write_text(fasta_content)
         return fasta_path
@@ -1683,9 +1724,7 @@ class TestRemoveContaminants:
     def csv_file(self, tmp_path):
         csv_path = tmp_path / "contaminants.csv"
         csv_path.write_text(
-            "contaminant,source\n"
-            "protein_2,db\n"
-            "protein_4,db\n",
+            "contaminant,source\n" "protein_2,db\n" "protein_4,db\n",
         )
         return csv_path
 
@@ -1693,9 +1732,7 @@ class TestRemoveContaminants:
     def tsv_file(self, tmp_path):
         tsv_path = tmp_path / "contaminants.tsv"
         tsv_path.write_text(
-            "contaminant\tcomment\n"
-            "protein_0\ta\n"
-            "protein_3\tb\n",
+            "contaminant\tcomment\n" "protein_0\ta\n" "protein_3\tb\n",
         )
         return tsv_path
 
@@ -1714,7 +1751,9 @@ class TestRemoveContaminants:
 
         target = adata if inplace else result
         assert list(target.var_names) == [
-            "protein_0", "protein_3", "protein_4",
+            "protein_0",
+            "protein_3",
+            "protein_4",
         ]
         assert target.n_obs == 5
 
@@ -1727,8 +1766,7 @@ class TestRemoveContaminants:
     def test_no_matching_contaminants_keeps_all_variables(self, tmp_path):
         fasta_path = tmp_path / "none_match.fasta"
         fasta_path.write_text(
-            ">sp|not_present_a\nAAAA\n"
-            ">sp|not_present_b\nCCCC\n",
+            ">sp|not_present_a\nAAAA\n" ">sp|not_present_b\nCCCC\n",
         )
 
         adata = _make_adata_remove_contaminants_base()
@@ -1749,7 +1787,9 @@ class TestRemoveContaminants:
             inplace=False,
         )
         assert list(filtered.var_names) == [
-            "protein_0", "protein_1", "protein_3",
+            "protein_0",
+            "protein_1",
+            "protein_3",
         ]
 
     def test_tsv_filters_using_first_column(self, tsv_file):
@@ -1760,7 +1800,9 @@ class TestRemoveContaminants:
             inplace=False,
         )
         assert list(filtered.var_names) == [
-            "protein_1", "protein_2", "protein_4",
+            "protein_1",
+            "protein_2",
+            "protein_4",
         ]
 
     def test_custom_protein_key_column(self, tmp_path):
@@ -1769,12 +1811,15 @@ class TestRemoveContaminants:
         # in a different order to confirm filtering uses protein_key,
         # not var_names or var.index
         adata.var["uniprot_id"] = [
-            "Q99714", "P12345", "P67890", "O75822", "Q9Y6K9",
+            "Q99714",
+            "P12345",
+            "P67890",
+            "O75822",
+            "Q9Y6K9",
         ]
         fasta_path = tmp_path / "custom_key.fasta"
         fasta_path.write_text(
-            ">sp|P12345\nAAAA\n"
-            ">sp|P67890\nCCCC\n",
+            ">sp|P12345\nAAAA\n" ">sp|P67890\nCCCC\n",
         )
 
         filtered = remove_contaminants(
@@ -1784,14 +1829,15 @@ class TestRemoveContaminants:
             inplace=False,
         )
         assert list(filtered.var_names) == [
-            "protein_0", "protein_3", "protein_4",
+            "protein_0",
+            "protein_3",
+            "protein_4",
         ]
 
     def test_custom_header_parser_is_used(self, tmp_path):
         fasta_path = tmp_path / "custom_header.fasta"
         fasta_path.write_text(
-            ">contam__protein_0\nAAAA\n"
-            ">contam__protein_4\nCCCC\n",
+            ">contam__protein_0\nAAAA\n" ">contam__protein_4\nCCCC\n",
         )
 
         adata = _make_adata_remove_contaminants_base()
@@ -1802,14 +1848,15 @@ class TestRemoveContaminants:
             inplace=False,
         )
         assert list(filtered.var_names) == [
-            "protein_1", "protein_2", "protein_3",
+            "protein_1",
+            "protein_2",
+            "protein_3",
         ]
 
     def test_header_parser_empty_id_warns_and_skips(self, tmp_path):
         fasta_path = tmp_path / "empty_id.fasta"
         fasta_path.write_text(
-            ">sp|protein_1\nAAAA\n"
-            ">sp|protein_2\nCCCC\n",
+            ">sp|protein_1\nAAAA\n" ">sp|protein_2\nCCCC\n",
         )
 
         adata = _make_adata_remove_contaminants_base()
@@ -1863,7 +1910,7 @@ class TestRemoveContaminants:
 
         with pytest.raises(
             FileNotFoundError,
-            match=r"Contaminant file not found",
+            match=r"File not found",
         ):
             remove_contaminants(
                 adata,
@@ -1889,7 +1936,7 @@ class TestRemoveContaminants:
 
         with pytest.raises(
             ValueError,
-            match=r"Unsupported contaminant file type",
+            match=r"Unsupported file type",
         ):
             remove_contaminants(
                 adata,

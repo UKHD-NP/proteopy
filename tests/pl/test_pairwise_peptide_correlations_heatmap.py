@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 import anndata as ad
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_hex
 from scipy.spatial.distance import squareform
 from scipy.cluster.hierarchy import linkage as scipy_linkage
 import pytest
@@ -874,3 +875,58 @@ def test_default_labels_do_not_overlap_for_many_peptides():
         key=lambda box: box.y0,
     )
     assert all(lower.y1 <= upper.y0 for lower, upper in zip(boxes, boxes[1:]))
+
+
+def test_default_proteoform_colors_match_sequence_and_intensity_plots():
+    adata = _copf_adata()
+    seqs = {f"pep{i}": f"{aa * 4}K" for i, aa in enumerate("ACDEFGHI")}
+    adata.var["sequence"] = [seqs[p] for p in adata.var_names]
+    ref = "".join(seqs[p] for p in _protein_peptides(adata, "P1"))
+
+    axm = _plot_heatmap(adata, protein="P1", show=False)
+    legend = next(
+        leg
+        for leg in axm.figure.legends
+        if leg.get_title().get_text() == "proteoform_id"
+    )
+    heatmap = {
+        text.get_text(): to_hex(patch.get_facecolor())
+        for text, patch in zip(legend.get_texts(), legend.get_patches())
+    }
+
+    ax_seq = pr.pl.peptides_on_prot_sequence(
+        adata,
+        protein_id="P1",
+        ref_sequence=ref,
+        alt_pep_sequence_key="sequence",
+        group_by="proteoform_id",
+        show=False,
+    )
+    bars = {
+        tick.get_text(): to_hex(coll.get_facecolor()[0])
+        for tick, coll in zip(
+            ax_seq.get_yticklabels()[1:],
+            ax_seq.collections[1:],
+        )
+    }
+
+    # proteoform_intensities is peptide_intensities(color="proteoform_id")
+    _, ax_int = plt.subplots()
+    pr.pl.peptide_intensities(
+        adata,
+        protein_ids="P1",
+        color="proteoform_id",
+        show=False,
+        ax=ax_int,
+    )
+    int_legend = ax_int.get_legend()
+    lines = {
+        text.get_text(): to_hex(handle.get_color())
+        for text, handle in zip(
+            int_legend.get_texts(),
+            int_legend.legend_handles,
+        )
+    }
+
+    assert len(heatmap) >= 2
+    assert heatmap == bars == lines

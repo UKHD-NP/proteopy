@@ -395,20 +395,14 @@ def test_metrics_keys():
     adata = make_result_adata([MIXED_RECOVERED, UNMIXED_QUIET])
     metrics, _ = pr.utils.proteoform_simulation_metrics(adata)
     assert list(metrics) == [
-        "tpr_call",
-        "fnr_call",
-        "fpr_call",
-        "tnr_call",
-        "precision_call",
+        "detection_rate_call",
+        "background_detection_rate_call",
         "score_auroc_call",
         "score_auprc_call",
         "pval_auroc_call",
         "pval_auprc_call",
-        "tpr_cluster",
-        "fnr_cluster",
-        "fpr_cluster",
-        "tnr_cluster",
-        "precision_cluster",
+        "detection_rate_cluster",
+        "background_detection_rate_cluster",
         "score_auroc_cluster",
         "score_auprc_cluster",
         "pval_auroc_cluster",
@@ -422,7 +416,10 @@ def test_metrics_perfect_recovery():
     adata = make_result_adata([MIXED_RECOVERED, UNMIXED_QUIET])
     metrics, _ = pr.utils.proteoform_simulation_metrics(adata)
     expected = dict.fromkeys(metrics, 1.0)
-    zero_keys = ["fnr_call", "fpr_call", "fnr_cluster", "fpr_cluster"]
+    zero_keys = [
+        "background_detection_rate_call",
+        "background_detection_rate_cluster",
+    ]
     expected.update(dict.fromkeys(zero_keys, 0.0))
     assert metrics == expected
 
@@ -433,10 +430,8 @@ def test_metrics_all_wrong():
     expected = dict.fromkeys(metrics, 0.0)
     expected.update(
         {
-            "fnr_call": 1.0,
-            "fpr_call": 1.0,
-            "fnr_cluster": 1.0,
-            "fpr_cluster": 1.0,
+            "background_detection_rate_call": 1.0,
+            "background_detection_rate_cluster": 1.0,
             # Only two proteins: the mixed one sits at recall 1 with
             # precision 1/2
             "score_auprc_call": 0.5,
@@ -453,11 +448,8 @@ def test_metrics_all_wrong():
 
 
 CALL_LEVEL_EXPECTED = {
-    "tpr_call": 2 / 3,
-    "fnr_call": 1 / 3,
-    "fpr_call": 1 / 2,
-    "tnr_call": 1 / 2,
-    "precision_call": 2 / 3,
+    "detection_rate_call": 2 / 3,
+    "background_detection_rate_call": 1 / 2,
     # Each mixed protein outranks H but not G
     "score_auroc_call": 3 / 6,
     # Hits at G, A_B, C_D, E_F, H: recall 1/3, 2/3, 1 at precision
@@ -476,16 +468,12 @@ def test_metrics_call_level(all_cases_adata):
 
 
 # Cluster-level positives: A_B and E_F (mixed, ARI 1).
-# Negatives: C_D (mixed, ARI 0), G and H (unmixed).
+# Background: C_D (mixed, ARI 0), G and H (unmixed).
 CLUSTER_LEVEL_EXPECTED = {
     # A_B called, E_F not
-    "tpr_cluster": 1 / 2,
-    "fnr_cluster": 1 / 2,
+    "detection_rate_cluster": 1 / 2,
     # C_D and G called, H not
-    "fpr_cluster": 2 / 3,
-    "tnr_cluster": 1 / 3,
-    # Calls: A_B (positive), C_D and G (negatives)
-    "precision_cluster": 1 / 3,
+    "background_detection_rate_cluster": 2 / 3,
     # A_B outranks C_D and H, E_F only H
     "score_auroc_cluster": 3 / 6,
     # Hits at G, A_B, C_D, E_F, H: recall 1/2, 1 at precision 1/2, 2/4
@@ -506,15 +494,18 @@ def test_metrics_cluster_level(all_cases_adata):
         assert metrics[key] == pytest.approx(value), key
 
 
-def test_metrics_misclustered_call_is_cluster_false_positive():
+def test_metrics_misclustered_call_is_cluster_background_detection():
     adata = make_result_adata([MIXED_MISCLUSTERED, UNMIXED_QUIET])
     metrics, _ = pr.utils.proteoform_simulation_metrics(adata)
-    assert metrics["tpr_call"] == 1.0
-    assert metrics["fpr_call"] == 0.0
-    assert metrics["fpr_cluster"] == 1 / 2
-    assert metrics["precision_cluster"] == 0.0
+    assert metrics["detection_rate_call"] == 1.0
+    assert metrics["background_detection_rate_call"] == 0.0
+    assert metrics["background_detection_rate_cluster"] == 1 / 2
     # No cluster-level positives
-    for key in ["tpr_cluster", "score_auroc_cluster", "pval_auprc_cluster"]:
+    for key in [
+        "detection_rate_cluster",
+        "score_auroc_cluster",
+        "pval_auprc_cluster",
+    ]:
         assert np.isnan(metrics[key]), key
 
 
@@ -541,7 +532,7 @@ def test_metrics_nan_scores_rank_lowest():
     )
     adata = make_result_adata([mixed_unscored, UNMIXED_QUIET])
     metrics, _ = pr.utils.proteoform_simulation_metrics(adata)
-    assert metrics["tpr_call"] == 0.0
+    assert metrics["detection_rate_call"] == 0.0
     for ranking in ["score", "pval"]:
         assert metrics[f"{ranking}_auroc_call"] == 0.0
         assert metrics[f"{ranking}_auroc_cluster"] == 0.0
@@ -550,7 +541,12 @@ def test_metrics_nan_scores_rank_lowest():
 def test_metrics_single_class_gives_nan():
     adata = make_result_adata([UNMIXED_CALLED, UNMIXED_QUIET])
     metrics, _ = pr.utils.proteoform_simulation_metrics(adata)
-    nan_keys = ["tpr_call", "tpr_cluster", "mean_ari", "cluster_match_rate"]
+    nan_keys = [
+        "detection_rate_call",
+        "detection_rate_cluster",
+        "mean_ari",
+        "cluster_match_rate",
+    ]
     for key in [*nan_keys, *RANKING_KEYS]:
         assert np.isnan(metrics[key]), key
 
@@ -579,7 +575,7 @@ def test_metrics_custom_keys():
         call_key="call",
         cluster_key="cluster",
     )
-    assert metrics["tpr_cluster"] == 1.0
+    assert metrics["detection_rate_cluster"] == 1.0
     assert metrics["pval_auroc_call"] == 1.0
 
 

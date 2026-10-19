@@ -30,6 +30,13 @@ MIXED = "mixed"
 UNMIXED = "unmixed"
 # COPF needs at least two peptides per cluster
 MIN_GROUP_PEPTIDES = 2
+# Metrics are computed under their classical classification names and
+# renamed on return. Unmixed proteins may carry real proteoforms, so
+# they are background rather than certain negatives.
+METRIC_RENAMES = {
+    "tpr": "detection_rate",
+    "fpr": "background_detection_rate",
+}
 
 INFERENCE_VAR_COLUMNS = (
     "cluster_id",
@@ -323,15 +330,15 @@ def proteoform_group_simulator(
 
     Background and unmixed proteins have at least two peptides; donor
     proteins at least ``n_mixed_peptides``. All drawn proteins within
-    an iteration are distinct. Running a proteoform inference method
-    on each yielded object and passing it to
-    :func:`~proteopy.utils.proteoform_simulation_metrics` estimates
-    how well the method recovers proteoform groups in this dataset.
+    an iteration are distinct.
 
-    Validation happens when the function is called; the simulated
-    objects are created lazily, one per iteration, from the current
-    state of ``adata``. Modifying ``adata`` during the loop changes
-    the objects that follow.
+    Unmixed proteins are real proteins and may carry real proteoform
+    groups.
+
+    Running a proteoform inference method on each yielded object and
+    passing it to :func:`~proteopy.utils.proteoform_simulation_metrics`
+    estimates how well the method recovers proteoform groups in this
+    dataset.
 
     Parameters
     ----------
@@ -390,12 +397,6 @@ def proteoform_group_simulator(
         ``adata`` already holds proteoform inference results. These
         are copied into the simulated objects unchanged and must be
         recomputed.
-
-    Notes
-    -----
-    Unmixed proteins are real proteins and may carry real proteoform
-    groups. Calls on them are therefore an upper bound of the false
-    positive rate.
 
     Examples
     --------
@@ -524,21 +525,38 @@ def _mean_or_nan(values) -> float:
 
 
 def _level_metrics(is_positive, called, rankings, level):
-    """Confusion-matrix rates and ranking areas for one positive set."""
+    """Confusion-matrix rates and ranking areas for one positive set.
+
+    Keys use the classical names (tpr, fpr, ...); see
+    `_rename_metrics`.
+    """
     tpr = _mean_or_nan(called[is_positive])
     fpr = _mean_or_nan(called[~is_positive])
     metrics = {
         f"tpr_{level}": tpr,
-        f"fnr_{level}": 1 - tpr,
         f"fpr_{level}": fpr,
-        f"tnr_{level}": 1 - fpr,
-        f"precision_{level}": _mean_or_nan(is_positive[called]),
+        # Not reported: unmixed proteins are not certain negatives, so
+        # these are hard to interpret. Uncomment to restore.
+        # f"fnr_{level}": 1 - tpr,
+        # f"tnr_{level}": 1 - fpr,
+        # f"precision_{level}": _mean_or_nan(is_positive[called]),
     }
     for name, ranking in rankings.items():
         auroc, auprc = _ranking_metrics(is_positive, ranking)
         metrics[f"{name}_auroc_{level}"] = auroc
         metrics[f"{name}_auprc_{level}"] = auprc
     return metrics
+
+
+def _rename_metrics(metrics):
+    """Rename classical metric keys with `METRIC_RENAMES`."""
+    renamed = {}
+    for key, value in metrics.items():
+        name, _, level = key.partition("_")
+        if name in METRIC_RENAMES:
+            key = f"{METRIC_RENAMES[name]}_{level}"
+        renamed[key] = value
+    return renamed
 
 
 def proteoform_simulation_metrics(
@@ -557,8 +575,7 @@ def proteoform_simulation_metrics(
     :func:`~proteopy.utils.proteoform_group_simulator` after a
     proteoform inference method has been run on it, and returns one
     record of summary metrics plus the per-protein results they are
-    computed from. Collect the records over a loop and combine them
-    with :class:`pandas.DataFrame`.
+    computed from.
 
     Parameters
     ----------
@@ -587,28 +604,31 @@ def proteoform_simulation_metrics(
         they are in ``.uns['proteoform_simulation']`` of ``adata``.
 
         Metrics come at two levels, which differ in which proteins
-        are positives. All other proteins are negatives, and a called
-        protein is a predicted positive at both levels.
+        are positives (planted proteoform groups). All other proteins
+        are background (pseudo-negatives), and a called protein is a
+        predicted positive at both levels.
 
         - ``_call``: mixed proteins are positives.
         - ``_cluster``: mixed proteins whose inferred clusters match
           their source proteins exactly (ARI = 1) are positives.
-          Mixed proteins with a wrong clustering are negatives, so
-          calling them counts as a false positive. Which mixed
-          proteins are positives depends on the clustering of the
-          inference method.
+          Mixed proteins with a wrong clustering are background, so
+          calling them counts toward
+          ``background_detection_rate_cluster``. Which mixed proteins
+          are positives depends on the clustering of the inference
+          method.
 
-        Unmixed proteins may carry real proteoforms, so ``fpr_*`` is
-        an upper bound of the false positive rate.
+        Background proteins are not certain negatives: unmixed
+        proteins are real proteins and may carry real proteoforms.
+        Metrics are therefore named after what they measure in the
+        simulation rather than their classical classification terms.
 
         For each level (``*`` = ``call`` or ``cluster``):
 
-        - ``tpr_*``, ``fnr_*``: fraction of positives called, and its
-          complement
-        - ``fpr_*``, ``tnr_*``: fraction of negatives called, and its
-          complement
-        - ``precision_*``: fraction of called proteins that are
-          positives, at the simulated mixed:unmixed ratio
+        - ``detection_rate_*``: fraction of positives called (true
+          positive rate, recall)
+        - ``background_detection_rate_*``: fraction of background
+          proteins called (false positive rate). An upper bound of the
+          false positive rate, as some calls may be real proteoforms
         - ``score_auroc_*``, ``score_auprc_*``: area under the ROC
           and precision-recall curves, ranking proteins by
           ``score_key`` (higher first)
@@ -628,7 +648,9 @@ def proteoform_simulation_metrics(
         Proteins without a score or p-value rank last. The ROC and
         precision-recall curves sweep a cutoff over the proteins of
         this one dataset, so they do not depend on the calling
-        thresholds of the inference method.
+        thresholds of the inference method. They treat background
+        proteins as negatives, so real proteoforms among them lower
+        both areas.
 
         Rates are NaN when undefined (e.g. no positives). The
         calls of most methods depend on multiple-testing correction
@@ -699,6 +721,7 @@ def proteoform_simulation_metrics(
     metrics["cluster_match_rate"] = _mean_or_nan(
         cluster_match[is_mixed & called]
     )
+    metrics = _rename_metrics(metrics)
 
     if verbose:
         print(

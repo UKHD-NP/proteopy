@@ -17,6 +17,7 @@ from scipy.cluster.hierarchy import linkage as scipy_linkage
 from adjustText import adjust_text
 
 from proteopy.utils.anndata import check_proteodata
+from proteopy.pl._resolvers import _default_label_order
 from proteopy.utils.matplotlib import _resolve_color_scheme
 from proteopy.utils._matrix_wrangling import (
     reconstruct_symmetric_matrix_from_long,
@@ -624,15 +625,13 @@ def pairwise_peptide_correlations_heatmap(
     pep_ids = adata.var.loc[peptides, "peptide_id"].astype(str).tolist()
 
     # -- Categories per annotation column (category order, else
-    # lexicographic)
+    # lexicographic), shared with pl.proteoform_intensities and
+    # pl.peptides_on_sequence so the same proteoform gets the same color
     col_groups, col_cats = {}, {}
     for col in margin_cols:
         groups = adata.var.loc[peptides, col]
-        if isinstance(groups.dtype, pd.CategoricalDtype):
-            cats = [c for c in groups.cat.categories if c in set(groups)]
-        else:
-            cats = sorted(groups.dropna().unique(), key=str)
-        col_groups[col], col_cats[col] = groups, cats
+        col_groups[col] = groups
+        col_cats[col] = _default_label_order(groups)
 
     # -- Resolve shared or per-strip palettes
     margin_palettes = _resolve_margin_palettes(color_scheme, col_cats)
@@ -682,11 +681,7 @@ def pairwise_peptide_correlations_heatmap(
     # -- Default order (used when not clustering): peptide_id categories,
     # else lexicographic
     pep_col = adata.var.loc[peptides, "peptide_id"]
-    if isinstance(pep_col.dtype, pd.CategoricalDtype):
-        present = set(pep_ids)
-        order = [str(c) for c in pep_col.cat.categories if str(c) in present]
-    else:
-        order = sorted(pep_ids)
+    order = [str(c) for c in _default_label_order(pep_col)]
     corr_df = corr_df.loc[order, order]
     annot_colors = annot_colors.loc[order]
 

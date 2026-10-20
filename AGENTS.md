@@ -441,8 +441,10 @@ assert returned_ax is supplied_ax
 ### Deterministic Ordering in `pl` (MANDATORY)
 
 Every axis, group sequence, and legend in a `pl.*` function must have an
-order the user can predict and control. Three rules produce that; they
-apply to every plotting function without exception.
+order the user can predict and control. The rules below produce that;
+they apply to every plotting function without exception. All derived
+orders come from one resolver, `_default_label_order()` in
+`proteopy/pl/_resolvers.py`.
 
 #### 1) Default order: category order, else lexicographic
 
@@ -486,6 +488,43 @@ Say so in the docstring of every function whose default order comes
 from this rule, and do not add per-function ordering parameters that
 duplicate it.
 
+**Implement it with the shared resolver.** Do not re-implement rule 1
+inline. Call `_default_label_order()` from `proteopy/pl/_resolvers.py`,
+the single place that normalizes label order for all `pl` functions:
+
+```python
+from proteopy.pl._resolvers import _default_label_order
+
+labels = _default_label_order(adata.var["proteoform_id"])
+```
+
+It returns the distinct non-missing labels of a Series: category order
+if categorical, otherwise lexicographic order of the `str`-coerced
+values. It returns the raw values, not strings, so dict color schemes
+and lookups keyed by the original values keep working. Categories with
+no values present are **dropped**, which suits legends, group rows and
+color assignment. Where an axis must keep empty categories as positions
+(see above), start from `series.cat.categories` instead and document
+it.
+
+**Missing values are not a category or group and are not plotted.**
+`NaN`, `None` and `pd.NA` in the annotation column supplying the labels
+get no axis position, group row, legend entry or color, and the
+elements carrying them are left out of the grouped display (e.g. a
+peptide with a missing `group_by` value gets no bar in
+`pl.peptides_on_sequence()`). `_default_label_order()` already
+excludes them, including from categoricals. Do not substitute a
+placeholder group such as `"NA"` or `"nan"`, and do not coerce
+missing values to strings before resolving the order, since
+`str(np.nan)` would become a group. Say so in the docstring.
+
+Plots that share the resolver order the same labels identically, which
+is what keeps their colors in sync (rule 5). `pl.peptide_intensities()`
+/ `pl.proteoform_intensities()`, `pl.peptides_on_sequence()` /
+`pl.peptides_on_prot_sequence()` and
+`pl.pairwise_peptide_correlations_heatmap()` use it; migrate other
+functions to it when they are next touched.
+
 #### 2) A parameter that imposes an order always wins
 
 Rule 1 applies only when no argument imposes an order. When one does,
@@ -507,7 +546,8 @@ The sequence of the groups produced by `group_by`, and the sequence
 produced by `order_by` when `order` is `None`, are rule 1 applied to
 that column: its category order if it is categorical, otherwise the
 lexicographic order of its `str`-coerced values. Not the order the
-groups appear in along the axis.
+groups appear in along the axis. Obtain it with
+`_default_label_order()`.
 
 #### 4) Testing
 
@@ -515,6 +555,20 @@ A `pl` function whose order is derived rather than given needs two
 tests: one asserting the tick-label sequence follows `cat.categories`
 for a categorical annotation, and one asserting lexicographic order for
 that same annotation stored as plain strings.
+
+#### 5) Default colors follow the default order
+
+When a function colors groups (`color`, `group_by`, margin strips,
+proteoforms), resolve `color_scheme` with `_resolve_color_scheme()`
+(`proteopy/utils/matplotlib.py`) over the labels in
+`_default_label_order()` order. Each label then gets the color at its
+position in that order, so the same label has the same default color in
+every plot of the same data, e.g. a proteoform in
+`pl.proteoform_intensities()`, `pl.peptides_on_prot_sequence()` and
+`pl.pairwise_peptide_correlations_heatmap()`. A function that adds
+further groups of its own (isoform rows, an extra strip) continues the
+color sequence after them rather than restarting it. Test the sync by
+drawing the plots and comparing colors per label.
 
 ---
 
@@ -941,8 +995,9 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 > The two mandatory `pl` sections above — **Deterministic Ordering in
 > `pl`** and **Axis Labels Come from ID Columns, Never from the Index**
 > — govern `order`, `order_by`, `group_by`, every default axis or group
-> sequence, and every drawn label. Read them before writing a `pl`
-> function.
+> sequence, default group colors, and every drawn label. Derived orders
+> come from `_default_label_order()` in `proteopy/pl/_resolvers.py`.
+> Read them before writing a `pl` function.
 
 
 ---

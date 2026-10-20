@@ -21,6 +21,13 @@ and this project adheres to
   reference lines
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
+- `peptides_on_prot_sequence()`: `ref_sequence` also accepts a
+  reference proteome FASTA path (`.fasta`, matched to `protein_id` by
+  accession) or an `.var` column holding the protein sequence.
+  `add_sequences` also accepts a UniProt GFF path (`.gff`): its
+  "Alternative sequence" (VSP) features are drawn one row per
+  isoform, marking where each isoform differs from the canonical
+  sequence
 
 **Preprocessing** (`pr.pp`)
 

@@ -1,4 +1,4 @@
-"""Tests for ``pr.tl.infer_proteoform_groups``.
+"""Tests for ``pr.tl.proteoform_group_inference``.
 
 The function is a thin dispatcher over the currently recommended
 proteoform inference method. These tests check that it:
@@ -87,29 +87,32 @@ def test_protein_level_raises(peptide_adata):
     protein = peptide_adata[:, :1].copy()
     protein.var = pd.DataFrame({"protein_id": ["PROT_A"]}, index=["PROT_A"])
     with pytest.raises(ValueError, match="peptide-level"):
-        pr.tl.infer_proteoform_groups(protein)
+        pr.tl.proteoform_group_inference(protein)
 
 
 def test_unknown_method_raises(peptide_adata):
     with pytest.raises(ValueError, match="Unknown method"):
-        pr.tl.infer_proteoform_groups(peptide_adata, method="foo")
+        pr.tl.proteoform_group_inference(peptide_adata, method="foo")
 
 
 def test_missing_batch_key_raises(peptide_adata):
     with pytest.raises(KeyError, match="batch_key"):
-        pr.tl.infer_proteoform_groups(peptide_adata, batch_key="missing")
+        pr.tl.proteoform_group_inference(peptide_adata, batch_key="missing")
 
 
 @pytest.mark.parametrize("arg", ["min_score", "min_adj_pval"])
 def test_non_numeric_threshold_raises(peptide_adata, arg):
     with pytest.raises(TypeError, match=arg):
-        pr.tl.infer_proteoform_groups(peptide_adata, **{arg: "0.1"})
+        pr.tl.proteoform_group_inference(peptide_adata, **{arg: "0.1"})
 
 
 @pytest.mark.parametrize("min_adj_pval", [0, -0.1, 1.5])
 def test_min_adj_pval_out_of_range_raises(peptide_adata, min_adj_pval):
     with pytest.raises(ValueError, match="min_adj_pval"):
-        pr.tl.infer_proteoform_groups(peptide_adata, min_adj_pval=min_adj_pval)
+        pr.tl.proteoform_group_inference(
+            peptide_adata,
+            min_adj_pval=min_adj_pval,
+        )
 
 
 # --------------------------------------------------------------------
@@ -119,9 +122,9 @@ def test_min_adj_pval_out_of_range_raises(peptide_adata, min_adj_pval):
 
 def test_default_method_is_copf(peptide_adata):
     expected = peptide_adata.copy()
-    pr.tl.infer_proteoform_groups(expected, method="copf")
+    pr.tl.proteoform_group_inference(expected, method="copf")
 
-    pr.tl.infer_proteoform_groups(peptide_adata)
+    pr.tl.proteoform_group_inference(peptide_adata)
 
     pd.testing.assert_frame_equal(peptide_adata.var, expected.var)
 
@@ -136,7 +139,7 @@ def test_copf_matches_individual_steps(peptide_adata, batch_key):
     expected = peptide_adata.copy()
     run_copf_steps(expected, batch_key=batch_key)
 
-    pr.tl.infer_proteoform_groups(
+    pr.tl.proteoform_group_inference(
         peptide_adata, method="copf", batch_key=batch_key
     )
 
@@ -154,7 +157,7 @@ def test_thresholds_are_forwarded(peptide_adata):
     expected = peptide_adata.copy()
     run_copf_steps(expected, min_score=0.5, min_adj_pval=0.01)
 
-    pr.tl.infer_proteoform_groups(
+    pr.tl.proteoform_group_inference(
         peptide_adata, method="copf", min_score=0.5, min_adj_pval=0.01
     )
 
@@ -164,7 +167,7 @@ def test_thresholds_are_forwarded(peptide_adata):
 
 
 def test_detects_proteoform(peptide_adata):
-    pr.tl.infer_proteoform_groups(peptide_adata, method="copf")
+    pr.tl.proteoform_group_inference(peptide_adata, method="copf")
 
     is_pf = peptide_adata.var.groupby("protein_id")["is_proteoform"].first()
     assert is_pf["PROT_A"] == 1
@@ -177,14 +180,14 @@ def test_detects_proteoform(peptide_adata):
 
 
 def test_inplace_true_returns_none(peptide_adata):
-    assert pr.tl.infer_proteoform_groups(peptide_adata) is None
+    assert pr.tl.proteoform_group_inference(peptide_adata) is None
     assert "is_proteoform" in peptide_adata.var.columns
 
 
 def test_inplace_false_returns_copy(peptide_adata):
     original_var = peptide_adata.var.copy()
 
-    out = pr.tl.infer_proteoform_groups(
+    out = pr.tl.proteoform_group_inference(
         peptide_adata, method="copf", inplace=False
     )
 
@@ -195,7 +198,7 @@ def test_inplace_false_returns_copy(peptide_adata):
 
 
 def test_verbose_prints(peptide_adata, capsys):
-    pr.tl.infer_proteoform_groups(peptide_adata, verbose=True)
+    pr.tl.proteoform_group_inference(peptide_adata, verbose=True)
     out = capsys.readouterr().out
     assert "copf" in out
     assert "called as having proteoforms" in out

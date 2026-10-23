@@ -4,7 +4,7 @@
 which known proteoform groups have been planted by merging peptides of
 two real proteins under one protein ID. After running a proteoform
 inference method on each object (e.g.
-`pr.tl.infer_proteoform_groups`), `proteoform_simulation_metrics`
+`pr.tl.proteoform_group_inference`), `proteoform_simulation_metrics`
 measures how well the planted groups were recovered. Together they
 estimate whether a dataset is suited for proteoform inference.
 """
@@ -411,7 +411,7 @@ def proteoform_group_simulator(
     ...     n_mixed_peptides=2,
     ...     random_state=42,
     ... ):
-    ...     pr.tl.infer_proteoform_groups(sim, method="copf")
+    ...     pr.tl.proteoform_group_inference(sim, method="copf")
     ...     metrics, _ = pr.utils.proteoform_simulation_metrics(sim)
     ...     records.append({**sim.uns["proteoform_simulation"], **metrics})
     >>> results = pd.DataFrame(records)
@@ -675,7 +675,7 @@ def proteoform_simulation_metrics(
     >>> sim = next(pr.utils.proteoform_group_simulator(
     ...     adata, random_state=42,
     ... ))
-    >>> pr.tl.infer_proteoform_groups(sim, method="copf")
+    >>> pr.tl.proteoform_group_inference(sim, method="copf")
     >>> metrics, results = pr.utils.proteoform_simulation_metrics(sim)
     """
     check_proteodata(adata)
@@ -690,7 +690,7 @@ def proteoform_simulation_metrics(
         raise KeyError(
             f"Missing .var columns: {missing}. Simulate with "
             "`proteoform_group_simulator` and run a proteoform "
-            "inference method (e.g. `pr.tl.infer_proteoform_groups`) "
+            "inference method (e.g. `pr.tl.proteoform_group_inference`) "
             "first."
         )
 

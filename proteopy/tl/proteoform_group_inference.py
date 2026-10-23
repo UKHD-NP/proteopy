@@ -1,6 +1,6 @@
 """Proteoform group inference: a stable entry point over the methods.
 
-`infer_proteoform_groups` dispatches to the currently recommended
+`proteoform_group_inference` dispatches to the currently recommended
 proteoform inference approach. The building blocks remain available
 individually (e.g. the COPF steps in `proteopy.tl.copf`) for users who
 need finer control over each step.
@@ -88,7 +88,7 @@ def _validate_args(
     _, level = check_proteodata(adata)
     if level != "peptide":
         raise ValueError(
-            "infer_proteoform_groups requires peptide-level data, "
+            "proteoform_group_inference requires peptide-level data, "
             f"got {level}-level data."
         )
 
@@ -116,7 +116,7 @@ def _validate_args(
         )
 
 
-def infer_proteoform_groups(
+def proteoform_group_inference(
     adata: ad.AnnData,
     method: str = DEFAULT_METHOD,
     *,
@@ -207,7 +207,7 @@ def infer_proteoform_groups(
     Examples
     --------
     >>> import proteopy as pr
-    >>> pr.tl.infer_proteoform_groups(
+    >>> pr.tl.proteoform_group_inference(
     ...     adata,
     ...     method="copf",
     ...     batch_key="multiplex_batch",

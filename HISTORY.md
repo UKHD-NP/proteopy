@@ -44,7 +44,7 @@ and this project adheres to
 
 **Tools** (`pr.tl`)
 
-- `infer_proteoform_groups()` wraps the
+- `proteoform_group_inference()` wraps the
   currently recommended proteoform inference approach behind one call.
   `method` defaults to `"copf"` (correlations, dendrograms, clusters,
   scores), but the default may change in future releases; pass it

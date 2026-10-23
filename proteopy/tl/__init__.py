@@ -11,4 +11,4 @@ from .clustering import (
     hclustv_cluster_ann,
     hclustv_profiles,
 )
-from .proteoform_group_inference import infer_proteoform_groups
+from .proteoform_group_inference import proteoform_group_inference

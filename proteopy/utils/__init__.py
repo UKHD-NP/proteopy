@@ -8,3 +8,4 @@ from .proteoform_group_simulation import (
     proteoform_group_simulator,
     proteoform_simulation_metrics,
 )
+from .batch_effect_simulation import apply_peptide_batch_effects

@@ -30,7 +30,8 @@
 .. rubric:: Proteoform Group Simulation
 
 Simulate proteoform groups to evaluate how well a proteoform inference
-method recovers them in a dataset.
+method recovers them in a dataset, optionally with simulated batch
+effects to evaluate batch-aware inference.
 
 .. autosummary::
    :toctree: generated/
@@ -38,6 +39,7 @@ method recovers them in a dataset.
 
    proteopy.utils.proteoform_group_simulator
    proteopy.utils.proteoform_simulation_metrics
+   proteopy.utils.apply_peptide_batch_effects
 
 .. rubric:: Plotting
 

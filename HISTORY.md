@@ -63,6 +63,10 @@ and this project adheres to
 - `proteoform_simulation_metrics()`: after running proteoform
   inference on a simulated dataset, returns one record of metrics
   plus the per-protein results table.
+- `apply_peptide_batch_effects()`: simulates peptide-specific batch effects
+  (`flavor="subset_shift"`) by shifting `n_peptides` peptides per
+  protein by `log2fc` in selected (`batches` as list) or randomly
+  drawn (`batches` as int) batches of `batch_key`.
 
 ### Fixed
 

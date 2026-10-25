@@ -74,6 +74,7 @@ def _format_fasta(
             destination_path,
             "w",
             encoding="utf-8",
+            newline="\n",
         ) as dest,
     ):
         for line in src:

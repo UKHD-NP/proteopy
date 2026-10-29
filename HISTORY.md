@@ -10,6 +10,11 @@ and this project adheres to
 
 ### Added
 
+**Datasets** (`pr.datasets`)
+
+- `toy_peptides()`: reproducible synthetic peptide data with configurable
+  sample counts, effects, missingness, and optional protein-level output.
+
 **Plotting** (`pr.pl`)
 
 - `pairwise_peptide_correlations_heatmap()`: new feature

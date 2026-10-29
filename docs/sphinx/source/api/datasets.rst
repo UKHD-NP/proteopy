@@ -5,7 +5,9 @@
    :synopsis: Built-in example datasets
 
 The ``proteopy.datasets`` module provides built-in example datasets for tutorials
-and testing.
+and testing. ``toy_peptides()`` generates a small synthetic dataset locally,
+without downloading data. It can also return protein intensities summarized
+from the simulated peptides.
 
 .. rubric:: Available datasets
 
@@ -14,6 +16,7 @@ and testing.
    :nosignatures:
 
    proteopy.datasets.karayel_2020
+   proteopy.datasets.toy_peptides
    proteopy.datasets.williams_2018
 
 .. rubric:: Dataset references

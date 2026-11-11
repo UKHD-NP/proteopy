@@ -35,8 +35,8 @@ from .clustering import (
     hclustv_profile_intensities,
 )
 
-from .upset import (
-    var_detected_by_cat_upset,
+from .var_categories_upset import (
+    var_categories_upset,
 )
 
 from .sequence import (

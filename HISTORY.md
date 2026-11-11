@@ -14,7 +14,7 @@ and this project adheres to
 
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
-- `var_detected_by_cat_upset()`: new feature
+- `var_categories_upset()`: new feature
 
 **Preprocessing** (`pr.pp`)
 

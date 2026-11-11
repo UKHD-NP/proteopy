@@ -41,7 +41,9 @@ from matplotlib.axes import Axes
 from scipy import sparse
 from upsetplot import UpSet, reformat
 
+from proteopy.pp._parameter_resolvers import _resolve_min_fraction
 from proteopy.utils.anndata import check_proteodata
+from proteopy.utils.pandas import _resolve_group_order
 
 _NO_CATEGORY_LABEL = "No category"
 _COUNT_NAME = "n_features"
@@ -214,7 +216,7 @@ _patch_label_positions()
 _patch_empty_totals()
 
 
-# -- var_detected_by_cat_upset
+# -- var_categories_upset
 
 
 def _check_flag(value, name: str) -> None:
@@ -271,33 +273,37 @@ def _resolve_threshold(
 
 def _validate_upset_args(
     adata: ad.AnnData,
-    cat_key,
+    category_key,
     min_count,
     min_fraction,
     zero_to_na,
     print_stats,
-    verbose,
     show,
     save,
-    sort_by,
+    intersection_order,
 ) -> tuple[str, int | float]:
     """Validate all inputs and return the active threshold."""
     check_proteodata(adata)
 
-    if not isinstance(sort_by, str):
+    if not isinstance(intersection_order, str):
         raise TypeError(
-            f"`sort_by` must be a str, got {type(sort_by).__name__}."
+            "`intersection_order` must be a str, got "
+            f"{type(intersection_order).__name__}."
         )
-    if sort_by not in ("degree", "cardinality", "-degree", "-cardinality"):
+    if intersection_order not in (
+        "degree",
+        "cardinality",
+        "-degree",
+        "-cardinality",
+    ):
         raise ValueError(
-            "`sort_by` must be one of 'degree', 'cardinality', "
+            "`intersection_order` must be one of 'degree', 'cardinality', "
             "'-degree', '-cardinality'."
         )
 
     for value, name in (
         (zero_to_na, "zero_to_na"),
         (print_stats, "print_stats"),
-        (verbose, "verbose"),
         (show, "show"),
     ):
         _check_flag(value, name)
@@ -308,17 +314,18 @@ def _validate_upset_args(
             f"{type(save).__name__}."
         )
 
-    if not isinstance(cat_key, str):
+    if not isinstance(category_key, str):
         raise TypeError(
-            "`cat_key` must be a str, got " f"{type(cat_key).__name__}."
+            "`category_key` must be a str, got "
+            f"{type(category_key).__name__}."
         )
-    if cat_key == "":
-        raise ValueError("`cat_key` must not be an empty string.")
+    if category_key == "":
+        raise ValueError("`category_key` must not be an empty string.")
 
     threshold = _resolve_threshold(min_count, min_fraction)
 
-    if cat_key not in adata.obs.columns:
-        raise KeyError(f"'{cat_key}' is not a column of `adata.obs`.")
+    if category_key not in adata.obs.columns:
+        raise KeyError(f"'{category_key}' is not a column of `adata.obs`.")
 
     if adata.n_obs == 0 or adata.n_vars == 0:
         raise ValueError(
@@ -326,9 +333,10 @@ def _validate_upset_args(
             "empty observation or variable axis."
         )
 
-    if adata.obs[cat_key].isna().any():
+    if not adata.obs[category_key].notna().any():
         raise ValueError(
-            f"`adata.obs['{cat_key}']` must not contain missing " "values."
+            f"`adata.obs['{category_key}']` must contain at least one "
+            "non-missing category."
         )
 
     return threshold
@@ -337,18 +345,11 @@ def _validate_upset_args(
 def _resolve_categories(
     series: pd.Series,
 ) -> tuple[list[str], list[np.ndarray]]:
-    """Return the category names in spec order and their obs masks.
+    """Return observed category names in plotting order and obs masks.
 
-    Categorical columns keep their category order, including
-    categories without observations; any other dtype is ordered by the
-    lexicographic order of the ``str``-coerced unique values.
+    Missing labels and unused categorical levels are excluded.
     """
-    if isinstance(series.dtype, pd.CategoricalDtype):
-        raw_values = list(series.cat.categories)
-    else:
-        raw_values = list(pd.unique(series))
-        raw_values.sort(key=str)
-
+    raw_values = _resolve_group_order(series)
     names = [str(value) for value in raw_values]
     if len(set(names)) != len(names):
         raise ValueError(
@@ -357,7 +358,8 @@ def _resolve_categories(
         )
 
     coerced = series.astype(object).map(str).to_numpy()
-    masks = [coerced == name for name in names]
+    valid = series.notna().to_numpy()
+    masks = [valid & (coerced == name) for name in names]
     return names, masks
 
 
@@ -405,7 +407,11 @@ def _membership_matrix(
         if threshold_name == "min_count":
             membership[:, index] = counts >= threshold_value
         else:
-            membership[:, index] = counts / n_obs_cat >= threshold_value
+            min_detections = _resolve_min_fraction(
+                threshold_value,
+                n_obs_cat,
+            )
+            membership[:, index] = counts >= min_detections
     return membership
 
 
@@ -490,12 +496,12 @@ def _intersections_df(
 def _per_category_df(
     membership: np.ndarray,
     names: list[str],
-    cat_key: str,
+    category_key: str,
     n_vars: int,
 ) -> pd.DataFrame:
     """One row per category with its member-feature count."""
     n_features = membership.sum(axis=0).astype(int)
-    # Built by position: ``cat_key`` may be "n_features" or "percent".
+    # Built by position: ``category_key`` may be "n_features" or "percent".
     df = pd.DataFrame(
         {
             0: names,
@@ -503,7 +509,7 @@ def _per_category_df(
             2: 100 * n_features / n_vars,
         }
     )
-    df.columns = [cat_key, _COUNT_NAME, "percent"]
+    df.columns = [category_key, _COUNT_NAME, "percent"]
     return df
 
 
@@ -511,7 +517,7 @@ def _print_upset_stats(
     counts: pd.Series,
     membership: np.ndarray,
     names: list[str],
-    cat_key: str,
+    category_key: str,
     n_vars: int,
 ) -> None:
     """Print the three tables underlying the plot."""
@@ -519,33 +525,16 @@ def _print_upset_stats(
     _print_stats_df(_global_stats_df(counts))
     print("Intersections:")
     _print_stats_df(_intersections_df(counts, names))
-    print(f"Per {cat_key}:")
-    _print_stats_df(_per_category_df(membership, names, cat_key, n_vars))
+    print(f"Per {category_key}:")
+    _print_stats_df(_per_category_df(membership, names, category_key, n_vars))
 
 
-def _print_verbose_report(
-    cat_key: str,
-    threshold_name: str,
-    threshold_value: int | float,
-    n_vars: int,
-    n_categories: int,
-) -> None:
-    """Print a short report about the input of the plot."""
-    print(
-        f"Using the .X matrix.\n"
-        f"Categories from .obs['{cat_key}'].\n"
-        f"Threshold: {threshold_name} = {str(threshold_value)}\n"
-        f"Features: {n_vars}\n"
-        f"Categories: {n_categories}"
-    )
-
-
-def _plot_upset(counts: pd.Series, sort_by: str) -> dict[str, Axes]:
+def _plot_upset(counts: pd.Series, intersection_order: str) -> dict[str, Axes]:
     """Render the UpSet plot of the intersection counts."""
     upset = UpSet(
         counts,
         subset_size="sum",
-        sort_by=sort_by,
+        sort_by=intersection_order,
         sort_categories_by="input",
         show_counts=True,
         include_empty_subsets=False,
@@ -553,19 +542,18 @@ def _plot_upset(counts: pd.Series, sort_by: str) -> dict[str, Axes]:
     return upset.plot()
 
 
-def var_detected_by_cat_upset(
+def var_categories_upset(
     adata: ad.AnnData,
-    cat_key: str,
+    category_key: str,
+    *,
     min_count: int | None = None,
     min_fraction: float | None = None,
     zero_to_na: bool = False,
     print_stats: bool = False,
-    verbose: bool = False,
     show: bool = True,
     save: str | Path | None = None,
-    *,
-    sort_by: str = "degree",
-) -> dict[str, Axes]:
+    intersection_order: str = "degree",
+) -> None:
     """Plot feature detection overlaps across observation categories.
 
     A feature belongs to a category when it meets ``min_count`` or
@@ -576,32 +564,38 @@ def var_detected_by_cat_upset(
     Parameters
     ----------
     adata : AnnData
-        ProteoPy AnnData (peptide- or protein-level). Intensities are
-        read from ``adata.X`` only.
-    cat_key : str
+        AnnData in ProteoData format. Intensities are read from
+        ``adata.X`` only.
+    category_key : str
         Column in ``adata.obs`` defining the categories.
         Categories follow categorical order, otherwise lexicographic
         order after conversion to strings. Use an ordered
         :class:`pandas.Categorical` to customize the order.
+        Unused categorical levels and observations with missing labels
+        are excluded. To include missing labels as a group, replace
+        them with an explicit label such as ``"Missing"`` first.
     min_count : int | None
-        Minimum detections per category, as a nonnegative integer.
+        Minimum number of non-missing values (detections) for a variable
+        within a category for that variable to count as a member.
+        Must be a nonnegative integer.
         If neither threshold is supplied, one detection suffices.
     min_fraction : float | None
-        Minimum fraction of observations with a detection per category,
-        between 0 and 1. Supply at most one of ``min_count`` and
-        ``min_fraction``.
+        Fraction of observations within a category used to determine
+        the minimum detections for a variable to count as a member.
+        The required count is ``floor(min_fraction * n_observations)``
+        for each category. Must be between 0 and 1. A rounded count of
+        zero permits membership without any detections. Supply at most
+        one of ``min_count`` and ``min_fraction``.
     zero_to_na : bool
         If True, zeros in ``.X`` count as missing.
     print_stats : bool
         If True, print global, intersection, and per-category
         statistics.
-    verbose : bool
-        If True, print status messages about the input.
     show : bool
         Call ``plt.show()`` at the end.
     save : str | Path | None
-        Path to save the figure to; None skips saving.
-    sort_by : str
+        Path to save the figure to.
+    intersection_order : str
         Order intersection bars by ``"degree"`` (fewest overlapping
         categories first) or ``"cardinality"`` (largest feature counts
         first). ``"-degree"`` and ``"-cardinality"`` reverse these
@@ -609,27 +603,33 @@ def var_detected_by_cat_upset(
 
     Returns
     -------
-    dict[str, Axes]
-        The axes returned by ``upsetplot.UpSet.plot()``, with keys
-        ``"matrix"``, ``"intersections"``, ``"totals"`` and
-        ``"shading"``.
+    None
+        The plotting backend creates and manages the multi-axis figure.
 
     Raises
     ------
     TypeError
         If an argument has the wrong type.
     KeyError
-        If ``cat_key`` is not a column of ``adata.obs``.
+        If ``category_key`` is not a column of ``adata.obs``.
     ValueError
-        If thresholds are invalid or both supplied, ``cat_key`` is
+        If thresholds are invalid or both supplied, ``category_key`` is
         empty, either data axis is empty, or category labels are
-        missing or collide after conversion to strings, or ``sort_by``
-        is unsupported.
+        all missing or collide after conversion to strings, or
+        ``intersection_order`` is unsupported.
 
     Warns
     -----
     UserWarning
         If ``adata.X`` is sparse and is densified.
+
+    Warnings
+    --------
+    This plot counts entries in ``adata.var``. With peptide-level
+    data, each peptide is counted separately, even when several
+    peptides map to the same protein. For protein-level overlaps,
+    first call ``pr.pp.quantify_proteins(adata)`` to aggregate peptides
+    into proteins.
 
     Examples
     --------
@@ -653,43 +653,43 @@ def var_detected_by_cat_upset(
     ...     ),
     ...     var=pd.DataFrame({"protein_id": proteins}, index=proteins),
     ... )
-    >>> axes = pr.pl.var_detected_by_cat_upset(
-    ...     adata, cat_key="tissue", show=False,
+    >>> pr.pl.var_categories_upset(
+    ...     adata, category_key="tissue", show=False,
     ... )
-    >>> sorted(axes)
-    ['intersections', 'matrix', 'shading', 'totals']
 
     Require detection in every sample of a tissue:
 
-    >>> axes = pr.pl.var_detected_by_cat_upset(
+    >>> pr.pl.var_categories_upset(
     ...     adata,
-    ...     cat_key="tissue",
+    ...     category_key="tissue",
     ...     min_fraction=1.0,
     ...     show=False,
     ... )
 
     Show the largest intersections first:
 
-    >>> axes = pr.pl.var_detected_by_cat_upset(
-    ...     adata, cat_key="tissue", sort_by="cardinality", show=False,
+    >>> pr.pl.var_categories_upset(
+    ...     adata,
+    ...     category_key="tissue",
+    ...     intersection_order="cardinality",
+    ...     show=False,
     ... )
     """
     # -- Validate inputs
     threshold_name, threshold_value = _validate_upset_args(
         adata,
-        cat_key,
+        category_key,
         min_count,
         min_fraction,
         zero_to_na,
         print_stats,
-        verbose,
         show,
         save,
-        sort_by,
+        intersection_order,
     )
 
     # -- Derive categories and feature memberships
-    names, masks = _resolve_categories(adata.obs[cat_key])
+    names, masks = _resolve_categories(adata.obs[category_key])
     detected = _detection_matrix(adata, zero_to_na)
     membership = _membership_matrix(
         detected,
@@ -700,28 +700,20 @@ def var_detected_by_cat_upset(
     counts = _intersection_counts(membership, names)
 
     # -- Report
-    if verbose:
-        _print_verbose_report(
-            cat_key,
-            threshold_name,
-            threshold_value,
-            adata.n_vars,
-            len(names),
-        )
     if print_stats:
         _print_upset_stats(
             counts,
             membership,
             names,
-            cat_key,
+            category_key,
             adata.n_vars,
         )
 
     # -- Plot
-    axes = _plot_upset(counts, sort_by)
+    axes = _plot_upset(counts, intersection_order)
 
     if save is not None:
         axes["matrix"].figure.savefig(save)
     if show:
         plt.show()
-    return axes
+    return None

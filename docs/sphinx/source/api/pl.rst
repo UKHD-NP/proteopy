@@ -40,6 +40,7 @@ control, exploratory analysis, and statistical results.
    proteopy.pl.n_peptides_per_sample
    proteopy.pl.n_proteins_per_sample
    proteopy.pl.n_cat1_per_cat2_hist
+   proteopy.pl.var_categories_upset
    proteopy.pl.n_peptides_per_protein
    proteopy.pl.n_proteoforms_per_protein
    proteopy.pl.cv_by_group

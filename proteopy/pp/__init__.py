@@ -31,3 +31,8 @@ from .summarize_peptides_by_neighbourhood_union import (
 )
 
 from .stats import calculate_cv
+
+from .var_consistency import (
+    var_consistency,
+    filter_by_var_consistency,
+)

@@ -36,6 +36,7 @@ control, exploratory analysis, and statistical results.
    :toctree: generated/
    :nosignatures:
 
+   proteopy.pl.ann_hist
    proteopy.pl.n_samples_per_category
    proteopy.pl.n_peptides_per_sample
    proteopy.pl.n_proteins_per_sample
@@ -53,6 +54,7 @@ control, exploratory analysis, and statistical results.
    :nosignatures:
 
    proteopy.pl.proteoform_scores
+   proteopy.pl.pairwise_peptide_correlations_heatmap
    proteopy.pl.peptides_on_sequence
    proteopy.pl.peptides_on_prot_sequence
 

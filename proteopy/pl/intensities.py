@@ -23,6 +23,7 @@ from scipy import sparse
 
 from proteopy.utils.anndata import check_proteodata, is_proteodata
 from proteopy.utils.matplotlib import _resolve_color_scheme
+from proteopy.pl._resolvers import _default_label_order
 from proteopy.utils.array import is_log_transformed
 from proteopy.utils.functools import partial_with_docsig
 
@@ -472,16 +473,10 @@ def peptide_intensities(
     selected_vars = var["var_index"].tolist()
     palette_map = None
 
-    if group_by:
-        hue_labels = pd.Series(pd.unique(var[group_by])).dropna().tolist()
-    elif color:
-        hue_labels = pd.Series(pd.unique(var[color])).dropna().tolist()
-    else:
-        hue_labels = pd.Series(pd.unique(var["var_index"])).dropna().tolist()
-
-    # Sort lexicographically so each label maps to a deterministic color,
-    # matching other plots of the same groups (e.g. proteoform sequence plots).
-    hue_labels = sorted(hue_labels, key=str)
+    # Category order, else lexicographic, so each label maps to a
+    # deterministic color, matching other plots of the same groups
+    # (e.g. pl.peptides_on_sequence).
+    hue_labels = _default_label_order(var[group_by or color or "var_index"])
 
     if hue_labels:
         palette_values = _resolve_color_scheme(color_scheme, hue_labels)

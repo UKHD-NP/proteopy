@@ -12,9 +12,23 @@ and this project adheres to
 
 **Plotting** (`pr.pl`)
 
+- `pairwise_peptide_correlations_heatmap()`: new feature
+- `ann_hist()`: histogram of `.obs`/`.var` annotations (numeric, str or
+  categorical), a thin wrapper around `seaborn.histplot`. `level_key`
+  plots one value per higher-level group (e.g. one `protein_q_value`
+  per `protein_id` in peptide-level data) and checks the value is
+  constant within each group. `vline` / `hline` add labelled
+  reference lines
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
 - `var_categories_upset()`: new feature
+- `peptides_on_prot_sequence()`: `ref_sequence` also accepts a
+  reference proteome FASTA path (`.fasta`, matched to `protein_id` by
+  accession) or an `.var` column holding the protein sequence.
+  `add_sequences` also accepts a UniProt GFF path (`.gff`): its
+  "Alternative sequence" (VSP) features are drawn one row per
+  isoform, marking where each isoform differs from the canonical
+  sequence
 
 **Preprocessing** (`pr.pp`)
 
@@ -22,11 +36,38 @@ and this project adheres to
   that overlap in the protein sequence, keeping the most abundant
   member of each group. Reimplements CCprofiler's
   `summarizeAlternativePeptideSequences(topN = 1)`
-- **Tools** (`pr.tl`): `peptide_proximity()` tests whether the peptides
+- `var_consistency()`: per-variable Pearson correlation of the
+  profiles across `group_by` groups between every pair of batches
+  (`batch_key`, e.g. replicates), summarized as median, min and mean
+  in `.var`; per-pair values in `.varm`
+- `filter_by_var_consistency()`: keeps variables whose consistency
+  score (e.g. `replicate_corr_min`) reaches a threshold.
+
+**Tools** (`pr.tl`)
+
+- `proteoform_group_inference()` wraps the
+  currently recommended proteoform inference approach behind one call.
+  `method` defaults to `"copf"` (correlations, dendrograms, clusters,
+  scores), but the default may change in future releases; pass it
+  explicitly for reproducibility
+- `peptide_proximity()` tests whether the peptides
   of a proteoform cluster sit closer together in the protein sequence
   than a random grouping of the same size. A reimplementation of
   CCprofiler's `evaluateProteoformLocation`, which is the
   characterisation COPF applies to the proteoform groups it detects.
+
+**Utilities** (`pr.utils`)
+
+- `proteoform_group_simulator()`: generator yielding
+  peptide-level datasets with planted proteoform groups (peptides of
+  two real proteins merged under one ID) next to unmixed proteins.
+- `proteoform_simulation_metrics()`: after running proteoform
+  inference on a simulated dataset, returns one record of metrics
+  plus the per-protein results table.
+- `apply_peptide_batch_effects()`: simulates peptide-specific batch effects
+  (`flavor="subset_shift"`) by shifting `n_peptides` peptides per
+  protein by `log2fc` in selected (`batches` as list) or randomly
+  drawn (`batches` as int) batches of `batch_key`.
 
 ### Fixed
 
@@ -50,6 +91,13 @@ and this project adheres to
   summation defects above
 
 ### Changed
+
+**Internal**
+
+- Moved and renamed the private matrix helper
+  `utils.copf.reconstruct_corrs_df_symmetric_from_long_df` to
+  `utils._matrix_wrangling.reconstruct_symmetric_matrix_from_long`
+  (generic labels/values, `raise` instead of `assert` on conflicts)
 
 **Preprocessing** (`pr.pp`)
 

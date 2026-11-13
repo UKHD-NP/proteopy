@@ -365,11 +365,6 @@ Fractions must be finite and in `[0, 1]`. Document the denominator
 and that a rounded count of zero permits membership without a
 detection. Empty groups are excluded from grouped plots.
 
-Test fractions below, at, and above an integer count boundary,
-including unequal group sizes and the zero/one endpoints. For five
-observations, fractions `0.19`, `0.20`, and `0.21` require `0`, `1`,
-and `1` detections, respectively.
-
 ### Additional Argument Conventions
 
 #### Preprocessing and Tool Modules (`pp`, `tl`)
@@ -956,7 +951,7 @@ the function explicitly needs or supports choosing an alternate matrix from
 #### Cross-Module Arguments (`pp`, `tl`, `pl`, `ann`, and others)
 - `verbose`: print status messages describing which input data is being used and where results are stored (default: `False`). Include in most functions.
 - `category_key`: column in `.obs` or `.var` defining categories for
-  the function. Spell out `category` rather than abbreviating it.
+  the function.
 
 #### Preprocessing and Tool Modules (`pp`, `tl`)
 - `inplace`: modify `adata` directly (default: `True`)

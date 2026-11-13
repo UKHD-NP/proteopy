@@ -136,13 +136,15 @@ this number. If None, use the internal function defaults.
     ax : matplotlib.axes.Axes | None
         Matplotlib Axes object to plot onto. If provided, draw on that exact
         object without replacing it. If `None`, create a new figure and axes.
-        Always return the Axes object used, including when `show=True` or the
-        figure is saved.
+        For a single-axis plot, always return the Axes object used,
+        including when showing or saving. For a plot with multiple
+        axes, omit `ax` and return `None`; this includes UpSet and
+        Seaborn functions that create their own multi-axis figure.
         Default=None (do not include this line in docstrings)
     print_stats : bool
         If True, print the statistics underlying the plot as a pandas
-        DataFrame before the plot is displayed and the axes object is
-        returned. Always prints global summary statistics (e.g. mean, std,
+        DataFrame before the plot is displayed and the function
+        returns. Always prints global summary statistics (e.g. mean, std,
         median, min, max). When `group_by` or `order_by` is provided,
         also prints per-group statistics below the global summary.
         Use `df.to_string(index=False, float_format="%.1f")` for
@@ -353,6 +355,16 @@ Functions operate on `adata.X` by default. Add a `layer` parameter only when
 the function explicitly needs or supports choosing an alternate matrix from
 `adata.layers`; do not include it as a routine parameter otherwise.
 
+### Fraction-to-count thresholds (MANDATORY)
+
+When introducing or updating a fractional detection-count parameter,
+resolve a fraction `f` over `n` eligible observations to
+`floor(f * n)` detections, separately for each group. Reuse
+`proteopy/pp/_parameter_resolvers.py:_resolve_min_fraction()`.
+Fractions must be finite and in `[0, 1]`. Document the denominator
+and that a rounded count of zero permits membership without a
+detection. Empty groups are excluded from grouped plots.
+
 ### Additional Argument Conventions
 
 #### Preprocessing and Tool Modules (`pp`, `tl`)
@@ -364,7 +376,7 @@ the function explicitly needs or supports choosing an alternate matrix from
 #### Plotting Modules (`pl`)
 To ensure consistent plotting behavior across `pl.*` modules, adhere to the following argument semantics. (Document defaults in code, but do not repeat default lines in docstrings.)
 
-> Apply `show`, `save` and `ax` consistently across `pl.*` functions and reflect behavior in docstrings with concise wording. Apply further other arguments where relevant.
+> Apply `show` and `save` consistently across `pl.*` functions. Apply `ax` to single-axis plots; multi-axis plots omit it and return `None`. Reflect behavior in docstrings with concise wording. Apply further other arguments where relevant.
 
 - `show: bool`
   Call plt.show() at the end of the function (default=True).
@@ -375,11 +387,14 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `ax: matplotlib.axes.Axes | None`
   Matplotlib Axes object to plot onto. If supplied, plot on that exact object;
   do not create, replace, or clear it. If `None`, create a new figure and axes.
-  Always return the Axes object used, so `returned_ax is ax` when one was
-  supplied. Showing or saving the figure does not change the return value
-  (default=None).
+  For a single-axis plot, always return the Axes object used, so
+  `returned_ax is ax` when one was supplied. Showing or saving does
+  not change the return value (default=None).
+  For a plot with multiple axes, omit `ax` and return `None`. This
+  includes UpSet and Seaborn functions that create their own
+  multi-axis figure. Document this behavior in the return section.
 
-Required implementation pattern:
+Required implementation pattern for single-axis plots:
 ```python
 def example_plot(..., ax=None, show=True, save=None):
     if ax is None:
@@ -401,8 +416,8 @@ assert returned_ax is supplied_ax
 
 - `print_stats: bool`
   If True, print the statistics underlying the plot as a pandas
-  DataFrame before the plot is displayed and the axes object is
-  returned. Always prints global summary statistics (e.g. mean, std,
+  DataFrame before the plot is displayed and the function
+  returns. Always prints global summary statistics (e.g. mean, std,
   median, min, max). When `group_by` or `order_by` is provided,
   also prints per-group statistics below the global summary
   (default=False).
@@ -455,14 +470,18 @@ group sequence of a boxplot, the entries of a legend — derive it from
 the annotation column supplying those labels:
 
 - **Categorical dtype** (`pd.CategoricalDtype`, ordered or unordered):
-  use `series.cat.categories`, in that order. Categories with no rows
-  present remain valid positions on the axis, so a subset still plots
-  against the full series; drop them only where the function documents
-  that it drops empty groups.
-- **Any other dtype** (object, str, numeric, bool): coerce the unique
-  values to `str` and sort lexicographically
+  use the observed categories in `series.cat.categories` order.
+  Drop unused categorical levels, including after subsetting.
+- **Any other dtype** (object, str, numeric, bool): coerce the observed,
+  non-missing unique values to `str` and sort lexicographically
   (`sorted(map(str, uniques))`). The coercion is deliberate — it makes
   the order identical across functions, calls, and dtypes.
+
+For grouped plots, exclude missing group labels. To show those
+observations as a group, the user must replace missing labels with
+an explicit value such as `"Missing"`. Reuse
+`proteopy/utils/pandas.py:_resolve_group_order()` for observed group
+ordering. Ordering arguments do not create unused or missing groups.
 
 **Never** fall back to the order rows happen to occupy in the object:
 `.obs_names` / `.var_names`, or the order in which values first appear
@@ -931,6 +950,8 @@ the function explicitly needs or supports choosing an alternate matrix from
 
 #### Cross-Module Arguments (`pp`, `tl`, `pl`, `ann`, and others)
 - `verbose`: print status messages describing which input data is being used and where results are stored (default: `False`). Include in most functions.
+- `category_key`: column in `.obs` or `.var` defining categories for
+  the function.
 
 #### Preprocessing and Tool Modules (`pp`, `tl`)
 - `inplace`: modify `adata` directly (default: `True`)
@@ -941,7 +962,7 @@ the function explicitly needs or supports choosing an alternate matrix from
 #### Plotting Modules (`pl`)
 To ensure consistent plotting behavior across `pl.*` modules, adhere to the following argument semantics. (Document defaults in code, but do not repeat default lines in docstrings.)
 
-> Apply `show`, `save` and `ax` consistently across `pl.*` functions and reflect behavior in docstrings with concise wording. Apply further other arguments where relevant.
+> Apply `show` and `save` consistently across `pl.*` functions. Apply `ax` to single-axis plots; multi-axis plots omit it and return `None`. Reflect behavior in docstrings with concise wording. Apply further other arguments where relevant.
 
 - `show: bool`
   Call plt.show() at the end of the function (default=True).
@@ -952,14 +973,17 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `ax: matplotlib.axes.Axes | None`
   Matplotlib Axes object to plot onto. If supplied, plot on that exact object;
   do not create, replace, or clear it. If `None`, create a new figure and axes.
-  Always return the Axes object used, so `returned_ax is ax` when one was
-  supplied. Showing or saving the figure does not change the return value
-  (default=None).
+  For a single-axis plot, always return the Axes object used, so
+  `returned_ax is ax` when one was supplied. Showing or saving does
+  not change the return value (default=None).
+  For a plot with multiple axes, omit `ax` and return `None`. This
+  includes UpSet and Seaborn functions that create their own
+  multi-axis figure. Document this behavior in the return section.
 
 - `print_stats: bool`
   If True, print the statistics underlying the plot as a pandas
-  DataFrame before the plot is displayed and the axes object is
-  returned. Always prints global summary statistics (e.g. mean, std,
+  DataFrame before the plot is displayed and the function
+  returns. Always prints global summary statistics (e.g. mean, std,
   median, min, max). When `group_by` or `order_by` is provided,
   also prints per-group statistics below the global summary
   (default=False).

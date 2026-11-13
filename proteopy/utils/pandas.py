@@ -7,10 +7,23 @@ import pandas as pd
 from proteopy.utils.string import detect_separator_from_extension
 
 
+def _resolve_group_order(series: pd.Series) -> list:
+    """Return observed, non-missing group labels in plotting order.
+
+    Categorical labels keep their category order. Other labels are
+    sorted lexicographically by their string representations. The
+    original label values and the input Series are preserved.
+    """
+    observed = series.dropna()
+    if isinstance(series.dtype, pd.CategoricalDtype):
+        return list(observed.cat.remove_unused_categories().cat.categories)
+    return sorted(pd.unique(observed), key=str)
+
+
 def load_dataframe(
     data: str | Path | pd.DataFrame,
     sep: str | None = None,
-    ) -> pd.DataFrame:
+) -> pd.DataFrame:
     """Load data from file path or return DataFrame directly.
 
     Parameters

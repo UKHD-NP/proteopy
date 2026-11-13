@@ -10,6 +10,10 @@ and this project adheres to
 
 ### Added
 
+**Documentation**
+
+- Add the plotting tutorial.
+
 **Plotting** (`pr.pl`)
 
 - `pairwise_peptide_correlations_heatmap()`: new feature
@@ -21,6 +25,7 @@ and this project adheres to
   reference lines
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
+- `var_categories_upset()`: new feature
 - `peptides_on_prot_sequence()`: `ref_sequence` also accepts a
   reference proteome FASTA path (`.fasta`, matched to `protein_id` by
   accession) or an `.var` column holding the protein sequence.

@@ -360,7 +360,7 @@ the function explicitly needs or supports choosing an alternate matrix from
 When introducing or updating a fractional detection-count parameter,
 resolve a fraction `f` over `n` eligible observations to
 `floor(f * n)` detections, separately for each group. Reuse
-`proteopy/pp/_parameter_resolvers.py:_resolve_min_fraction()`.
+`proteopy/_parameter_resolvers.py:_resolve_min_fraction()`.
 Fractions must be finite and in `[0, 1]`. Document the denominator
 and that a rounded count of zero permits membership without a
 detection. Empty groups are excluded from grouped plots.
@@ -479,9 +479,10 @@ the annotation column supplying those labels:
 
 For grouped plots, exclude missing group labels. To show those
 observations as a group, the user must replace missing labels with
-an explicit value such as `"Missing"`. Reuse
-`proteopy/utils/pandas.py:_resolve_group_order()` for observed group
-ordering. Ordering arguments do not create unused or missing groups.
+an explicit value such as `"Missing"`. Use `_default_label_order()`
+for plots; it delegates observed group ordering to
+`proteopy/_parameter_resolvers.py:_resolve_group_order()`.
+Ordering arguments do not create unused or missing groups.
 
 **Never** fall back to the order rows happen to occupy in the object:
 `.obs_names` / `.var_names`, or the order in which values first appear

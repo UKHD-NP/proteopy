@@ -41,9 +41,9 @@ from matplotlib.axes import Axes
 from scipy import sparse
 from upsetplot import UpSet, reformat
 
-from proteopy.pp._parameter_resolvers import _resolve_min_fraction
+from proteopy._parameter_resolvers import _resolve_min_fraction
+from proteopy.pl._resolvers import _default_label_order
 from proteopy.utils.anndata import check_proteodata
-from proteopy.utils.pandas import _resolve_group_order
 
 _NO_CATEGORY_LABEL = "No category"
 _COUNT_NAME = "n_features"
@@ -349,7 +349,7 @@ def _resolve_categories(
 
     Missing labels and unused categorical levels are excluded.
     """
-    raw_values = _resolve_group_order(series)
+    raw_values = _default_label_order(series)
     names = [str(value) for value in raw_values]
     if len(set(names)) != len(names):
         raise ValueError(

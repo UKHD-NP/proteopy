@@ -10,7 +10,7 @@ from proteopy.utils.string import detect_separator_from_extension
 def load_dataframe(
     data: str | Path | pd.DataFrame,
     sep: str | None = None,
-    ) -> pd.DataFrame:
+) -> pd.DataFrame:
     """Load data from file path or return DataFrame directly.
 
     Parameters

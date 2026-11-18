@@ -38,6 +38,9 @@ from .clustering import (
     hclustv_profile_intensities,
 )
 
+from .var_categories_upset import (
+    var_categories_upset,
+)
 from .ann_hist import ann_hist
 
 from .sequence import (

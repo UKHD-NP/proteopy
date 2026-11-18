@@ -46,6 +46,7 @@ dependencies = [
     "scipy",
     "seaborn",
     "statsmodels",
+    "upsetplot>=0.9.0,<0.10",
     ]
 
 [project.optional-dependencies]

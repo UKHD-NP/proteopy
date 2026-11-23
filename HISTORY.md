@@ -12,7 +12,7 @@ and this project adheres to
 
 **Documentation**
 
-- Add the plotting tutorial.
+- Plotting tutorial.
 
 **Plotting** (`pr.pl`)
 

@@ -1,7 +1,7 @@
 import warnings
 from pathlib import Path
 from typing import Any
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 import uuid
 
 import numpy as np
@@ -1505,7 +1505,7 @@ def n_var_per_sample(
     group_by: str | None = None,
     print_stats: bool = False,
     figsize: tuple[float, float] = (6.0, 4.0),
-    color_scheme: str | dict | Sequence | Colormap | callable | None = None,
+    color_scheme: str | dict | Sequence | Colormap | Callable | None = None,
     ylabel: str | None = None,
     xlabel_rotation: float = 90,
     order_by_label_rotation: float = 0,

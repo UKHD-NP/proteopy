@@ -453,15 +453,15 @@ def test_explicit_order_recolors_by_row_position(adata_pf, gff_path):
     )
     assert _bar_colors(ax) == {
         "Reference": to_hex("lightgrey"),
-        "isoform 3": to_hex("C2"),
+        "isoform 3": to_hex("darkgrey"),
         "P1_1": to_hex("C0"),
-        "isoform 2": to_hex("C3"),
+        "isoform 2": to_hex("darkgrey"),
         "P1_0": to_hex("C1"),
     }
     plt.close("all")
 
 
-def test_add_sequences_colors_continue_after_peptide_groups(
+def test_add_sequences_rows_are_grey(
     adata_pf,
     gff_path,
 ):
@@ -475,8 +475,55 @@ def test_add_sequences_colors_continue_after_peptide_groups(
         "Reference": to_hex("lightgrey"),
         "P1_0": to_hex("C0"),
         "P1_1": to_hex("C1"),
-        "isoform 2": to_hex("C2"),
-        "isoform 3": to_hex("C3"),
+        "isoform 2": to_hex("darkgrey"),
+        "isoform 3": to_hex("darkgrey"),
+    }
+    plt.close("all")
+
+
+def test_add_sequences_colors_from_dict_color_scheme(
+    adata_pf,
+    gff_path,
+):
+    ax = _plot(
+        adata_pf,
+        ref_sequence=REF,
+        add_sequences=str(gff_path),
+        group_by="proteoform_id",
+        color_scheme={
+            "P1_0": "red",
+            "P1_1": "blue",
+            "isoform 2": "green",
+            "isoform 3": "black",
+        },
+    )
+    assert _bar_colors(ax) == {
+        "Reference": to_hex("lightgrey"),
+        "P1_0": to_hex("red"),
+        "P1_1": to_hex("blue"),
+        "isoform 2": to_hex("green"),
+        "isoform 3": to_hex("black"),
+    }
+    plt.close("all")
+
+
+def test_add_sequences_colors_continue_list_color_scheme(
+    adata_pf,
+    gff_path,
+):
+    ax = _plot(
+        adata_pf,
+        ref_sequence=REF,
+        add_sequences=str(gff_path),
+        group_by="proteoform_id",
+        color_scheme=["red", "blue", "green", "black"],
+    )
+    assert _bar_colors(ax) == {
+        "Reference": to_hex("lightgrey"),
+        "P1_0": to_hex("red"),
+        "P1_1": to_hex("blue"),
+        "isoform 2": to_hex("green"),
+        "isoform 3": to_hex("black"),
     }
     plt.close("all")
 

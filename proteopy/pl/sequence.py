@@ -25,6 +25,7 @@ ColorScheme = Union[str, dict, SequenceABC, Colormap, Callable, None]
 # Row-key sources keeping peptide and add_sequences rows apart
 _PEPTIDE_ROWS = "group_by"
 _ADDED_ROWS = "add_sequences"
+_ADDED_ROWS_COLOR = "darkgrey"
 
 # UniProt VSP note, e.g. "In isoform 2, isoform 3 and isoform 4. GC->AP"
 _VSP_NOTE_RE = re.compile(r"^In (isoform .+?)\.(?:\s+(.*))?$")
@@ -618,31 +619,34 @@ def _row_colors(
     color_scheme: ColorScheme,
     row_keys: list[tuple],
 ) -> dict[tuple, object]:
-    """Assign bar colors by position among the drawn rows.
+    """Assign bar colors to the drawn rows.
 
     ``color_scheme`` is resolved over the peptide groups in the order
     they are drawn. With the default order this is the order in which
     :func:`proteopy.pl.peptide_intensities` colors its ``color``
     column (and hence ``proteoform_intensities`` its proteoforms), so
-    a proteoform has the same color in both plots. The
-    ``add_sequences`` groups continue the color sequence where the
-    peptide groups end.
+    a proteoform has the same color in both plots. When
+    ``color_scheme`` is ``None``, the ``add_sequences`` groups are
+    drawn in ``_ADDED_ROWS_COLOR``; otherwise they continue the color
+    sequence where the peptide groups end.
     """
     pep_labels = [label for src, label in row_keys if src == _PEPTIDE_ROWS]
     add_labels = [label for src, label in row_keys if src == _ADDED_ROWS]
 
     pep_colors = _resolve_color_scheme(color_scheme, pep_labels) or []
-    all_colors = (
-        _resolve_color_scheme(color_scheme, pep_labels + add_labels) or []
-    )
+    if color_scheme is None:
+        add_colors = [_ADDED_ROWS_COLOR] * len(add_labels)
+    else:
+        all_colors = _resolve_color_scheme(
+            color_scheme,
+            pep_labels + add_labels,
+        )
+        add_colors = all_colors[len(pep_labels) :]
     colors = dict(
         zip([(_PEPTIDE_ROWS, label) for label in pep_labels], pep_colors)
     )
     colors.update(
-        zip(
-            [(_ADDED_ROWS, label) for label in add_labels],
-            all_colors[len(pep_labels) :],
-        )
+        zip([(_ADDED_ROWS, label) for label in add_labels], add_colors)
     )
     return colors
 
@@ -771,15 +775,14 @@ def peptides_on_sequence(
         ``"<name> (match N)"``. When ``False``, a ``ValueError``
         is raised for ambiguous matches.
     color_scheme : str | dict | list | Colormap | callable | None
-        Color specification for groups. The ``group_by`` groups
-        take colors in the order their rows are drawn, and the
-        ``add_sequences`` groups continue the color sequence
-        where they end. With the default order (category order
-        if categorical, else lexicographic) this matches
-        :func:`~proteopy.pl.proteoform_intensities` and
-        :func:`~proteopy.pl.peptide_intensities`, so the same
-        proteoform gets the same color in both plots. A custom
-        ``order`` recolors the rows by their new positions.
+        Color specification for the ``group_by`` groups, which
+        take colors in the order their rows are drawn.
+        When ``color_scheme`` is ``None``, the ``add_sequences``
+        rows are drawn in dark grey. Otherwise they continue the
+        color sequence after the ``group_by`` rows: a list
+        supplies the ``group_by`` colors first, then one per
+        ``add_sequences`` group (in their default order), and a
+        dict must name every drawn row label.
     order : list[str] | None
         Group rows to draw, bottom to top, directly above the
         reference. Groups absent from ``order`` are excluded.
@@ -1028,15 +1031,14 @@ def peptides_on_prot_sequence(
         ``False``, a ``ValueError`` is raised for ambiguous
         matches.
     color_scheme : str | dict | list | Colormap | callable | None
-        Color specification for groups. The ``group_by`` groups
-        take colors in the order their rows are drawn, and the
-        ``add_sequences`` groups continue the color sequence
-        where they end. With the default order (category order
-        if categorical, else lexicographic) this matches
-        :func:`~proteopy.pl.proteoform_intensities` and
-        :func:`~proteopy.pl.peptide_intensities`, so the same
-        proteoform gets the same color in both plots. A custom
-        ``order`` recolors the rows by their new positions.
+        Color specification for the ``group_by`` groups, which
+        take colors in the order their rows are drawn.
+        When ``color_scheme`` is ``None``, the ``add_sequences``
+        rows are drawn in dark grey. Otherwise they continue the
+        color sequence after the ``group_by`` rows: a list
+        supplies the ``group_by`` colors first, then one per
+        ``add_sequences`` group (in their default order), and a
+        dict must name every drawn row label.
     order : list[str] | None
         Group rows to draw, bottom to top, directly above the
         reference. Groups absent from ``order`` are excluded.

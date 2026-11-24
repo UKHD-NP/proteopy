@@ -107,6 +107,11 @@ and this project adheres to
 
 - `proteoform_scores()`: `pval_threshold` and `score_threshold` now
   default to `0.1` instead of `None`.
+- `peptides_on_sequence()`, `peptides_on_prot_sequence()`: the
+  with the default `color_scheme=None`, the `add_sequences` rows
+  (e.g. GFF isoforms) are drawn in dark grey instead of continuing
+  the color cycle after the `group_by` rows. A user-supplied
+  `color_scheme` still colors all rows.
 - `pl` functions no longer set plot or figure titles; set them on the
   returned Axes instead (e.g. `ax.set_title("...")`). **Breaking:**
   removed the `title` parameter from `abundance_rank()`,

@@ -586,9 +586,11 @@ position in that order, so the same label has the same default color in
 every plot of the same data, e.g. a proteoform in
 `pl.proteoform_intensities()`, `pl.peptides_on_prot_sequence()` and
 `pl.pairwise_peptide_correlations_heatmap()`. A function that adds
-further groups of its own (isoform rows, an extra strip) continues the
-color sequence after them rather than restarting it. Test the sync by
-drawing the plots and comparing colors per label.
+further groups of its own (an extra strip) continues the color
+sequence after them rather than restarting it; reference-like rows
+that are not data groups (e.g. isoform rows in
+`pl.peptides_on_prot_sequence()`) may be drawn in a neutral grey
+by default instead.
 
 ---
 

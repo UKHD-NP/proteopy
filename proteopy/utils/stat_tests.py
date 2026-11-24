@@ -399,7 +399,6 @@ def volcano_plot(
     ylabel: str | None = None,
     alt_color: list[bool] | np.ndarray | None = None,
     yscale_log: bool = True,
-    title: str | None = None,
     show: bool = True,
     save: str | Path | None = None,
     ax: Axes | None = None,
@@ -457,8 +456,6 @@ def volcano_plot(
         When ``True``, plot raw p-values on a log10-scaled
         inverted y-axis. When ``False``, plot ``-log10(pval)``
         on a linear y-axis.
-    title : str | None, optional
-        Plot title. If ``None``, no title is set.
     show : bool, optional
         Call ``matplotlib.pyplot.show()`` to display the plot.
     save : str | Path | None, optional
@@ -584,9 +581,6 @@ def volcano_plot(
     if ylabel is None:
         ylabel = "pval" if yscale_log else "-log10(pval)"
     _ax.set_ylabel(ylabel)
-
-    if title is not None:
-        _ax.set_title(title)
 
     # -- Labels
     if top_labels is not None and labels is not None:

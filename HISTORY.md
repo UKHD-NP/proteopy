@@ -107,6 +107,21 @@ and this project adheres to
 
 - `proteoform_scores()`: `pval_threshold` and `score_threshold` now
   default to `0.1` instead of `None`.
+- `pl` functions no longer set plot or figure titles; set them on the
+  returned Axes instead (e.g. `ax.set_title("...")`). **Breaking:**
+  removed the `title` parameter from `abundance_rank()`,
+  `binary_heatmap()`, `box()`, `differential_abundance_box()`,
+  `hclustv_profile_intensities()` (also `titles`),
+  `hclustv_profiles_heatmap()`, `intensity_hist()`,
+  `n_var_per_sample()` / `n_peptides_per_sample()` /
+  `n_proteins_per_sample()`, `peptides_on_sequence()`,
+  `peptides_on_prot_sequence()`, `volcano()` and
+  `pr.utils.volcano_plot()`. The default titles these functions drew
+  are gone too
+- `box()`, `peptide_intensities()`, `proteoform_intensities()`,
+  `intensity_hist(per_obs=True)`, `hclustv_profile_intensities()`:
+  plots and panels are titled with their ID (e.g. `protein_id`) only
+  when the call draws more than one; a single plot gets no title
 
 **Preprocessing** (`pr.pp`)
 

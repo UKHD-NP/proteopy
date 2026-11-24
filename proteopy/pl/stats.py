@@ -1104,9 +1104,9 @@ def _n_var_count_per_sample(
 
 def _n_var_derive_totals(
     counts_array, level, data_level,
-    percentage, ylabel, title, adata,
+    percentage, ylabel, adata,
 ):
-    """Derive totals, percentage, ylabel, and title."""
+    """Derive totals, percentage, and ylabel."""
     if level == "protein" and data_level == "peptide":
         total_vars = adata.var["protein_id"].nunique()
     else:
@@ -1124,25 +1124,12 @@ def _n_var_derive_totals(
 
     # -- Resolve y-axis label
     if ylabel is None:
-        ylabel = "%" if percentage else "#"
+        entity = level if level is not None else data_level
+        entity = f"{entity}s" if entity else "variables"
+        prefix = "%" if percentage else "#"
+        ylabel = f"{prefix} detected {entity}"
 
-    # -- Resolve title
-    if title is None:
-        if level == "protein" or (
-            level is None
-            and data_level == "protein"
-        ):
-            entity = "proteins"
-        elif level == "peptide" or (
-            level is None
-            and data_level == "peptide"
-        ):
-            entity = "peptides"
-        else:
-            entity = "variables"
-        title = f"Number of detected {entity}"
-
-    return total_vars, counts_array, ylabel, title
+    return total_vars, counts_array, ylabel
 
 
 def _n_var_print_group_stats(
@@ -1178,7 +1165,7 @@ def _n_var_resolve_bar_colors(
 
 def _n_var_group_by_path(
     counts, adata, group_by, order,
-    color_scheme, total_vars, ylabel, title,
+    color_scheme, total_vars, ylabel,
     print_stats, figsize, xlabel_rotation,
     save, show, ax=None,
 ):
@@ -1267,7 +1254,6 @@ def _n_var_group_by_path(
     )
     _ax.set_xlabel(group_by)
     _ax.set_ylabel(ylabel)
-    fig.suptitle(title, y=0.95)
     plt.tight_layout()
 
     if save is not None:
@@ -1364,7 +1350,7 @@ def _n_var_resolve_obs_ordering(
 def _n_var_plot_per_obs(
     counts, x_ordered, cat_index_map,
     group_key, order_by, total_vars,
-    color_scheme, ylabel, title,
+    color_scheme, ylabel,
     print_stats, figsize, xlabel_rotation,
     order_by_label_rotation, save, show,
     ax=None,
@@ -1464,7 +1450,6 @@ def _n_var_plot_per_obs(
             rotation=order_by_label_rotation,
         )
 
-    fig.suptitle(title, y=0.95)
     plt.tight_layout()
 
     if save is not None:
@@ -1490,7 +1475,6 @@ def n_var_per_sample(
     print_stats: bool = False,
     figsize: tuple[float, float] = (6.0, 4.0),
     color_scheme: str | dict | Sequence | Colormap | callable | None = None,
-    title: str | None = None,
     ylabel: str | None = None,
     xlabel_rotation: float = 90,
     order_by_label_rotation: float = 0,
@@ -1548,10 +1532,9 @@ def n_var_per_sample(
         list/tuple of colours, a dict mapping labels to
         colours, a :class:`~matplotlib.colors.Colormap`,
         or a callable.
-    title : str or None, optional
-        Plot title.
     ylabel : str or None, optional
         Label for the y-axis.
+        ``percentage=True``, ``"% detected proteins"``.
     xlabel_rotation : float, optional
         Rotation in degrees applied to x-axis tick labels.
     order_by_label_rotation : float, optional
@@ -1603,11 +1586,11 @@ def n_var_per_sample(
         matrix, zero_to_na, level, data_level, adata,
     )
 
-    # -- Derive totals, percentage, ylabel, and title
-    total_vars, counts_array, ylabel, title = (
+    # -- Derive totals, percentage, and ylabel
+    total_vars, counts_array, ylabel = (
         _n_var_derive_totals(
             counts_array, level, data_level,
-            percentage, ylabel, title, adata,
+            percentage, ylabel, adata,
         )
     )
 
@@ -1643,7 +1626,7 @@ def n_var_per_sample(
         return _n_var_group_by_path(
             counts, adata, group_by, order,
             color_scheme, total_vars, ylabel,
-            title, print_stats, figsize,
+            print_stats, figsize,
             xlabel_rotation, save, show, ax,
         )
 
@@ -1705,7 +1688,7 @@ def n_var_per_sample(
     return _n_var_plot_per_obs(
         counts, x_ordered, cat_index_map,
         group_key, order_by, total_vars,
-        color_scheme, ylabel, title,
+        color_scheme, ylabel,
         print_stats, figsize, xlabel_rotation,
         order_by_label_rotation, save, show, ax,
     )
@@ -2789,7 +2772,6 @@ def hclustv_profiles_heatmap(
     xticklabels: bool = True,
     yticklabels: bool = False,
     figsize: tuple[float, float] = (10.0, 8.0),
-    title: str | None = None,
     show: bool = True,
     ax: bool = False,
     save: str | Path | None = None,
@@ -2871,8 +2853,6 @@ def hclustv_profiles_heatmap(
         Show y-axis tick labels (variable names).
     figsize : tuple[float, float]
         Matplotlib figure size in inches.
-    title : str | None
-        Title for the plot.
     show : bool
         Display the figure with :func:`matplotlib.pyplot.show`.
     ax : bool
@@ -3140,9 +3120,6 @@ def hclustv_profiles_heatmap(
     # Remove y-axis ticks from the margin color bar if present
     if g.ax_col_colors is not None:
         g.ax_col_colors.set_yticks([])
-
-    if title is not None:
-        g.figure.suptitle(title, y=1.02)
 
     plt.tight_layout()
 

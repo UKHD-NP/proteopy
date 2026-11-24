@@ -103,6 +103,11 @@ and this project adheres to
   `utils._matrix_wrangling.reconstruct_symmetric_matrix_from_long`
   (generic labels/values, `raise` instead of `assert` on conflicts)
 
+**Plotting** (`pr.pl`)
+
+- `proteoform_scores()`: `pval_threshold` and `score_threshold` now
+  default to `0.1` instead of `None`.
+
 **Preprocessing** (`pr.pp`)
 
 - `normalize_median()`:

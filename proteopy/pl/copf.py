@@ -31,8 +31,8 @@ def proteoform_scores(
     adata: ad.AnnData,
     *,
     adj: bool = True,
-    pval_threshold: float | int | None = None,
-    score_threshold: float | int | None = None,
+    pval_threshold: float | int | None = 0.1,
+    score_threshold: float | int | None = 0.1,
     yscale_log: bool = True,
     protein_id_key: str | None = None,
     highlight_prots: list[str] | None = None,
@@ -51,11 +51,11 @@ def proteoform_scores(
     adj : bool
         Use adjusted ``proteoform_score_pval_adj`` values when ``True``.
     pval_threshold : float | int | None
-        Maximum p-value used to highlight points. ``None`` disables filtering
-        by p-value.
+        Highlight points with a p-value at or below this cutoff.
+        ``None`` ignores the p-value when highlighting.
     score_threshold : float | int | None
-        Minimum proteoform score used to highlight points. ``None`` disables
-        score-based filtering.
+        Highlight points with a proteoform score at or above this
+        cutoff. ``None`` ignores the score when highlighting.
     yscale_log : bool
         When ``True``, plot p-values on a log10-scaled inverted
         y-axis. When ``False``, plot ``-log10(pval)`` on a linear
@@ -218,15 +218,10 @@ def proteoform_scores(
         pval_threshold_line = None
 
     mask = pd.Series(True, index=var.index)
-    has_condition = False
     if score_threshold is not None:
         mask &= var["proteoform_score"] >= score_threshold
-        has_condition = True
     if pval_threshold is not None:
         mask &= var[pval_col] <= pval_threshold
-        has_condition = True
-    if not has_condition:
-        mask[:] = False
 
     var["is_above_threshold"] = mask
     var["plot_pval"] = plot_pvals

@@ -254,7 +254,6 @@ def _plot_sequences_on_reference(
     color_scheme: ColorScheme = None,
     allow_overlaps: bool = False,
     allow_multi_match: bool = False,
-    title: str | None = None,
     order: list[str] | None = None,
     default_order: list | None = None,
     row_labels: dict | None = None,
@@ -294,8 +293,6 @@ def _plot_sequences_on_reference(
         When ``True``, sequences matching the reference at more than
         one position are plotted as separate bars. When ``False``, a
         ``ValueError`` is raised for multi-matching sequences.
-    title : str | None
-        Axes title.
     order : list[str] | None
         Explicit ordering of group rows. Groups absent from ``order`` are
         excluded.
@@ -397,9 +394,6 @@ def _plot_sequences_on_reference(
     _ax.set_yticks(y_positions)
     _ax.set_yticklabels(y_labels)
     _ax.set_xlabel("Position")
-
-    if title is not None:
-        _ax.set_title(title)
 
     # Remove top and right spines
     _ax.spines["top"].set_visible(False)
@@ -728,7 +722,6 @@ def peptides_on_sequence(
     allow_overlaps: bool = False,
     allow_multi_match: bool = False,
     color_scheme: ColorScheme = None,
-    title: str | None = None,
     order: list[str] | None = None,
     figsize: tuple[float, float] | None = None,
     show: bool = True,
@@ -787,8 +780,6 @@ def peptides_on_sequence(
         :func:`~proteopy.pl.peptide_intensities`, so the same
         proteoform gets the same color in both plots. A custom
         ``order`` recolors the rows by their new positions.
-    title : str | None
-        Axes title.
     order : list[str] | None
         Group rows to draw, bottom to top, directly above the
         reference. Groups absent from ``order`` are excluded.
@@ -923,10 +914,6 @@ def peptides_on_sequence(
     default_order = _default_row_order(groups, add_sequences)
     row_order = _order_to_row_keys(order, default_order)
 
-    # Resolve title: default to filter_value
-    if title is None:
-        title = str(filter_value)
-
     # Plot
     _ax = _plot_sequences_on_reference(
         ref_sequence=ref_sequence,
@@ -934,7 +921,6 @@ def peptides_on_sequence(
         color_scheme=color_scheme,
         allow_overlaps=allow_overlaps,
         allow_multi_match=allow_multi_match,
-        title=title,
         order=row_order,
         default_order=default_order,
         row_labels={key: key[1] for key in default_order},
@@ -964,7 +950,6 @@ def peptides_on_prot_sequence(
     allow_overlaps: bool = False,
     allow_multi_match: bool = False,
     color_scheme: ColorScheme = None,
-    title: str | None = None,
     order: list[str] | None = None,
     figsize: tuple[float, float] | None = None,
     show: bool = True,
@@ -1052,8 +1037,6 @@ def peptides_on_prot_sequence(
         :func:`~proteopy.pl.peptide_intensities`, so the same
         proteoform gets the same color in both plots. A custom
         ``order`` recolors the rows by their new positions.
-    title : str | None
-        Axes title.
     order : list[str] | None
         Group rows to draw, bottom to top, directly above the
         reference. Groups absent from ``order`` are excluded.
@@ -1226,7 +1209,6 @@ def peptides_on_prot_sequence(
         allow_overlaps=allow_overlaps,
         allow_multi_match=allow_multi_match,
         color_scheme=color_scheme,
-        title=title,
         order=order,
         figsize=figsize,
         show=show,

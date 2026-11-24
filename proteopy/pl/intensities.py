@@ -86,6 +86,7 @@ def _plot_peptide_intensity_facets(
     order_by_label_rotation: float,
     figsize: tuple[float, float],
     prot_id: str,
+    label_protein: bool,
 ) -> mpl.figure.Figure:
     row_key, col_key = facet_by
     row_levels = _facet_levels(adata.obs, row_key)
@@ -261,8 +262,11 @@ def _plot_peptide_intensity_facets(
                 ha="right",
             )
 
-    fig.suptitle(prot_id)
-    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    if label_protein:
+        fig.suptitle(prot_id)
+        fig.tight_layout(rect=(0, 0, 1, 0.98))
+    else:
+        fig.tight_layout()
     return fig
 
 
@@ -295,7 +299,8 @@ def peptide_intensities(
     adata : AnnData
         Proteomics :class:`~anndata.AnnData`.
     protein_ids : str | Sequence[str]
-        Show peptides mapping to this protein_id.
+        Show peptides mapping to this protein_id. When several proteins are
+        given, one figure is drawn per protein.
     order_by : str, optional
         Column in ``adata.obs`` used to group and order observations on the
         x-axis.
@@ -666,6 +671,7 @@ def peptide_intensities(
                 order_by_label_rotation=order_by_label_rotation,
                 figsize=figsize,
                 prot_id=prot_id,
+                label_protein=len(protein_ids) > 1,
             )
             axes.extend(fig.axes)
 
@@ -831,7 +837,9 @@ def peptide_intensities(
             rotation=xlab_rotation,
             ha="right",
         )
-        _ax.set_title(prot_id)
+        # Label only when several proteins are drawn, to tell them apart
+        if len(protein_ids) > 1:
+            _ax.set_title(prot_id)
         _ax.set_xlabel("Sample")
         _ax.set_ylabel("Intensity")
 
@@ -1271,7 +1279,6 @@ def intensity_hist(
     color_scheme: Any = None,
     xlim: tuple[float | int, float | int] | None = None,
     alpha: float = 0.6,
-    title: str | None = None,
     legend_loc: str = "upper right",
     figsize=(7, 4),
     per_obs: bool = False,
@@ -1323,8 +1330,6 @@ def intensity_hist(
         Explicit x-axis limits ``(xmin, xmax)`` applied to all histograms.
     alpha : float, optional
         Histogram transparency (0-1 range).
-    title : str | None, optional
-        Custom title for the plot; defaults are auto-generated.
     legend_loc : str, optional
         Location argument forwarded to :func:`matplotlib.axes.Axes.legend`.
     figsize : tuple[float, float], optional
@@ -1381,8 +1386,6 @@ def intensity_hist(
         raise TypeError("`alpha` must be numeric.")
     if not 0 <= float(alpha) <= 1:
         raise ValueError("`alpha` must be between 0 and 1.")
-    if title is not None and not isinstance(title, str):
-        raise TypeError("`title` must be a string or None.")
     if not isinstance(legend_loc, str):
         raise TypeError("`legend_loc` must be a string.")
     if (
@@ -1508,11 +1511,9 @@ def intensity_hist(
     value_col = "intensity_value"
     if log_base is None:
         xlabel = "Intensity"
-        descriptor = ""
     else:
         base_str = f"{log_base:g}"
         xlabel = f"Intensity (log{base_str}(x + 1))"
-        descriptor = f"log{base_str}(x + 1)"
 
     # ------- Single (combined) histogram -------
     if not per_obs:
@@ -1588,8 +1589,6 @@ def intensity_hist(
 
         _ax.set_xlabel(xlabel)
         _ax.set_ylabel("Density" if density else "Count")
-        default_title = f"Intensity histogram ({descriptor})"
-        _ax.set_title(title or default_title)
         if x_limits is not None:
             _ax.set_xlim(x_limits)
 
@@ -1714,7 +1713,8 @@ def intensity_hist(
                     df_i[value_col], ax=_ax, color=measured_color, lw=1.2
                 )
 
-        _ax.set_title(str(labels[k]))
+        if n > 1:
+            _ax.set_title(str(labels[k]))
         if r == nrows - 1:
             _ax.set_xlabel(xlabel)
         else:
@@ -1752,9 +1752,7 @@ def intensity_hist(
                 handles=handles, title="Status", loc=legend_loc, frameon=False
             )
 
-    per_obs_title = f"Intensity histograms per observation ({descriptor})"
-    plt.suptitle(title or per_obs_title, y=0.995, fontsize=12)
-    plt.tight_layout(rect=[0, 0, 1, 0.98])
+    plt.tight_layout()
 
     # save/show
     if save is not None:
@@ -1789,7 +1787,6 @@ def abundance_rank(
     zero_to_na: bool = False,
     fill_na: float | int | None = None,
     figsize: tuple[float, float] = (8, 6),
-    title: str | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
     alpha: float = 0.6,
@@ -1853,8 +1850,6 @@ def abundance_rank(
         Replace missing values with this constant before transformations.
     figsize : tuple[float, float], optional
         Figure dimensions (width, height) in inches.
-    title : str, optional
-        Plot title. Defaults to ``"Abundance Rank Plot"``.
     xlabel : str, optional
         Label for x-axis. Defaults to ``"Rank"``.
     ylabel : str, optional
@@ -2325,10 +2320,9 @@ def abundance_rank(
                 only_move={"text": "x+y"},
             )
 
-    # --- Set labels and title ---
+    # --- Set labels ---
     _ax.set_xlabel(xlabel or "Rank")
     _ax.set_ylabel(ylabel or ylabel_default)
-    _ax.set_title(title or "Abundance Rank Plot")
 
     plt.tight_layout()
 
@@ -2360,7 +2354,6 @@ def box(
     log_transform: float | None = None,
     color_scheme: str | dict | list | None = None,
     figsize: tuple[float, float] = (8.0, 5.0),
-    title: str | None = None,
     xlabel_rotation: float = 0,
     ylabel: str | None = None,
     show_points: bool = False,
@@ -2403,8 +2396,6 @@ def box(
         a dict mapping group names to colors, or a list of colors.
     figsize : tuple[float, float], optional
         Figure dimensions (width, height) in inches.
-    title : str | None, optional
-        Plot title. When ``None``, defaults to the variable name.
     xlabel_rotation : float, optional
         Rotation angle (degrees) for x-axis tick labels.
     ylabel : str | None, optional
@@ -2650,7 +2641,9 @@ def box(
             rotation=xlabel_rotation,
             ha=ha,
         )
-        _ax.set_title(title if title is not None else key)
+        # Label only when several variables are drawn, to tell them apart
+        if multi:
+            _ax.set_title(key)
 
         plt.tight_layout()
 
@@ -2697,7 +2690,6 @@ def binary_heatmap(
     xtick_rotation: float = 90,
     ytick_rotation: float = 0,
     ylabel: str | None = None,
-    title: str | None = None,
     show: bool = True,
     save: str | os.PathLike[str] | None = None,
     ax: Axes | None = None,
@@ -2759,8 +2751,6 @@ def binary_heatmap(
         Label for the heatmap y-axis. When ``None`` (default), the label is
         derived automatically from the proteodata level (``"Peptide"`` or
         ``"Protein"``). Pass ``""`` to hide the label entirely.
-    title : str | None, optional
-        Optional title placed above the heatmap.
     show : bool, optional
         If True, call :func:`matplotlib.pyplot.show` after plotting.
     save : str | PathLike, optional
@@ -2838,8 +2828,6 @@ def binary_heatmap(
             raise TypeError("`fill_na` must be a numeric scalar.")
         if not np.isfinite(fill_na):
             raise ValueError("`fill_na` must be finite.")
-    if title is not None and not isinstance(title, str):
-        raise TypeError("`title` must be a string or None.")
     if ylabel is not None and not isinstance(ylabel, str):
         raise TypeError("`ylabel` must be a string or None.")
     if var_id_key is not None and not isinstance(var_id_key, str):
@@ -3040,8 +3028,6 @@ def binary_heatmap(
             if sys.getrecursionlimit() != current_limit:
                 sys.setrecursionlimit(current_limit)
     grid.ax_heatmap.set_ylabel(ylabel)
-    if title:
-        grid.ax_heatmap.set_title(title)
     plt.setp(
         grid.ax_heatmap.get_xticklabels(), rotation=xtick_rotation, ha="right"
     )

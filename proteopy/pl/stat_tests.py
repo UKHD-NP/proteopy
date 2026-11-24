@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -17,45 +16,6 @@ from proteopy.utils.matplotlib import _resolve_color_scheme
 from proteopy.utils.stat_tests import (
     volcano_plot as _volcano_plot,
 )
-
-
-def _stat_test_title_from_varm_slot(
-    adata: ad.AnnData,
-    varm_slot: str,
-) -> str:
-    """
-    Generate a human-readable plot title from a stat test varm slot.
-
-    Parses the varm slot name to extract test type, group_by, design
-    (group comparison), and optional layer information, then formats them
-    into a concise title string. If parsing fails, returns the original
-    slot name with a runtime warning.
-
-    Returns
-    -------
-    str
-        Formatted title string. Format:
-        ``<Test Label> | <group_by>: <Design>`` or
-        ``<Test Label> | <group_by>: <Design> | layer: <layer>``
-        if a layer was specified. Returns the original ``varm_slot``
-        unchanged if parsing fails.
-    """
-    try:
-        parsed = parse_stat_test_varm_slot(varm_slot, adata=adata)
-    except ValueError as exc:
-        warnings.warn(
-            f"Could not parse varm slot '{varm_slot}': {exc}",
-            RuntimeWarning,
-        )
-        return varm_slot
-
-    title = (
-        f"{parsed['test_type_label']} | "
-        f"{parsed['group_by']}: {parsed['design_label']}"
-    )
-    if parsed["layer"]:
-        title = f"{title} | layer: {parsed['layer']}"
-    return title
 
 
 def _normalize_alt_color(
@@ -366,7 +326,6 @@ def volcano(
     ylabel: str | None = None,
     alt_color: pd.Series | list[bool] | np.ndarray | None = None,
     yscale_log: bool = True,
-    title: str | None = None,
     show: bool = True,
     save: str | Path | None = None,
     ax: Axes | None = None,
@@ -451,10 +410,6 @@ def volcano(
         smaller p-values appear higher). When ``False``, apply
         ``-log10`` transform to p-values and plot on a linear
         y-axis.
-    title : str | None, optional
-        Plot title. If ``None``, generates a title from the
-        ``varm_slot`` name using the stat test metadata (test type,
-        group comparison, layer).
     show : bool, optional
         Call ``matplotlib.pyplot.show()`` to display the plot.
     save : str | Path | None, optional
@@ -546,11 +501,6 @@ def volcano(
         )
         alt_arr = alt_series.to_numpy()
 
-    if title is None:
-        title = _stat_test_title_from_varm_slot(
-            adata, varm_slot,
-        )
-
     if ylabel is None:
         if yscale_log:
             ylabel = pval_col_used
@@ -570,7 +520,6 @@ def volcano(
         ylabel=ylabel,
         alt_color=alt_arr,
         yscale_log=yscale_log,
-        title=title,
         show=show,
         save=save,
         ax=ax,
@@ -887,7 +836,6 @@ def differential_abundance_box(
     layer: str | None = None,
     verbose: bool = False,
     figsize: tuple[float, float] = (10.0, 6.0),
-    title: str | None = None,
     xlabel_rotation: float = 45,
     color_scheme: str | dict | list | None = None,
     show_pval: bool = True,
@@ -932,9 +880,6 @@ def differential_abundance_box(
         intensity data.
     figsize : tuple[float, float], optional
         Figure dimensions (width, height) in inches.
-    title : str | None, optional
-        Plot title. If ``None``, generates a title from the
-        ``varm_slot`` name.
     xlabel_rotation : float, optional
         Rotation angle (degrees) for x-axis variable labels.
     color_scheme : str | dict | list | None, optional
@@ -1053,12 +998,6 @@ def differential_abundance_box(
         rotation=xlabel_rotation,
         ha="right",
     )
-
-    if title is None:
-        title = _stat_test_title_from_varm_slot(
-            adata, varm_slot,
-        )
-    _ax.set_title(title)
 
     _ax.legend(
         title=group_by,

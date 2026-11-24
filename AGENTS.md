@@ -627,6 +627,34 @@ Corollaries:
 
 ---
 
+### `pl` Draws the Plot, Not the Figure Decoration (MANDATORY)
+
+A `pl.*` function draws the data: the marks, axis labels, tick labels,
+legends and colorbars needed to read the plot. Titles and other
+figure-level decoration are left to the user.
+
+- Do **not** add `title`, `suptitle`, `fig_title` or similar
+  parameters, and do not set a plot title (`ax.set_title()`) or figure
+  title (`fig.suptitle()`) inside the function.
+- Users add or change titles, labels, limits and other styling on the
+  returned Axes, e.g. `ax.set_title("...")`, as shown in
+  `docs/tutorials/plotting.ipynb`. For multi-axis plots that return
+  `None`, call with `show=False` and edit `plt.gcf()` (e.g.
+  `plt.gcf().suptitle("...")`) before showing or saving.
+- Keep sensible default axis labels (`ax.set_xlabel()` /
+  `ax.set_ylabel()`); they describe the data drawn and users can
+  override them on the returned Axes.
+- **Exception: identifying labels for several plots.** When one call
+  draws several plots or panels of the same kind (one per protein,
+  variable, profile or observation, e.g. `pl.box(keys=[...])`,
+  `pl.peptide_intensities(protein_ids=[...])`), title each with the
+  ID of what it shows (e.g. its `protein_id`), so they can be told
+  apart, including in a multi-page PDF saved by the function. When
+  only one is drawn, set no title. Facet labels naming the facet
+  values follow the same reasoning and are always drawn.
+
+---
+
 ## Documentation
 Documentation is built using Sphinx, with the source files located in `docs/`. Keep function docstrings structured and descriptive, following numpydoc conventions.
 
@@ -1017,12 +1045,14 @@ To ensure consistent plotting behavior across `pl.*` modules, adhere to the foll
 - `ascending: bool | None`
   When `order` is `None`, sort the relevant axis by a function-relevant metric. For example, if a bar plot shows the mean of vars across obs, `ascending=True` sorts bars by ascending mean; `False` by descending; `None` imposes no metric order, so the default order rule applies.
 
-> The two mandatory `pl` sections above — **Deterministic Ordering in
-> `pl`** and **Axis Labels Come from ID Columns, Never from the Index**
-> — govern `order`, `order_by`, `group_by`, every default axis or group
-> sequence, default group colors, and every drawn label. Derived orders
-> come from `_default_label_order()` in `proteopy/pl/_resolvers.py`.
-> Read them before writing a `pl` function.
+> The three mandatory `pl` sections above — **Deterministic Ordering in
+> `pl`**, **Axis Labels Come from ID Columns, Never from the Index** and
+> **`pl` Draws the Plot, Not the Figure Decoration** — govern `order`,
+> `order_by`, `group_by`, every default axis or group sequence, default
+> group colors, every drawn label, and the absence of title
+> parameters. Derived orders come from `_default_label_order()` in
+> `proteopy/pl/_resolvers.py`. Read them before writing a `pl`
+> function.
 
 
 ---

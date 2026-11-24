@@ -326,8 +326,6 @@ def hclustv_profile_intensities(
     order: list[str] | None = None,
     n_cols: int = 2,
     n_rows: int = 3,
-    title: str | None = None,
-    titles: list[str] | dict[str, str] | None = None,
     xlabel_rotation: float = 45,
     sort_by_label_rotation: float = 0,
     ylabel: str = "Intensity",
@@ -387,13 +385,6 @@ def hclustv_profile_intensities(
         Number of columns in the subplot grid.
     n_rows : int
         Number of rows in the subplot grid.
-    title : str | None
-        Overall figure title. When ``None``, no suptitle is added.
-    titles : list[str] | dict[str, str] | None
-        Custom titles for each subplot. When ``list``, must have the same
-        length as the number of plotted profiles. When ``dict``, maps
-        profile/cluster names to custom titles. When ``None``, uses
-        default titles (``"Cluster {profile_name}"``).
     xlabel_rotation : float
         Rotation angle (degrees) for x-axis tick labels.
     sort_by_label_rotation : float
@@ -512,20 +503,6 @@ def hclustv_profile_intensities(
                 f"(grid capacity: {n_rows}x{n_cols})."
             )
         selected_profiles = selected_profiles[:max_plots]
-
-    # Validate titles parameter
-    if titles is not None:
-        if isinstance(titles, list):
-            if len(titles) != len(selected_profiles):
-                raise ValueError(
-                    f"titles list length ({len(titles)}) must match "
-                    f"number of profiles ({len(selected_profiles)})."
-                )
-        elif not isinstance(titles, dict):
-            raise TypeError(
-                f"titles must be list, dict, or None, "
-                f"got {type(titles).__name__}."
-            )
 
     # Validate mutually exclusive parameters
     if group_by is not None and sort_by is not None:
@@ -740,24 +717,15 @@ def hclustv_profile_intensities(
         _ax.set_xlabel('')
         _ax.set_ylabel(ylabel)
 
-        # Set subplot title
-        if titles is None:
-            subplot_title = f"Profile {profile_name}"
-        elif isinstance(titles, list):
-            subplot_title = titles[idx]
-        else:
-            subplot_title = titles.get(profile_name, f"Profile {profile_name}")
-        _ax.set_title(subplot_title)
+        # Label only when several profiles are drawn, to tell them apart
+        if n_profiles > 1:
+            _ax.set_title(f"Profile {profile_name}")
 
         returned_axes.append(_ax)
 
     # Hide unused axes
     for idx in range(n_profiles, len(axes_flat)):
         axes_flat[idx].set_visible(False)
-
-    # Add overall title
-    if title is not None:
-        fig.suptitle(title, fontsize=12, y=1.02)
 
     plt.tight_layout()
 

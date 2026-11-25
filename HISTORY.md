@@ -25,6 +25,8 @@ and this project adheres to
   reference lines
 - `peptide_intensities()`, `proteoform_intensities()`: new `facet_by`
   parameter splitting the samples (`.obs`) across a grid of subplots
+- `peptide_intensities()`, `proteoform_intensities()`: `z_transform`
+  also accepts an `.obs` column name (or a list of them)
 - `var_categories_upset()`: new feature
 - `peptides_on_prot_sequence()`: `ref_sequence` also accepts a
   reference proteome FASTA path (`.fasta`, matched to `protein_id` by

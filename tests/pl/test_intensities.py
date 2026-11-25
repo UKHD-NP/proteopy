@@ -176,3 +176,272 @@ def test_z_transform_invalid_values_raise(adata, z_transform, error):
             z_transform=z_transform,
             show=False,
         )
+
+
+# -- Missing values break the line
+
+
+@pytest.fixture
+def adata_na():
+    peptides = ["PEPA", "PEPB", "PEPC"]
+    samples = [f"S{i}" for i in range(1, 7)]
+    var = pd.DataFrame(
+        {
+            "peptide_id": peptides,
+            "protein_id": ["P1"] * 3,
+            "proteoform_id": ["f1", "f2", "f2"],
+        },
+        index=peptides,
+    )
+    obs = pd.DataFrame(
+        {"sample_id": samples, "condition": list("AAABBB")},
+        index=samples,
+    )
+    X = np.array(
+        [
+            [10.0, 50.0, 30.0],
+            [20.0, np.nan, np.nan],
+            [np.nan, 70.0, 35.0],
+            [40.0, 80.0, np.nan],
+            [50.0, np.nan, np.nan],
+            [60.0, 100.0, 45.0],
+        ]
+    )
+    return ad.AnnData(X=X, obs=obs, var=var)
+
+
+def _segments(axes):
+    """Return the sorted (x positions, y values) of each drawn line."""
+    axes = axes if isinstance(axes, list) else [axes]
+    segments = []
+    for ax in axes:
+        for line in ax.lines:
+            if line.get_linestyle() == "--" or not len(line.get_xdata()):
+                continue
+            segments.append(
+                (
+                    tuple(int(x) for x in line.get_xdata()),
+                    tuple(float(y) for y in line.get_ydata()),
+                )
+            )
+    plt.close("all")
+    return sorted(segments)
+
+
+PEPTIDE_SEGMENTS = sorted(
+    [
+        ((0, 1), (10.0, 20.0)),
+        ((3, 4, 5), (40.0, 50.0, 60.0)),
+        ((0,), (50.0,)),
+        ((2, 3), (70.0, 80.0)),
+        ((5,), (100.0,)),
+        ((0,), (30.0,)),
+        ((2,), (35.0,)),
+        ((5,), (45.0,)),
+    ]
+)
+
+
+def test_missing_values_break_peptide_lines(adata_na):
+    ax = peptide_intensities(adata_na, protein_ids="P1", show=False)
+    assert _segments(ax) == PEPTIDE_SEGMENTS
+
+
+def test_missing_values_break_color_lines(adata_na):
+    ax = proteoform_intensities(adata_na, "P1", show=False)
+    assert _segments(ax) == PEPTIDE_SEGMENTS
+
+
+def test_missing_values_break_group_by_lines_only_if_all_missing(
+    adata_na,
+):
+    ax = peptide_intensities(
+        adata_na,
+        protein_ids="P1",
+        group_by="proteoform_id",
+        show=False,
+    )
+    # f2 (PEPB, PEPC) is missing entirely only in S2 and S5
+    expected = sorted(
+        [
+            ((0, 1), (10.0, 20.0)),
+            ((3, 4, 5), (40.0, 50.0, 60.0)),
+            ((0,), (40.0,)),
+            ((2, 3), (52.5, 80.0)),
+            ((5,), (72.5,)),
+        ]
+    )
+    assert _segments(ax) == expected
+
+
+def test_missing_values_break_group_by_legend_complete(adata_na):
+    ax = peptide_intensities(
+        adata_na,
+        protein_ids="P1",
+        group_by="proteoform_id",
+        show=False,
+    )
+    legend = (ax if isinstance(ax, list) else [ax])[0].get_legend()
+    labels = [text.get_text() for text in legend.get_texts()]
+    plt.close("all")
+    assert labels == ["f1", "f2"]
+
+
+def test_missing_values_break_after_log_and_z_transform(adata_na):
+    ax = peptide_intensities(
+        adata_na,
+        protein_ids="P1",
+        log_transform=2,
+        z_transform=True,
+        show=False,
+    )
+    positions = [x for x, _ in _segments(ax)]
+    assert positions == [x for x, _ in PEPTIDE_SEGMENTS]
+
+
+def test_missing_values_break_lines_in_facets(adata_na):
+    axes = peptide_intensities(
+        adata_na,
+        protein_ids="P1",
+        facet_by="condition",
+        show=False,
+    )
+    # PEPA: S1-S2 in facet A; S4-S6 in facet B
+    segments = _segments(axes)
+    assert ((0, 1), (10.0, 20.0)) in segments
+    assert ((0, 1, 2), (40.0, 50.0, 60.0)) in segments
+    # PEPB in facet B: S4 and S6 separated by missing S5
+    assert ((0,), (80.0,)) in segments
+    assert ((2,), (100.0,)) in segments
+
+
+def test_hidden_zeros_break_lines(adata_na):
+    adata_na.X = np.nan_to_num(adata_na.X, nan=0.0)
+    ax = peptide_intensities(
+        adata_na,
+        protein_ids="P1",
+        show_zeros=False,
+        show=False,
+    )
+    assert _segments(ax) == PEPTIDE_SEGMENTS
+
+
+# -- Dashed segments bridge missing values
+
+CONNECTOR_GID = "missing_value_connector"
+
+
+def _connectors(axes):
+    """Return the sorted (x positions, y values) of dashed connectors."""
+    axes = axes if isinstance(axes, list) else [axes]
+    connectors = []
+    for ax in axes:
+        for line in ax.lines:
+            if line.get_gid() != CONNECTOR_GID:
+                continue
+            assert line.get_linestyle() == "--"
+            connectors.append(
+                (
+                    tuple(int(x) for x in line.get_xdata()),
+                    tuple(float(y) for y in line.get_ydata()),
+                )
+            )
+    plt.close("all")
+    return sorted(connectors)
+
+
+PEPTIDE_CONNECTORS = sorted(
+    [
+        ((1, 3), (20.0, 40.0)),
+        ((0, 2), (50.0, 70.0)),
+        ((3, 5), (80.0, 100.0)),
+        ((0, 2), (30.0, 35.0)),
+        ((2, 5), (35.0, 45.0)),
+    ]
+)
+
+
+def test_dashed_connectors_bridge_peptide_gaps(adata_na):
+    ax = peptide_intensities(adata_na, protein_ids="P1", show=False)
+    assert _connectors(ax) == PEPTIDE_CONNECTORS
+
+
+def test_dashed_connectors_bridge_color_gaps(adata_na):
+    ax = proteoform_intensities(adata_na, "P1", show=False)
+    assert _connectors(ax) == PEPTIDE_CONNECTORS
+
+
+def test_dashed_connectors_use_line_color(adata_na):
+    ax = proteoform_intensities(adata_na, "P1", show=False)
+    ax = (ax if isinstance(ax, list) else [ax])[0]
+    legend = ax.get_legend()
+    handle_colors = {
+        text.get_text(): handle.get_color()
+        for text, handle in zip(legend.get_texts(), legend.legend_handles)
+    }
+    connector_colors = {
+        tuple(int(x) for x in line.get_xdata()): line.get_color()
+        for line in ax.lines
+        if line.get_gid() == CONNECTOR_GID
+    }
+    plt.close("all")
+    # PEPA (f1) skips S3; PEPB (f2) skips S5
+    assert connector_colors[(1, 3)] == handle_colors["f1"]
+    assert connector_colors[(3, 5)] == handle_colors["f2"]
+
+
+def test_dashed_connectors_bridge_group_means(adata_na):
+    ax = peptide_intensities(
+        adata_na,
+        protein_ids="P1",
+        group_by="proteoform_id",
+        show=False,
+    )
+    expected = sorted(
+        [
+            ((1, 3), (20.0, 40.0)),
+            ((0, 2), (40.0, 52.5)),
+            ((3, 5), (80.0, 72.5)),
+        ]
+    )
+    assert _connectors(ax) == expected
+
+
+def test_dashed_connectors_do_not_cross_order_by_groups(adata_na):
+    ax = peptide_intensities(
+        adata_na,
+        protein_ids="P1",
+        order_by="condition",
+        show=False,
+    )
+    # Gaps spanning the A|B boundary (S3|S4) are left open
+    expected = sorted(
+        [
+            ((0, 2), (50.0, 70.0)),
+            ((3, 5), (80.0, 100.0)),
+            ((0, 2), (30.0, 35.0)),
+        ]
+    )
+    assert _connectors(ax) == expected
+
+
+def test_dashed_connectors_in_facets(adata_na):
+    axes = peptide_intensities(
+        adata_na,
+        protein_ids="P1",
+        facet_by="condition",
+        show=False,
+    )
+    expected = sorted(
+        [
+            ((0, 2), (50.0, 70.0)),
+            ((0, 2), (30.0, 35.0)),
+            ((0, 2), (80.0, 100.0)),
+        ]
+    )
+    assert _connectors(axes) == expected
+
+
+def test_no_dashed_connectors_without_missing_values(adata):
+    ax = peptide_intensities(adata, protein_ids="P1", show=False)
+    assert _connectors(ax) == []

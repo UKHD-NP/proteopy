@@ -102,6 +102,174 @@ def _z_transform_columns(
     return X_out
 
 
+def _segment_lines(
+    df: pd.DataFrame,
+    line_key: str,
+) -> pd.DataFrame:
+    """Split each line into runs of consecutive non-missing values.
+
+    Rows are placed by the codes of the ordered ``obs_index``
+    categorical; rows outside its categories are dropped. A position
+    where a line (one ``line_key`` value) has no non-missing
+    intensity ends the current run. Returns the non-missing rows with
+    a ``_segment`` column numbering the runs of each line from 0 and
+    a ``_pos`` column with the x position. Rows with a missing
+    ``line_key`` are dropped.
+    """
+    df = df.assign(_pos=df["obs_index"].cat.codes)
+    df = df[df["_pos"] >= 0]
+    present = (
+        df["intensity"]
+        .notna()
+        .groupby([df[line_key], df["_pos"]], observed=True, sort=True)
+        .any()
+    )
+    run = (~present).groupby(level=0, observed=True).cumsum()
+    segment = (
+        run[present]
+        .groupby(level=0, observed=True)
+        .rank(method="dense")
+        .astype(int)
+        - 1
+    )
+    segment = segment.rename("_segment").reset_index()
+    out = df[df["intensity"].notna()].merge(
+        segment,
+        on=[line_key, "_pos"],
+        how="inner",
+    )
+    return out
+
+
+MISSING_CONNECTOR_GID = "missing_value_connector"
+
+
+def _draw_missing_connectors(
+    ax: Axes,
+    seg_df: pd.DataFrame,
+    line_key: str,
+    hue_key: str,
+    order_by: str | None,
+    palette_map: dict | None,
+) -> None:
+    """Bridge the gaps between consecutive runs with dashed lines.
+
+    Each line's points are its per-position means (the seaborn
+    estimator for aggregated lines; single values otherwise). Gaps
+    are not bridged across ``order_by`` groups, matching the solid
+    lines, which seaborn splits by ``style``.
+    """
+    agg = {
+        "intensity": ("intensity", "mean"),
+        "_segment": ("_segment", "first"),
+    }
+    if hue_key != line_key:
+        agg["_hue"] = (hue_key, "first")
+    if order_by:
+        agg["_order"] = (order_by, "first")
+    points = (
+        seg_df.groupby([line_key, "_pos"], observed=True, sort=True)
+        .agg(**agg)
+        .reset_index()
+    )
+    if hue_key == line_key:
+        points["_hue"] = points[line_key]
+
+    linewidth = mpl.rcParams["lines.linewidth"]
+    for _, line in points.groupby(line_key, observed=True, sort=False):
+        segments = line["_segment"].to_numpy()
+        gaps = segments[:-1] != segments[1:]
+        if order_by:
+            order_vals = line["_order"].to_numpy()
+            gaps &= order_vals[:-1] == order_vals[1:]
+        pos = line["_pos"].to_numpy()
+        values = line["intensity"].to_numpy()
+        hues = line["_hue"].to_numpy()
+        for i in np.flatnonzero(gaps):
+            if palette_map is None or hues[i] not in palette_map:
+                continue
+            ax.plot(
+                [pos[i], pos[i + 1]],
+                [values[i], values[i + 1]],
+                linestyle="--",
+                linewidth=linewidth,
+                color=palette_map[hues[i]],
+                zorder=1,
+                gid=MISSING_CONNECTOR_GID,
+            )
+
+
+def _draw_intensity_lines(
+    ax: Axes,
+    df: pd.DataFrame,
+    order_by: str | None,
+    group_by: str | None,
+    color: str | None,
+    palette_map: dict | None,
+) -> None:
+    """Draw intensity lines, dashed across missing values.
+
+    seaborn drops missing values and connects the remaining points
+    with solid lines. Each run of consecutive values is therefore
+    drawn as a separate solid line and the gaps between runs are
+    bridged with dashed lines.
+    """
+    line_key = group_by or "var_index"
+    seg_df = _segment_lines(df, line_key)
+    lineplot_kwargs = dict(
+        x="obs_index",
+        y="intensity",
+        marker="o",
+        dashes=False,
+        ax=ax,
+    )
+    if palette_map:
+        lineplot_kwargs["palette"] = palette_map
+    if order_by:
+        lineplot_kwargs["style"] = order_by
+
+    if group_by:
+        # Aggregation cannot be combined with ``units``; draw each run
+        # separately. Every group has a run 0, so its legend is complete.
+        for seg_id, seg_rows in seg_df.groupby("_segment", sort=True):
+            sns.lineplot(
+                data=seg_rows,
+                hue=group_by,
+                legend="brief" if seg_id == 0 else False,
+                **lineplot_kwargs,
+            )
+        _draw_missing_connectors(
+            ax=ax,
+            seg_df=seg_df,
+            line_key=line_key,
+            hue_key=group_by,
+            order_by=order_by,
+            palette_map=palette_map,
+        )
+        return
+
+    seg_df["_unit"] = (
+        seg_df["var_index"].astype(str) + "|" + seg_df["_segment"].astype(str)
+    )
+    sns.lineplot(
+        data=seg_df,
+        hue=color or "var_index",
+        units="_unit",
+        estimator=None,
+        errorbar=None,
+        legend="brief",
+        **lineplot_kwargs,
+    )
+    _draw_missing_connectors(
+        ax=ax,
+        seg_df=seg_df,
+        line_key=line_key,
+        hue_key=color or "var_index",
+        order_by=order_by,
+        palette_map=palette_map,
+    )
+
+
 def _facet_value_mask(series: pd.Series, value: Any) -> pd.Series:
     if pd.isna(value):
         return series.isna()
@@ -256,32 +424,14 @@ def _plot_peptide_intensity_facets(
                 facet_ax.set_xlim(0, 1)
                 facet_ax.set_xticks([])
             else:
-                lineplot_kwargs = dict(
-                    data=panel_df,
-                    x="obs_index",
-                    y="intensity",
-                    marker="o",
-                    dashes=False,
-                    legend="brief",
+                _draw_intensity_lines(
                     ax=facet_ax,
+                    df=panel_df,
+                    order_by=order_by,
+                    group_by=group_by,
+                    color=color,
+                    palette_map=palette_map,
                 )
-                if palette_map:
-                    lineplot_kwargs["palette"] = palette_map
-                if order_by:
-                    lineplot_kwargs["style"] = order_by
-                if group_by:
-                    lineplot_kwargs["hue"] = group_by
-                elif color:
-                    lineplot_kwargs.update(
-                        hue=color,
-                        units="var_index",
-                        estimator=None,
-                        errorbar=None,
-                    )
-                else:
-                    lineplot_kwargs["hue"] = "var_index"
-
-                sns.lineplot(**lineplot_kwargs)
                 _add_peptide_intensity_legend(
                     ax=facet_ax,
                     panel_df=panel_df,
@@ -792,39 +942,14 @@ def peptide_intensities(
 
         else:
 
-            # sub_df = sub_df.sort_values(by=order_by)
-
-            lineplot_kwargs = dict(
-                data=sub_df,
-                x="obs_index",
-                y="intensity",
-                marker="o",
-                dashes=False,
-                legend="brief",
+            _draw_intensity_lines(
                 ax=_ax,
+                df=sub_df,
+                order_by=order_by,
+                group_by=group_by,
+                color=color,
+                palette_map=palette_map,
             )
-
-            if palette_map:
-                lineplot_kwargs["palette"] = palette_map
-
-            if order_by:
-                lineplot_kwargs["style"] = order_by
-
-            if group_by:
-                lineplot_kwargs.update(
-                    hue=group_by,
-                )
-            elif color:
-                lineplot_kwargs.update(
-                    hue=color,
-                    units="var_index",
-                    estimator=None,
-                    errorbar=None,
-                )
-            else:
-                lineplot_kwargs.update(hue="var_index")
-
-            sns.lineplot(**lineplot_kwargs)
 
             # Legend
             handles, labels = _ax.get_legend_handles_labels()

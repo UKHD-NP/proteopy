@@ -129,6 +129,8 @@ and this project adheres to
   `intensity_hist(per_obs=True)`, `hclustv_profile_intensities()`:
   plots and panels are titled with their ID (e.g. `protein_id`) only
   when the call draws more than one; a single plot gets no title
+- `peptide_intensities()`, `proteoform_intensities()`: lines skip
+  missing values with a dashed segment instead of a solid one
 
 **Preprocessing** (`pr.pp`)
 

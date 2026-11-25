@@ -28,6 +28,80 @@ from proteopy.utils.array import is_log_transformed
 from proteopy.utils.functools import partial_with_docsig
 
 
+def _resolve_z_transform_keys(
+    z_transform: bool | str | Sequence[str],
+    obs: pd.DataFrame,
+) -> list[str] | None:
+    """Return the ``.obs`` keys defining z-transform groups.
+
+    ``[]`` standardizes across all observations; ``None`` disables
+    the transformation.
+    """
+    if isinstance(z_transform, bool):
+        return [] if z_transform else None
+    if isinstance(z_transform, str):
+        keys = [z_transform]
+    elif isinstance(z_transform, SequenceABC):
+        keys = list(z_transform)
+        if not keys:
+            raise ValueError("`z_transform` cannot be an empty sequence.")
+        if not all(isinstance(key, str) for key in keys):
+            raise TypeError("`z_transform` sequence elements must be strings.")
+        if len(set(keys)) != len(keys):
+            raise ValueError("`z_transform` contains duplicate keys.")
+    else:
+        raise TypeError(
+            "`z_transform` must be a bool, an .obs column name or a "
+            "sequence of .obs column names."
+        )
+    missing = [key for key in keys if key not in obs.columns]
+    if missing:
+        raise KeyError(
+            f"`z_transform` keys not present in adata.obs: {missing}"
+        )
+    return keys
+
+
+def _z_transform_columns(
+    X: np.ndarray,
+    obs: pd.DataFrame,
+    keys: list[str],
+) -> np.ndarray:
+    """Standardize each column of ``X``, optionally within obs groups.
+
+    With empty ``keys`` every column is standardized across all rows.
+    Otherwise rows are grouped by the unique combinations of
+    ``obs[keys]`` and standardized within each group; rows with a
+    missing group label become NaN. NaNs are skipped and a zero
+    standard deviation is replaced by 1.
+    """
+    if keys:
+        group_indices = (
+            obs[keys]
+            .reset_index(drop=True)
+            .groupby(keys, observed=True, dropna=True, sort=False)
+            .indices
+        )
+        row_groups = list(group_indices.values())
+    else:
+        row_groups = [np.arange(X.shape[0])]
+
+    X_out = np.full_like(X, np.nan, dtype=float)
+    for rows in row_groups:
+        X_grp = X[rows]
+        # All-NaN columns trigger empty-slice warnings; result stays NaN
+        with (
+            warnings.catch_warnings(),
+            np.errstate(divide="ignore", invalid="ignore"),
+        ):
+            warnings.simplefilter("ignore", RuntimeWarning)
+            grp_mean = np.nanmean(X_grp, axis=0, keepdims=True)
+            grp_std = np.nanstd(X_grp, axis=0, keepdims=True)
+        grp_std[grp_std == 0] = 1.0
+        X_out[rows] = (X_grp - grp_mean) / grp_std
+    return X_out
+
+
 def _facet_value_mask(series: pd.Series, value: Any) -> pd.Series:
     if pd.isna(value):
         return series.isna()
@@ -281,7 +355,7 @@ def peptide_intensities(
     group_by: str | None = None,
     log_transform: float | None = None,
     fill_na: float | None = None,
-    z_transform: bool = False,
+    z_transform: bool | str | Sequence[str] = False,
     show_zeros: bool = True,
     xlab_rotation: float = 0,
     order_by_label_rotation: float = 0,
@@ -319,6 +393,9 @@ def peptide_intensities(
         annotation. Either element may be ``None`` to collapse that grid
         axis. Within each facet, ``order_by`` groups and orders only the
         samples in that facet. Cannot be combined with ``ax``.
+        When using the ``z_transform`` parameter in combination with
+        ``facet_by``, consider passing the facet annotation(s) to
+        ``z_transform`` as well for within-facet standarization.
     color : str, optional
         ``adata.var`` column used for per-peptide coloring.
     group_by : str, optional
@@ -331,10 +408,15 @@ def peptide_intensities(
         ``log(value + 1, base)``.
     fill_na : float, optional
         Replace missing intensities before zero/log/z transformations when set.
-    z_transform : bool, optional
-        Standardize each peptide across observations after optional log
-        transform.
-        Skips NA.
+    z_transform : bool | str | Sequence[str], optional
+        Standardize each peptide to mean 0 and standard deviation 1
+        after the optional log transform, skipping NAs. If ``True``,
+        standardize across all observations. If a column name or a
+        sequence of column names in ``adata.obs``, standardize
+        separately within each group of observations sharing the same
+        value (or combination of values) of these columns. Observations with a
+        missing group value become NaN and are not plotted. Peptides with zero
+        standard deviation in a group are centered only.
     show_zeros : bool, optional
         Display zero intensities when ``True``; otherwise zeros become ``NaN``.
     xlab_rotation : float, optional
@@ -409,6 +491,8 @@ def peptide_intensities(
                 "`facet_by` cannot be combined with `ax`; faceted "
                 "plots create their own subplot grid."
             )
+
+    z_keys = _resolve_z_transform_keys(z_transform, adata.obs)
 
     if ax is not None and not isinstance(ax, Axes):
         raise TypeError("`ax` must be a matplotlib.axes.Axes or None.")
@@ -555,12 +639,8 @@ def peptide_intensities(
         with np.errstate(divide="ignore", invalid="ignore"):
             X_processed = np.log1p(X_processed) / np.log(log_base)
 
-    if z_transform and selected_vars:
-        with np.errstate(divide="ignore", invalid="ignore"):
-            arr_mean = np.nanmean(X_processed, axis=0, keepdims=True)
-            arr_std = np.nanstd(X_processed, axis=0, keepdims=True)
-        arr_std[arr_std == 0] = 1.0
-        X_processed = (X_processed - arr_mean) / arr_std
+    if z_keys is not None and selected_vars:
+        X_processed = _z_transform_columns(X_processed, adata.obs, z_keys)
 
     if not show_zeros and zero_mask.size:
         X_processed[zero_mask] = np.nan

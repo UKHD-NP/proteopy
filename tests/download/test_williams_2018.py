@@ -7,7 +7,6 @@ import pytest
 
 from proteopy.download import williams_2018
 
-
 # -- Expected values -------------------------------------------------
 
 # Changed by the missing-value fix in datasets.williams_2018. The var

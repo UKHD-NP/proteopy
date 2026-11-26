@@ -5,7 +5,6 @@ import pandas as pd
 from proteopy.datasets import williams_2018 as _load_williams_2018
 from proteopy.utils.string import detect_separator_from_extension
 
-
 _DEFAULT_INTENSITIES = (
     "williams-2018_ms-proteomics" "_mouse-tissue_intensities.tsv"
 )

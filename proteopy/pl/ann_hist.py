@@ -16,7 +16,6 @@ import seaborn as sns
 
 from proteopy.utils.anndata import check_proteodata
 
-
 _RESERVED_KWARGS = ("data", "ax")
 _COLUMN_KWARGS = ("hue", "weights")
 _MAX_REPORTED_GROUPS = 5

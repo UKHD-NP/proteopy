@@ -752,7 +752,7 @@ New assets must remain lightweight and include provenance notes.
 ---
 
 ## Coding Standards
-- Python version: 3.10–3.11
+- Python version: 3.10–3.14
 - Indentation: 4 spaces
 - Line length: 72 characters for docstrings and 79 characters for code.
 - Naming conventions:

@@ -68,7 +68,7 @@ enabling:
 
 ## Installation
 
-ProteoPy requires Python 3.10 or later. We recommend installing ProteoPy in a
+ProteoPy requires Python 3.11 or later. We recommend installing ProteoPy in a
 dedicated virtual environment:
 
 ```bash
@@ -80,7 +80,7 @@ pip install ipykernel
 python -m ipykernel install --user --name=proteopy-env
 
 # Using conda
-conda create -n proteopy-env "python>=3.10"
+conda create -n proteopy-env "python>=3.11"
 conda activate proteopy-env
 pip install ipykernel
 python -m ipykernel install --user --name=proteopy-env

@@ -100,7 +100,7 @@ and this project adheres to
 
 **Internal**
 
-- CI tests Python 3.10–3.14 (previously 3.10–3.11) on Linux, macOS
+- CI tests Python 3.11–3.14 (previously 3.10–3.11) on Linux, macOS
   and Windows.
 - Bumped pre-commit hooks: pylint 4.1.4, black 26.10.1, pyupgrade
   3.22.0.
@@ -144,6 +144,11 @@ and this project adheres to
   - `zeros_to_na` parameter renamed to `zero_to_na`, for consistency
     with sibling functions
   - no longer accepts sparse `.X` input
+
+### Removed
+
+- Support for Python 3.10, which reached end of life in October
+  2026. ProteoPy now requires Python >= 3.11.
 
 ## [0.1.1] - 2025-03-24
 

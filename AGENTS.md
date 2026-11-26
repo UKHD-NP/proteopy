@@ -667,8 +667,7 @@ Documentation is built using Sphinx, with the source files located in `docs/`. K
 ### Setup & Installation
 ```bash
 python -m venv .venv && source .venv/bin/activate
-python -m pip install -e .
-pip install -r requirements/requirements_development.txt
+python -m pip install -e ".[dev]"
 ```
 
 ### Quality Checks
@@ -752,7 +751,7 @@ New assets must remain lightweight and include provenance notes.
 ---
 
 ## Coding Standards
-- Python version: 3.10–3.14
+- Python version: 3.11–3.14
 - Indentation: 4 spaces
 - Line length: 72 characters for docstrings and 79 characters for code.
 - Naming conventions:
@@ -1069,8 +1068,7 @@ Documentation is built using Sphinx, with the source files located in `docs/`. K
 ### Setup & Installation
 ```bash
 python -m venv .venv && source .venv/bin/activate
-python -m pip install -e .
-pip install -r requirements/requirements_development.txt
+python -m pip install -e ".[dev]"
 ```
 
 ### Quality Checks

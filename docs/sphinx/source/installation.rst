@@ -7,7 +7,7 @@ Installation
    the **development version** from GitHub to benefit from the latest
    features and fixes. See `Development Version`_ below.
 
-ProteoPy requires Python 3.10 or later. We recommend installing ProteoPy in a
+ProteoPy requires Python 3.11 or later. We recommend installing ProteoPy in a
 dedicated virtual environment.
 
 Creating a Virtual Environment
@@ -27,7 +27,7 @@ Creating a Virtual Environment
 
       .. code-block:: bash
 
-         conda create -n proteopy-env "python>=3.10"
+         conda create -n proteopy-env "python>=3.11"
          conda activate proteopy-env
 
    .. tab-item:: uv

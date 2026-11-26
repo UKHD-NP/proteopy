@@ -158,7 +158,7 @@ Add this alongside any other section when the PR:
 - [ ] Noted under `Changed` / `Removed` / `Deprecated` in `HISTORY.md`
 - [ ] Deprecation warning added where a soft transition is possible
 - [ ] Tutorial notebooks updated to the new API
-- [ ] New or changed dependencies are justified and still support Python 3.10–3.14
+- [ ] New or changed dependencies are justified and still support Python 3.11–3.14
 
 ---
 

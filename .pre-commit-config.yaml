@@ -87,7 +87,7 @@ repos:
     rev: v3.22.0
     hooks:
       - id: pyupgrade
-        args: ["--py310-plus"]  # matches pyproject.toml requires-python >=3.10
+        args: ["--py311-plus"]  # matches pyproject.toml requires-python >=3.11
         exclude: ^(docs/|tests/data/)
         stages: [pre-commit, pre-push]
 

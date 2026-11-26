@@ -11,7 +11,6 @@ import re
 import shutil
 import tempfile
 
-
 _DOWNLOAD_TIMEOUT_SECONDS = 60
 
 
@@ -51,8 +50,7 @@ def _format_frankenfield_header(header: str) -> str:
         )
 
     database, accession_number, protein_id = segments
-    if accession_number.startswith("Cont_"):
-        accession_number = accession_number[len("Cont_") :]
+    accession_number = accession_number.removeprefix("Cont_")
     if accession_number not in _FRANKENFIELD_MANUAL_IDS:
         check_uniprot_accession_nr(accession_number)
 

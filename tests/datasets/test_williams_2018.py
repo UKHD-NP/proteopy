@@ -8,7 +8,6 @@ import pytest
 
 from proteopy.datasets import williams_2018
 
-
 # -- Expected values -------------------------------------------------
 
 _EXPECTED_SHAPE = (40, 32690)

@@ -8,7 +8,6 @@ import pytest
 
 from proteopy.datasets import karayel_2020
 
-
 # -- Expected values -------------------------------------------------
 
 _EXPECTED_SHAPE = (20, 7758)

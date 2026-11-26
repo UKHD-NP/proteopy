@@ -84,7 +84,7 @@ repos:
 
   # -- Syntax modernization (runs before black so black sees final tokens)
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.19.0
+    rev: v3.22.0
     hooks:
       - id: pyupgrade
         args: ["--py310-plus"]  # matches pyproject.toml requires-python >=3.10
@@ -93,7 +93,7 @@ repos:
 
   # -- Formatting (last among modifiers, so it has the final say on layout)
   - repo: https://github.com/psf/black
-    rev: 24.10.0
+    rev: 26.10.1
     hooks:
       - id: black
         args: ["--line-length=79"]  # matches CLAUDE.md code style
@@ -121,12 +121,8 @@ repos:
         name: pylint (errors only)
         entry: pylint --disable=all --enable=E,F --disable=E0401
         language: python
-        additional_dependencies: ["pylint==3.3.4"]
+        additional_dependencies: ["pylint==4.1.4"]
         types: [python]
-        # TODO: re-include proteopy/pl/intensities.py once its
-        # pre-existing E1133 false positives (hue_order inference in the
-        # isolated hook env) are resolved. Excluded to keep the
-        # proteoform-color fix commit scoped to the feature.
-        exclude: ^(docs/|proteopy/pl/intensities\.py)
+        exclude: ^docs/
         require_serial: true
         stages: [pre-commit, pre-push]

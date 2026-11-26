@@ -100,6 +100,10 @@ and this project adheres to
 
 **Internal**
 
+- CI tests Python 3.10–3.14 (previously 3.10–3.11) on Linux, macOS
+  and Windows.
+- Bumped pre-commit hooks: pylint 4.1.4, black 26.10.1, pyupgrade
+  3.22.0.
 - Moved and renamed the private matrix helper
   `utils.copf.reconstruct_corrs_df_symmetric_from_long_df` to
   `utils._matrix_wrangling.reconstruct_symmetric_matrix_from_long`

@@ -77,6 +77,11 @@ and this project adheres to
 
 ### Fixed
 
+**Preprocessing** (`pr.pp`)
+
+- `calculate_cv()`: convert zeros to `np.nan` when `zero_to_na=True` on
+  sparse inputs so sparse and dense matrices return identical CVs.
+
 **Datasets** (`pr.datasets`) and **Download** (`pr.download`)
 
 - `williams_2018()` no longer conflates measured zeros with missing

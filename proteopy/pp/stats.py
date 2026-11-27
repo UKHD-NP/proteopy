@@ -31,37 +31,20 @@ def _compute_cv_stats(X, zero_to_na=True):
         Count of non-missing values for each variable.
     """
     if sparse.issparse(X):
-        # For sparse matrices with zero_to_na=True, zeros are missing
-        # and not stored, so we compute stats on stored values only
-        if zero_to_na:
-            # TODO: implement sparse-native algorithm to avoid densification
-            X_dense = X.toarray()
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=RuntimeWarning)
-                mean_ = np.nanmean(X_dense, axis=0)
-                std_ = np.nanstd(X_dense, axis=0, ddof=1)
-            n_ = np.sum(~np.isnan(X_dense), axis=0)
-            return mean_, std_, n_
-        else:
-            X_dense = X.toarray()
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', category=RuntimeWarning)
-                mean_ = np.nanmean(X_dense, axis=0)
-                std_ = np.nanstd(X_dense, axis=0, ddof=1)
-            n_ = np.sum(~np.isnan(X_dense), axis=0)
-            return mean_, std_, n_
+        X_arr = X.toarray().astype(float, copy=False)
     else:
         X_arr = np.asarray(X, dtype=float)
-        if zero_to_na:
-            X_arr = X_arr.copy()
-            X_arr[X_arr == 0] = np.nan
 
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', category=RuntimeWarning)
-            mean_ = np.nanmean(X_arr, axis=0)
-            std_ = np.nanstd(X_arr, axis=0, ddof=1)
-        n_ = np.sum(~np.isnan(X_arr), axis=0)
-        return mean_, std_, n_
+    if zero_to_na:
+        X_arr = X_arr.copy()
+        X_arr[X_arr == 0] = np.nan
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        mean_ = np.nanmean(X_arr, axis=0)
+        std_ = np.nanstd(X_arr, axis=0, ddof=1)
+    n_ = np.sum(~np.isnan(X_arr), axis=0)
+    return mean_, std_, n_
 
 
 def calculate_cv(
